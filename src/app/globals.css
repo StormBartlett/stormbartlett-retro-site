@@ -37,6 +37,16 @@ body{margin:0;color:var(--text);background:var(--bg-desktop);font-family:"Silksc
 .titlebar{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:repeating-linear-gradient(90deg,#f6f1e7 0 10px,#efe9dc 10px 20px);border-bottom:2px solid var(--border);cursor:inherit;user-select:none}
 .btn-close{appearance:none;background:var(--accent);color:#fff;border:1px solid var(--border);width:20px;height:20px;line-height:18px;padding:0;text-align:center;cursor:inherit}
 .window-body{padding:10px}
+.window-body > .r3f-wrap{width:100%;height:420px}
+
+/* Embedded screen styling (desktop UI rendered on 3D screen) */
+.embedded-screen{position:relative; width:100%; height:100%; overflow:hidden; transform:translateZ(0)}
+.embedded-screen .menubar{position:absolute; top:0; left:0; right:0}
+.embedded-screen .desktop{position:absolute; inset:28px 0 0 0; padding:8px}
+
+/* Make the 3D viewer fill viewport when used as main page */
+html,body,#__next{height:100%}
+.r3f-wrap{width:100%; height:100vh}
 .calc-display{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#fff;border:2px solid var(--border);padding:8px;text-align:right;font-size:22px;margin-bottom:10px}
 .calc-keys{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .key{background:#fff;border:2px solid var(--border);padding:10px 6px;font-size:16px;cursor:inherit}
