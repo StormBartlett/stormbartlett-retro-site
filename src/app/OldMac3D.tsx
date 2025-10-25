@@ -1,39 +1,466 @@
 "use client";
 
-import { Canvas } from "@react-three/fiber";
-import { OrbitControls, ContactShadows, Html, useGLTF } from "@react-three/drei";
+import { Canvas, useFrame, useThree, useLoader, type ThreeElements } from "@react-three/fiber";
+import { TextureLoader } from 'three';
+import { OrbitControls, ContactShadows, useGLTF } from "@react-three/drei";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as React from "react";
+import * as THREE from "three";
+import { CSS3DRenderer, CSS3DObject } from "three/examples/jsm/renderers/CSS3DRenderer.js";
 
 // Tweak points
-const MODEL_ROT_Y = 0; // rotate around Y (radians). e.g. Math.PI * 0.5 = 90°
-const MODEL_SCALE = 3; // overall model size
-const SCREEN_ROT_Y = 0; // independent screen rotation (Y)
-const SCREEN_SCALE = .31 ; // independent screen size multiplier
-const MODEL_POS: [number, number, number] = [0, 0, 0]; // move whole model in world space
-const SCREEN_OFFSET: [number, number, number] = [-.3, 0.53, -0.05]; // screen relative to model origin
+// const MODEL_ROT_Y = 0; // rotate around Y (radians). e.g. Math.PI * 0.5 = 90°
+// const MODEL_SCALE = .3; // overall model size
+// const SCREEN_ROT_Y = 0; // independent screen rotation (Y)
+// const SCREEN_SCALE = .31 ; // independent screen size multiplier
+// const MODEL_POS: [number, number, number] = [0, 0, 0]; // move whole model in world space
+// const SCREEN_OFFSET: [number, number, number] = [-.3, 0.53, -0.05]; // screen relative to model origin
+// const CONTROLS_TARGET_OFFSET: [number, number, number] = [0, 0.0, 0.0]; // orbit focus relative to model
+
+
+//custom model values
+// const MODEL_ROT_Y = 0; // rotate around Y (radians). e.g. Math.PI * 0.5 = 90° - now set directly in MacGLBModel component
+const MODEL_SCALE = 1; // overall model size
+const MODEL_OFFSET_X = -.9; // move model left(-)/right(+) relative to screen (in model's rotated space)
+const MODEL_OFFSET_Y = 0; // move model down(-)/up(+) relative to screen
+const MODEL_OFFSET_Z = 0; // move model back(-)/forward(+) relative to screen (in model's rotated space)
+const SCREEN_ROT_Y = 0; //Math.PI/2; // independent screen rotation (Y) - rotate screen to face user (0 = forward when parent is rotated -90°)
+const SCREEN_ROT_X = -Math.PI/30; // independent screen rotation (X tilt) - tilt screen up/down
+const SCREEN_ROT_Z = 0; // independent screen rotation (Z roll)
+const SCREEN_SCALE = 1 ; // independent screen size multiplier
+const MODEL_POS: [number, number, number] = [0, 0, 0]; // move whole model+screen assembly in world space
+const SCREEN_OFFSET: [number, number, number] = [0, 0, 0]; // Keep at [0,0,0] to avoid rotation issues! Use MODEL_POS to move everything.
 const CONTROLS_TARGET_OFFSET: [number, number, number] = [0, 0.0, 0.0]; // orbit focus relative to model
 
-function MacGLBModel({ url, scale = 1, rotationY = 1 }: { url: string; scale?: number; rotationY?: number }) {
+// Fine-tune screen position within the model WITHOUT breaking rotation
+// These are NO LONGER USED - use MODEL_OFFSET_X/Y/Z to move the model instead!
+
+//Camera + Controls tweak variables
+const CAMERA_START_POS: [number, number, number] = [-1.96, 23.17, 17.02];
+const CAMERA_START_FOV = 24;
+const CAMERA_START_TARGET: [number, number, number] = [
+  MODEL_POS[0] + CONTROLS_TARGET_OFFSET[0],
+  MODEL_POS[1] + CONTROLS_TARGET_OFFSET[1],
+  MODEL_POS[2] + CONTROLS_TARGET_OFFSET[2],
+];
+
+// Smooth reset animation duration
+const VIEW_RESET_MS = 900; // ms
+
+// Fit behavior tweak variables (for the reset-to-screen)
+type ViewFitMode = "height" | "width" | "max" | "min";
+const VIEW_FIT_MODE: ViewFitMode = "max"; // choose how to fit: height, width, max, or min
+const VIEW_FIT_MARGIN = .04; // multiplier margin around the fitted view
+const VIEW_FIT_MARGIN_MOBILE = .03; // slightly more margin on mobile (if needed)
+const VIEW_FIT_EXTRA_SCALE = 1.0; // additional multiplier after fit calculation
+const VIEW_FIT_OFFSET = 0.0; // additive world-units along screen normal after fit
+const VIEW_FIT_CLAMP: [number, number] = [0.28, 2.2]; // clamp min/max distance along normal
+
+// Platform compensation removed - now use SCREEN_LOCAL_X/Y/Z for fine positioning
+
+// Rotation limits (left/right and up/down)
+// Azimuth (left/right) limits relative to target
+const ORBIT_AZIMUTH_MIN = -Math.PI / 1; // rotate left limit
+const ORBIT_AZIMUTH_MAX = Math.PI / 1;  // rotate right limit
+// Polar (vertical) limits to avoid top/bottom extremes
+const ORBIT_POLAR_MIN = Math.PI / 4.2;   // how far up from below
+const ORBIT_POLAR_MAX = Math.PI / 2.15;  // slightly under top-down
+
+// Zoom limits (distance from target)
+const ZOOM_MIN_DISTANCE = 3; // How close you can zoom in
+const ZOOM_MAX_DISTANCE = 140;   // How far you can zoom out
+
+// Approximate screen plane size in local units (tweak to fit cutout)
+const SCREEN_PLANE_W = 2.6;
+const SCREEN_PLANE_H = 3.0;
+
+type CameraAnim = {
+  startMs: number;
+  durationMs: number;
+  fromPos: THREE.Vector3;
+  toPos: THREE.Vector3;
+  fromTarget: THREE.Vector3;
+  toTarget: THREE.Vector3;
+};
+
+function CameraAnimator({
+  controlsRef,
+  animRef,
+}: {
+  controlsRef: React.MutableRefObject<OrbitControlsImpl | null>;
+  animRef: React.MutableRefObject<CameraAnim | null>;
+}) {
+  const { camera } = useThree();
+  useFrame(() => {
+    const anim = animRef.current;
+    if (!anim) return;
+    const now = performance.now();
+    const tRaw = (now - anim.startMs) / anim.durationMs;
+    const t = Math.min(1, Math.max(0, tRaw));
+    // easeInOutQuad
+    const k = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+    camera.position.lerpVectors(anim.fromPos, anim.toPos, k);
+    const target = new THREE.Vector3().lerpVectors(anim.fromTarget, anim.toTarget, k);
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(target);
+      controlsRef.current.update();
+    } else {
+      camera.lookAt(target);
+    }
+    if (t >= 1) {
+      animRef.current = null;
+    }
+  });
+  return null;
+}
+
+function Mouse3D({
+  controlsRef,
+  cursorUV,
+  setCursorUV,
+  canvasContainerRef,
+}: {
+  controlsRef: React.MutableRefObject<OrbitControlsImpl | null>;
+  cursorUV: { u: number; v: number };
+  setCursorUV: (uv: { u: number; v: number }) => void;
+  canvasContainerRef: React.MutableRefObject<HTMLDivElement | null>;
+}) {
+  const { camera } = useThree();
+  const groupRef = React.useRef<THREE.Group | null>(null);
+  const draggingRef = React.useRef(false);
+  const plane = React.useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0.9)); // y = -0.9 desk (negated in Plane)
+  const raycaster = React.useRef(new THREE.Raycaster());
+  const tmpVec2 = React.useRef(new THREE.Vector2());
+  const bounds = React.useRef({ minX: -0.15, maxX: 1.45, minZ: -0.3, maxZ: 0.6 });
+
+  React.useEffect(() => {
+    if (groupRef.current) {
+      groupRef.current.position.set(1.35, -0.9, 0.3);
+      // Face away from user, but keep upright
+      groupRef.current.rotation.set(0, Math.PI, 0);
+    }
+  }, []);
+
+  const projectToDesk = (clientX: number, clientY: number): THREE.Vector3 | null => {
+    if (!canvasContainerRef.current) return null;
+    const rect = canvasContainerRef.current.getBoundingClientRect();
+    tmpVec2.current.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -(((clientY - rect.top) / rect.height) * 2 - 1)
+    );
+    raycaster.current.setFromCamera(tmpVec2.current, camera);
+    const hit = new THREE.Vector3();
+    const ok = raycaster.current.ray.intersectPlane(plane.current, hit);
+    return ok ? hit : null;
+  };
+
+  React.useEffect(() => {
+    const onMove = (ev: PointerEvent) => {
+      if (!draggingRef.current || !groupRef.current) return;
+      const p = projectToDesk(ev.clientX, ev.clientY);
+      if (!p) return;
+      // clamp to bounds
+      p.x = Math.min(bounds.current.maxX, Math.max(bounds.current.minX, p.x));
+      p.z = Math.min(bounds.current.maxZ, Math.max(bounds.current.minZ, p.z));
+      p.y = -0.9;
+      groupRef.current.position.copy(p);
+      // Map to UV (roughly) across bounds
+      const u = (p.x - bounds.current.minX) / (bounds.current.maxX - bounds.current.minX);
+      const v = (p.z - bounds.current.minZ) / (bounds.current.maxZ - bounds.current.minZ);
+      setCursorUV({ u: Math.min(1, Math.max(0, u)), v: Math.min(1, Math.max(0, v)) });
+    };
+    const onUp = () => {
+      if (draggingRef.current) {
+        draggingRef.current = false;
+        if (controlsRef.current) controlsRef.current.enableRotate = true;
+      }
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('pointerup', onUp, { passive: true });
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [camera, controlsRef, setCursorUV, canvasContainerRef]);
+
+  return (
+    <group ref={groupRef}>
+      {/* Base cube */}
+      <mesh position={[0, 0, 0]}>
+        <boxGeometry args={[0.3, 0.1, 0.2]} />
+        <meshStandardMaterial color="#666" />
+      </mesh>
+      {/* Drag the mouse body on the desk */}
+      <mesh
+        position={[0, 0.051, 0]}
+        onPointerDown={(e) => { e.stopPropagation(); draggingRef.current = true; if (controlsRef.current) controlsRef.current.enableRotate = false; }}
+        onPointerUp={(e) => { e.stopPropagation(); draggingRef.current = false; if (controlsRef.current) controlsRef.current.enableRotate = true; }}
+      >
+        <boxGeometry args={[0.31, 0.012, 0.21]} />
+        <meshStandardMaterial transparent opacity={0} />
+      </mesh>
+      {/* Left button */}
+      <mesh
+        position={[-0.09, 0.075, 0.07]}
+        onPointerDown={(e) => { e.stopPropagation(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          const x = window.innerWidth * cursorUV.u;
+          const y = window.innerHeight * (1 - cursorUV.v);
+          const el = document.elementFromPoint(x, y) as HTMLElement | null;
+          if (el) el.click();
+        }}
+      >
+        <boxGeometry args={[0.07, 0.03, 0.06]} />
+        <meshStandardMaterial color="#bbb" />
+      </mesh>
+      {/* Right button */}
+      <mesh
+        position={[0.09, 0.075, 0.07]}
+        onPointerDown={(e) => { e.stopPropagation(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          const x = window.innerWidth * cursorUV.u;
+          const y = window.innerHeight * (1 - cursorUV.v);
+          const el = document.elementFromPoint(x, y) as HTMLElement | null;
+          if (el) el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+        }}
+      >
+        <boxGeometry args={[0.07, 0.03, 0.06]} />
+        <meshStandardMaterial color="#bbb" />
+      </mesh>
+    </group>
+  );
+}
+
+
+function MacGLBModel({ url, scale = 1, rotationY = 1, ...props }: { url: string; scale?: number; rotationY?: number } & ThreeElements["group"]) {
   const { scene } = useGLTF(url);
   return (
-    <group position={[0, -0.25, 0]} rotation={[0, rotationY, 0]} scale={[scale, scale, scale]}>
+    <group position={[0, -0.25, 0]} rotation={[0, rotationY, 0]} scale={[scale, scale, scale]} {...props}>
       <primitive object={scene} />
     </group>
   );
 }
 
+function CameraStateCapture({
+  controlsRef,
+  camPosRef,
+  camTargetRef,
+}: {
+  controlsRef: React.MutableRefObject<OrbitControlsImpl | null>;
+  camPosRef: React.MutableRefObject<THREE.Vector3>;
+  camTargetRef: React.MutableRefObject<THREE.Vector3>;
+}) {
+  const { camera } = useThree();
+  useFrame(() => {
+    camPosRef.current.copy(camera.position);
+    const tgt = controlsRef.current ? controlsRef.current.target : new THREE.Vector3(...CAMERA_START_TARGET);
+    camTargetRef.current.copy(tgt);
+  });
+  return null;
+}
+
+// Render CSS3D each frame
+function CSS3DRenderLoop({ 
+  css3dRendererRef,
+}: {
+  css3dRendererRef: React.MutableRefObject<CSS3DRenderer | null>;
+}) {
+  const { camera, scene } = useThree();
+  useFrame(() => {
+    if (css3dRendererRef.current) {
+      css3dRendererRef.current.render(scene, camera);
+    }
+  });
+  return null;
+}
+
+// Hook to attach CSS3D object to Three.js scene
+function useCSS3DScreen(
+  screenRef: React.MutableRefObject<THREE.Group | null>,
+  divElement: HTMLDivElement | null
+) {
+  const { scene } = useThree();
+
+  React.useEffect(() => {
+    if (!divElement || !screenRef.current) return;
+    
+    const currentScreenRef = screenRef.current;
+
+    // Create CSS3DObject from the div
+    const css3dObject = new CSS3DObject(divElement);
+
+       // Device detection
+    const isMobile = typeof window !== "undefined" && (
+      window.innerWidth <= 820 || 
+      matchMedia("(pointer: coarse)").matches
+    ); 
+
+    // Brave detection (checks for Brave-specific API)
+    const nav = (typeof navigator !== 'undefined' ? navigator : undefined) as { brave?: { isBrave?: () => boolean } } | undefined;
+    const isBrave = !!(nav && nav.brave && typeof nav.brave.isBrave === 'function');
+
+    // Position and scale based on device
+    if (!isMobile) {
+      // Desktop
+      css3dObject.position.set(-.04, .24, 0);
+      css3dObject.scale.set(0.0017, 0.0017, 0.0017);
+    } else if (isBrave) {
+      // Brave Mobile - only too far left
+      css3dObject.position.set(.135, .24, 0); // Adjusted X, kept Y same as desktop
+      css3dObject.scale.set(0.00176, 0.00176, 0.00176);
+    } else {
+      // Safari/Chrome Mobile - too far left AND down
+      css3dObject.position.set(.135, .41, 0); // Adjusted X and Y
+      css3dObject.scale.set(0.00176, 0.00176, 0.00176);
+    }
+    // Add to the screen group
+    currentScreenRef.add(css3dObject);
+
+    return () => {
+      if (currentScreenRef) {
+        currentScreenRef.remove(css3dObject);
+      }
+    };
+  }, [screenRef, scene, divElement]);
+}
+
+function CSS3DScreenBridge({ 
+  screenRef,
+  screenDivElement,
+}: { 
+  screenRef: React.MutableRefObject<THREE.Group | null>;
+  screenDivElement: HTMLDivElement | null;
+}) {
+  useCSS3DScreen(screenRef, screenDivElement);
+  return null;
+}
+
+// ScreenTexturePlane reverted
+
 export default function OldMac3D({ children }: { children?: React.ReactNode }) {
-  // Estimate the GLB screen size (tune as needed to fit cutout)
-  const SCREEN_POS: [number, number, number] = SCREEN_OFFSET;
-  const SCREEN_W = 0.66 * 100;
-  const SCREEN_H = 0.48 * 100;
-  const UI_W = 900; // px
-  const UI_H = 600; // px (4:3)
-  const scaleX = (SCREEN_W * SCREEN_SCALE) / UI_W;
-  const scaleY = (SCREEN_H * SCREEN_SCALE) / UI_H;
+  const SCREEN_W = .86 * 67;
+  const SCREEN_H = 0.5 * 67;
+  
+  const modelRef = React.useRef<THREE.Group | null>(null);
+  const screenRef = React.useRef<THREE.Group | null>(null);
+  const controlsRef = React.useRef<OrbitControlsImpl | null>(null);
+  const animRef = React.useRef<CameraAnim | null>(null);
+  const camPosRef = React.useRef(new THREE.Vector3(...CAMERA_START_POS));
+  const camTargetRef = React.useRef(new THREE.Vector3(...CAMERA_START_TARGET));
+  const viewportRef = React.useRef<{ aspect: number; fovDeg: number }>({ aspect: 1, fovDeg: CAMERA_START_FOV });
+  const [hoveringMac, setHoveringMac] = React.useState(false);
+  const [tooltipHover, setTooltipHover] = React.useState(false);
+  const [mouse, setMouse] = React.useState<{ x: number; y: number } | null>(null);
+  const [uiMounted, setUiMounted] = React.useState(false);
+  // Cursor state in UV (0..1, 0..1) on the screen
+  const [cursorUV, setCursorUV] = React.useState<{u:number; v:number}>({ u: 0.5, v: 0.5 });
+  // Dragging pad state
+  const draggingPadRef = React.useRef(false);
+  const isMobileRef = React.useRef(false);
+  const css3dRendererRef = React.useRef<CSS3DRenderer | null>(null);
+  const canvasContainerRef = React.useRef<HTMLDivElement>(null);
+  const [screenDivElement, setScreenDivElement] = React.useState<HTMLDivElement | null>(null);
+  const clickDataRef = React.useRef<{ down: boolean; x: number; y: number; t: number }>({ down: false, x: 0, y: 0, t: 0 });
+
+  // Cursor texture (SVG)
+  // const cursorTexture = useLoader(TextureLoader, '/cursor-light.svg');
+  const startResetAnimation = React.useCallback(() => {
+    // Kick off camera + target interpolation
+    const fromPos = camPosRef.current.clone();
+    const fromTarget = camTargetRef.current.clone();
+    // Compute screen world position and normal from the actual group
+    const toTarget = new THREE.Vector3();
+    const worldQuat = new THREE.Quaternion();
+    if (screenRef.current) {
+      screenRef.current.getWorldPosition(toTarget);
+      screenRef.current.getWorldQuaternion(worldQuat);
+    } else {
+      toTarget.set(
+        MODEL_POS[0] + SCREEN_OFFSET[0],
+        MODEL_POS[1] + SCREEN_OFFSET[1],
+        MODEL_POS[2] + SCREEN_OFFSET[2]
+      );
+      worldQuat.setFromEuler(new THREE.Euler(SCREEN_ROT_X, SCREEN_ROT_Y, SCREEN_ROT_Z, "XYZ"));
+    }
+    const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat).normalize();
+    // Compute world size of the screen plane (include model scale)
+    const screenWidthWorld = SCREEN_W * SCREEN_SCALE * MODEL_SCALE;
+    const screenHeightWorld = SCREEN_H * SCREEN_SCALE * MODEL_SCALE;
+    // Fit distance based on camera FOV and aspectZOOM_MIN_DISTANCE
+    const aspect = viewportRef.current.aspect || 1;
+    const fovRad = (viewportRef.current.fovDeg || CAMERA_START_FOV) * Math.PI / 180;
+    const h = screenHeightWorld;
+    const w = screenWidthWorld;
+    const distV = (h / 2) / Math.tan(fovRad / 2);
+    const fovHRad = 2 * Math.atan(Math.tan(fovRad / 2) * aspect);
+    const distH = (w / 2) / Math.tan(fovHRad / 2);
+    let base;
+    switch (VIEW_FIT_MODE) {
+      case "height": base = distV; break;
+      case "width": base = distH; break;
+      case "min": base = Math.min(distV, distH); break;
+      case "max": default: base = Math.max(distV, distH); break;
+    }
+    const isMobile = typeof window !== "undefined" && (window.innerWidth <= 820 || matchMedia("(pointer: coarse)").matches);
+    const margin = (isMobile ? VIEW_FIT_MARGIN_MOBILE : VIEW_FIT_MARGIN) * VIEW_FIT_EXTRA_SCALE;
+    let fitDistance = base * margin + VIEW_FIT_OFFSET;
+    fitDistance = Math.min(Math.max(fitDistance, VIEW_FIT_CLAMP[0]), VIEW_FIT_CLAMP[1]);
+    const toPos = new THREE.Vector3().copy(toTarget).add(new THREE.Vector3().copy(normal).multiplyScalar(fitDistance));
+    animRef.current = {
+      startMs: performance.now(),
+      durationMs: VIEW_RESET_MS,
+      fromPos,
+      toPos,
+      fromTarget,
+      toTarget,
+    };
+  }, [SCREEN_W, SCREEN_H]);
+  React.useEffect(() => {
+    setUiMounted(true);
+    // Detect mobile
+    isMobileRef.current = typeof window !== "undefined" && (
+      window.innerWidth <= 820 || 
+      matchMedia("(pointer: coarse)").matches || 
+      (window.devicePixelRatio || 1) >= 2
+    );
+
+    // Setup CSS3DRenderer
+    if (canvasContainerRef.current) {
+      const container = canvasContainerRef.current;
+      const css3dRenderer = new CSS3DRenderer();
+      css3dRenderer.setSize(window.innerWidth, window.innerHeight);
+      css3dRenderer.domElement.style.position = "absolute";
+      css3dRenderer.domElement.style.top = "0";
+      css3dRenderer.domElement.style.pointerEvents = "none";
+      container.appendChild(css3dRenderer.domElement);
+      css3dRendererRef.current = css3dRenderer;
+
+      const handleResize = () => {
+        css3dRenderer.setSize(window.innerWidth, window.innerHeight);
+      };
+      window.addEventListener("resize", handleResize);
+
+      return () => {
+        window.removeEventListener("resize", handleResize);
+        if (container && css3dRenderer.domElement.parentNode) {
+          container.removeChild(css3dRenderer.domElement);
+        }
+      };
+    }
+  }, []);
   return (
-    <div className="r3f-wrap">
-      <Canvas shadows dpr={[1, 2]} camera={{ position: [0.15, 0.18, 0.95], fov: 24 }}>
+    <div className="r3f-wrap" ref={canvasContainerRef} onPointerMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}>
+      <Canvas
+        shadows
+        dpr={[1, 2]}
+        camera={{ position: CAMERA_START_POS, fov: CAMERA_START_FOV }}
+        onCreated={({ camera, size }) => {
+          viewportRef.current = { aspect: size.width / size.height, fovDeg: (camera as THREE.PerspectiveCamera).fov };
+        }}
+      >
         {/* Lights */}
         <hemisphereLight intensity={0.5} groundColor="#b6b2a9" />
         <directionalLight
@@ -46,15 +473,54 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
 
         {/* Model + Screen grouped for relative positioning */}
         <group position={MODEL_POS}>
-          <MacGLBModel url="/computer.glb" scale={MODEL_SCALE} rotationY={MODEL_ROT_Y} />
+          {/* Model with its rotation and offset from screen */}
+          <group 
+            ref={modelRef}
+            position={(() => {
+              // Convert model offset from model's local space to world space
+              const offset = new THREE.Vector3(MODEL_OFFSET_X, MODEL_OFFSET_Y, MODEL_OFFSET_Z);
+              const rotationMatrix = new THREE.Matrix4().makeRotationY(-Math.PI/2);
+              offset.applyMatrix4(rotationMatrix);
+              return [offset.x, offset.y, offset.z] as [number, number, number];
+            })()}
+            rotation={[0, -Math.PI/2, 0]}
+            onPointerOver={(e) => { e.stopPropagation(); setHoveringMac(true); }}
+            onPointerOut={() => { setHoveringMac(false); }}
+            onPointerMove={(e) => { setMouse({ x: e.clientX, y: e.clientY }); }}
+            onPointerDown={(e) => {
+              const btn = (e as unknown as PointerEvent).button;
+              if (typeof btn === 'number' && btn !== 0) return; // left click only
+              clickDataRef.current = { down: true, x: e.clientX, y: e.clientY, t: performance.now() };
+            }}
+            onPointerUp={(e) => {
+              if (!clickDataRef.current.down) return;
+              const dx = e.clientX - clickDataRef.current.x;
+              const dy = e.clientY - clickDataRef.current.y;
+              const dt = performance.now() - clickDataRef.current.t;
+              clickDataRef.current.down = false;
+              const moved = Math.hypot(dx, dy);
+              if (moved < 6 && dt < 300) {
+                e.stopPropagation();
+                setHoveringMac(false);
+                startResetAnimation();
+              }
+            }}
+          >
+            <MacGLBModel url="/comp2.glb" scale={MODEL_SCALE} rotationY={0} />
+          </group>
 
-          {/* Mount the OS into the screen (relative to model) */}
-          <group position={SCREEN_POS} rotation={[0, SCREEN_ROT_Y, 0]}>
-            <Html transform scale={[scaleX, scaleY, 1]} style={{ pointerEvents: "auto" }}>
-              <div className="embedded-screen" style={{ width: UI_W, height: UI_H }}>
-                {children}
-              </div>
-            </Html>
+          {/* Screen marker - just tracks 3D position, no Html component */}
+          <group 
+            ref={screenRef} 
+            position={[0, 0, 0]}
+            rotation={[SCREEN_ROT_X, SCREEN_ROT_Y, SCREEN_ROT_Z]}
+          >
+            {/* Invisible marker at screen center */}
+            <mesh visible={false}>
+              <boxGeometry args={[0.01, 0.01, 0.01]} />
+            </mesh>
+
+            {/* 3D cursor plane removed in favor of DOM overlay */}
           </group>
         </group>
 
@@ -64,23 +530,144 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
         {/* Controls */}
         <OrbitControls
           makeDefault
+          ref={controlsRef}
           enableDamping
           dampingFactor={0.08}
-          enablePan
+          enablePan={false}
           enableZoom
+          // prevent screen from tearing by limiting rotation closely
+          rotateSpeed={0.8}
           target={[
             MODEL_POS[0] + CONTROLS_TARGET_OFFSET[0],
             MODEL_POS[1] + CONTROLS_TARGET_OFFSET[1],
             MODEL_POS[2] + CONTROLS_TARGET_OFFSET[2],
           ]}
-          minDistance={0.35}
-          maxDistance={6}
-          maxPolarAngle={Math.PI / 2.05}
-          screenSpacePanning
+          minDistance={ZOOM_MIN_DISTANCE}
+          maxDistance={ZOOM_MAX_DISTANCE}
+          minAzimuthAngle={ORBIT_AZIMUTH_MIN}
+          maxAzimuthAngle={ORBIT_AZIMUTH_MAX}
+          minPolarAngle={ORBIT_POLAR_MIN}
+          maxPolarAngle={ORBIT_POLAR_MAX}
+          screenSpacePanning={false}
         />
+
+        {/* Retro 3D mouse */}
+        <Mouse3D controlsRef={controlsRef} cursorUV={cursorUV} setCursorUV={setCursorUV} canvasContainerRef={canvasContainerRef} />
+
+        {/* Camera animation driver */}
+        <CameraAnimator controlsRef={controlsRef} animRef={animRef} />
+        <CameraStateCapture 
+          controlsRef={controlsRef} 
+          camPosRef={camPosRef} 
+          camTargetRef={camTargetRef} 
+        />
+        
+        {/* CSS3D Renderer Loop */}
+        <CSS3DRenderLoop css3dRendererRef={css3dRendererRef} />
+        
+        {/* Bridge to attach external div to Three.js scene */}
+        {uiMounted && screenDivElement && (
+          <CSS3DScreenBridge screenRef={screenRef} screenDivElement={screenDivElement} />
+        )}
       </Canvas>
+
+      {/* CSS3D UI rendered outside Canvas */}
+      {uiMounted && (
+        <div
+          ref={(el) => {
+            if (el && !screenDivElement) {
+              setScreenDivElement(el);
+            }
+          }}
+          style={{
+            position: "absolute",
+            width: "800px",
+            height: "600px",
+            pointerEvents: "auto",
+          }}
+        >
+          <div className="embedded-screen" style={{ width: "800px", height: "600px", position: 'relative' }}>
+            {children}
+            {/* DOM cursor icon overlay inside the screen (always visible above WebGL) */}
+            <img
+              src="/cursor-light.svg"
+              alt="cursor"
+              style={{
+                position: 'absolute',
+                left: `${cursorUV.u * 800}px`,
+                top: `${(1 - cursorUV.v) * 600}px`,
+                transform: 'translate(-10%, -10%)',
+                width: 18,
+                height: 28,
+                imageRendering: 'pixelated',
+                pointerEvents: 'none',
+                zIndex: 3,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Retro mouse controller */}
+      {uiMounted && (
+        <div
+          style={{
+            position: 'absolute',
+            right: matchMedia('(pointer: coarse)').matches ? '50%' : '16px',
+            bottom: matchMedia('(pointer: coarse)').matches ? '8%' : '16px',
+            transform: matchMedia('(pointer: coarse)').matches ? 'translateX(50%)' : 'none',
+            display: 'flex', gap: 12, alignItems: 'center', zIndex: 20,
+            pointerEvents: 'auto',
+            userSelect: 'none',
+          }}
+        >
+          <button type="button"
+            onPointerDown={(e)=>{e.preventDefault();}}
+            onClick={()=>{
+              const el = document.elementFromPoint(window.innerWidth*cursorUV.u, window.innerHeight*(1-cursorUV.v)) as HTMLElement | null;
+              if (el) el.click();
+            }}
+          >L</button>
+          <div
+            onPointerDown={(e)=>{ draggingPadRef.current = true; controlsRef.current && (controlsRef.current.enableRotate = false); }}
+            onPointerUp={(e)=>{ draggingPadRef.current = false; controlsRef.current && (controlsRef.current.enableRotate = true); }}
+            onPointerMove={(e)=>{
+              if (!draggingPadRef.current) return;
+              const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+              const u = Math.min(1, Math.max(0, (e.clientX - rect.left)/rect.width));
+              const v = Math.min(1, Math.max(0, 1 - (e.clientY - rect.top)/rect.height));
+              setCursorUV({ u, v });
+            }}
+            style={{ width: 200, height: 140, background: '#222', border: '2px solid #555' }}
+          />
+          <button type="button"
+            onPointerDown={(e)=>{e.preventDefault();}}
+            onClick={()=>{
+              const el = document.elementFromPoint(window.innerWidth*cursorUV.u, window.innerHeight*(1-cursorUV.v)) as HTMLElement | null;
+              if (el) el.dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, cancelable:true }));
+            }}
+          >R</button>
+        </div>
+      )}
+
+      {/* CRT cursor overlay removed */}
+
+      {/* Tooltip overlay */}
+      {(hoveringMac || tooltipHover) && mouse && (
+        <button
+          type="button"
+          className="view-tooltip"
+          onClick={() => {
+            setHoveringMac(false);
+            startResetAnimation();
+          }}
+          onMouseEnter={() => setTooltipHover(true)}
+          onMouseLeave={() => setTooltipHover(false)}
+          style={{ left: mouse.x, top: mouse.y }}
+        >
+          View Screen
+        </button>
+      )}
     </div>
   );
 }
-
-

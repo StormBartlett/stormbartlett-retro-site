@@ -1,11 +1,17 @@
-:root{--bg-desktop:#d9d3c7;--bg-window:#efe9dc;--border:#141414;--text:#101010;--accent:#000;--shadow:rgba(0,0,0,.15);--crt-line-gap:2px;--crt-blur:.4px;--crt-contrast:.9;--crt-brightness:.95;--crt-saturate:1;--crt-vignette-strength:.2}
-:root.dark-mode{--bg-desktop:#1a1a1a;--bg-window:#2d2d2d;--border:#e0e0e0;--text:#ffffff;--accent:#fff;--shadow:rgba(255,255,255,.1);--crt-line-gap:2px;--crt-blur:.4px;--crt-contrast:1.2;--crt-brightness:1.4;--crt-saturate:1;--crt-vignette-strength:.1}
+:root{--bg-desktop:#0b0b0e;--bg-window:#171719;--border:#1e1a1a;--text:#eaeaea;--accent:#fff;--shadow:rgba(0,0,0,.25);--crt-line-gap:2px;--crt-blur:.4px;--crt-contrast:.95;--crt-brightness:1;--crt-saturate:1;--crt-vignette-strength:.18;--screen-bezel-color:#161212;--screen-bezel-thickness:10px;--screen-bezel-radius:14px;--bg-vignette-strength:1;--bg-grain-opacity:.1;--matrix-bg-color:#000000}
+:root.dark-mode{--bg-desktop:#0b0b0e;--bg-window:#171719;--border:#e0e0e0;--text:#ffffff;--accent:#fff;--shadow:rgba(255,255,255,.12);--crt-line-gap:2px;--crt-blur:.4px;--crt-contrast:1.05;--crt-brightness:1.1;--crt-saturate:1;--crt-vignette-strength:.16;--screen-bezel-color:#1e1a1a;--bg-vignette-strength:.6;--bg-grain-opacity:.01;--matrix-bg-color:#000000}
 *{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;color:var(--text);background:var(--bg-desktop);font-family:"Silkscreen","VT323",ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+body{margin:0;color:var(--text);background:radial-gradient(1200px 800px at 50% 45%, #0f0f14 0%, var(--matrix-bg-color) 60%, #08080a 100%);font-family:"Silkscreen","VT323",ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+/* Filmic vignette + grain */
+body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0}
+body::before{background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,var(--bg-vignette-strength)) 100%)}
+body::after{opacity:var(--bg-grain-opacity);mix-blend-mode:overlay;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='1'/></svg>");background-size:200px 200px}
 .crt{position:fixed;inset:0;overflow:hidden;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.4);isolation:isolate}
-.crt .content{height:100%;filter:contrast(var(--crt-contrast)) brightness(var(--crt-brightness)) saturate(var(--crt-saturate)) blur(var(--crt-blur));transform:translateZ(0)}
-.crt::before{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(to bottom, rgba(0,0,0,.12) 0px, rgba(0,0,0,.12) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) var(--crt-line-gap));mix-blend-mode:multiply;animation:crt-flicker 3.5s infinite steps(60)}
+/* ensure background canvas stays behind content within .crt */
+.crt > .matrix-bg-canvas{z-index:0}
+.crt .content{position:relative;z-index:1;height:100%;filter:contrast(var(--crt-contrast)) brightness(var(--crt-brightness)) saturate(var(--crt-saturate)) blur(var(--crt-blur));transform:translateZ(0)}
+.crt::before{display:none}
 .crt::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(0,0,0,var(--crt-vignette-strength)) 100%),linear-gradient(-15deg, rgba(255,255,255,.08), rgba(255,255,255,0) 25%, rgba(255,255,255,0) 75%, rgba(255,255,255,.06));mix-blend-mode:multiply}
 @keyframes crt-flicker{0%,100%{opacity:.95}10%{opacity:.9}20%{opacity:.96}30%{opacity:.92}40%{opacity:.98}50%{opacity:.9}60%{opacity:.97}70%{opacity:.93}80%{opacity:.99}90%{opacity:.91}}
 .crt.crt-off .content{filter:none}.crt.crt-off::before,.crt.crt-off::after{display:none}
@@ -40,13 +46,52 @@ body{margin:0;color:var(--text);background:var(--bg-desktop);font-family:"Silksc
 .window-body > .r3f-wrap{width:100%;height:420px}
 
 /* Embedded screen styling (desktop UI rendered on 3D screen) */
-.embedded-screen{position:relative; width:100%; height:100%; overflow:hidden; transform:translateZ(0)}
+.embedded-screen{position:relative; width:100%; height:100%; overflow:hidden; transform:translateZ(0); background:#ffffff; --crt-bulge: 0.02; --crt-aspect: 1; --crt-bright-gloss: .4; --crt-dark-edge: .15; border-radius:var(--screen-bezel-radius); box-shadow:0 0 0 var(--screen-bezel-thickness) var(--screen-bezel-color)}
+.embedded-screen{ -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* Fix for mobile Html transform issues */
+.html-screen-wrapper { 
+  transform: translate3d(0,0,0) !important; 
+  -webkit-transform: translate3d(0,0,0) !important;
+  transform-style: preserve-3d !important;
+  -webkit-transform-style: preserve-3d !important;
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+  will-change: transform;
+}
+.embedded-screen{position:relative; cursor:url("/cursor-light.svg") 1 1, auto}
+:root.dark-mode .embedded-screen{cursor:url("/cursor-dark.svg") 1 1, auto}
+.embedded-screen::before{content:""; position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(to bottom, rgba(0,0,0,.12) 0px, rgba(0,0,0,.12) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) var(--crt-line-gap)); mix-blend-mode:multiply;}
+.embedded-screen::after{display:none}
+:root.dark-mode .embedded-screen{background:#0a0a0a}
+
+/* Curved CRT bulge and gloss - tweak with CSS vars above */
+.crt-curvature-overlay{display:none}
+.crt-curvature-gloss{display:none}
+
+/* Simulate bulge by warping content using perspective and border-radius with a mask */
+.embedded-screen{
+  perspective: 1200px;
+}
+.embedded-screen > *:not(.crt-curvature-overlay):not(.crt-curvature-gloss){
+  transform: translateZ(calc(var(--crt-bulge) * 30px));
+}
+.embedded-screen{
+  border-radius: clamp(6px, 1.2vw, 14px);
+}
 .embedded-screen .menubar{position:absolute; top:0; left:0; right:0}
 .embedded-screen .desktop{position:absolute; inset:28px 0 0 0; padding:8px}
 
+/* In-screen custom cursor */
+.embedded-cursor{position:absolute; left:0; top:0; width:17px; height:17px; pointer-events:none; background:url("/retro-cursor-light.svg") 0 0 / 17px 17px no-repeat; image-rendering:pixelated; z-index:10000; will-change:transform; transform:translate(-1px,-1px)}
+:root.dark-mode .embedded-cursor{background-image:url("/retro-cursor-dark.svg")}
+
+/* Global overlay cursor that follows the real pointer (visible only over screen) */
+.embedded-cursor-global{position:fixed; left:0; top:0; width:17px; height:17px; pointer-events:none; background:url("/retro-cursor-light.svg") 0 0 / 17px 17px no-repeat; image-rendering:pixelated; z-index:100000; will-change:transform; display:none}
+:root.dark-mode .embedded-cursor-global{background-image:url("/retro-cursor-dark.svg")}
+
 /* Make the 3D viewer fill viewport when used as main page */
 html,body,#__next{height:100%}
-.r3f-wrap{width:100%; height:100vh}
+.r3f-wrap{width:100%; height:100svh; height:100dvh}
 .calc-display{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#fff;border:2px solid var(--border);padding:8px;text-align:right;font-size:22px;margin-bottom:10px}
 .calc-keys{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .key{background:#fff;border:2px solid var(--border);padding:10px 6px;font-size:16px;cursor:inherit}
@@ -58,6 +103,20 @@ html,body,#__next{height:100%}
 :root .dark-mode-toggle img{display:block}
 :root.dark-mode .dark-mode-toggle svg{color:#fff;fill:#fff}
 :root.dark-mode .dark-mode-toggle use{color:#fff;fill:#fff;stroke:none}
+
+/* Floating tooltip shown when hovering Mac model */
+.view-tooltip{position:fixed;transform:translate(12px,12px);appearance:none;background:var(--bg-window);color:var(--text);border:2px solid var(--border);box-shadow:0 6px 18px var(--shadow);padding:6px 10px;font:inherit;font-size:12px;line-height:1;border-radius:6px;z-index:2147483647;pointer-events:auto}
+.view-tooltip:hover,.view-tooltip:focus{filter:brightness(1.05)}
+
+/* CSS to stabilize Html component rendering on mobile */
+.html-screen-wrapper {
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+}
+.html-screen-wrapper > div {
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+}
 
 /* Menubar brand icon */
 .menu-trigger-apple{padding:2px 6px;font-weight:700;letter-spacing:.5px}
@@ -87,7 +146,7 @@ html,body,#__next{height:100%}
 @keyframes ring-pop{0%{transform:translate(-50%,-50%) scale(.6);opacity:.9}100%{transform:translate(-50%,-50%) scale(1.8);opacity:0}}
 @keyframes sparkle{0%{opacity:0;transform:translate(-50%,-50%) scale(.6)}30%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(1.8)}}
 
-/* Global cursor: switch per theme (SVG assets) */
-:root{cursor:url("/cursor-light.svg") 1 1, auto}
-:root.dark-mode{cursor:url("/cursor-dark.svg") 1 1, auto}
+/* Global cursor default; custom cursor only inside embedded-screen */
+:root{cursor:auto}
+:root.dark-mode{cursor:auto}
 @media (pointer: coarse){:root,:root.dark-mode{cursor:auto}}

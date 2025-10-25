@@ -185,11 +185,18 @@ export default function DesktopOS({ embedded = false }: { embedded?: boolean }) 
     desktopRef.current?.appendChild(el);
     const move = (ev: MouseEvent) => {
       if (!marqueeStart.current || !marqueeRef.current || !desktopRef.current) return;
+      const screenEl = desktopRef.current.closest('.embedded-screen') as HTMLElement | null;
+      const rect = screenEl?.getBoundingClientRect();
+      const css = screenEl ? window.getComputedStyle(screenEl) : null;
+      const cssW = css ? parseFloat(css.width || '0') : 0;
+      const cssH = css ? parseFloat(css.height || '0') : 0;
+      const scaleX = rect && cssW ? rect.width / cssW : 1;
+      const scaleY = rect && cssH ? rect.height / cssH : 1;
       const d = desktopRef.current.getBoundingClientRect();
-      const left = Math.min(marqueeStart.current.x, ev.clientX) - d.left;
-      const top = Math.min(marqueeStart.current.y, ev.clientY) - d.top;
-      const width = Math.abs(ev.clientX - marqueeStart.current.x);
-      const height = Math.abs(ev.clientY - marqueeStart.current.y);
+      const left = (Math.min(marqueeStart.current.x, ev.clientX) - d.left) / scaleX;
+      const top = (Math.min(marqueeStart.current.y, ev.clientY) - d.top) / scaleY;
+      const width = Math.abs(ev.clientX - marqueeStart.current.x) / scaleX;
+      const height = Math.abs(ev.clientY - marqueeStart.current.y) / scaleY;
       Object.assign(marqueeRef.current.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
       const box = new DOMRect(left + d.left, top + d.top, width, height);
       const buttons = desktopRef.current.querySelectorAll<HTMLButtonElement>(`.desktop-icon`);
@@ -381,13 +388,27 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     const nextSel = selection.has(icon.id) ? new Set(selection) : new Set([icon.id]);
     setSelection(nextSel);
     const startX = e.clientX, startY = e.clientY;
+    // Compute current CSS transform scale of the embedded screen
+    const screenEl = ref.current?.closest('.embedded-screen') as HTMLElement | null;
+    const rect = screenEl?.getBoundingClientRect();
+    const css = screenEl ? window.getComputedStyle(screenEl) : null;
+    const cssW = css ? parseFloat(css.width || '0') : 0;
+    const cssH = css ? parseFloat(css.height || '0') : 0;
+    const sx = rect && cssW ? rect.width / cssW : 1;
+    const sy = rect && cssH ? rect.height / cssH : 1;
     const starts = new Map<string, { x: number; y: number }>();
     icons.forEach((it) => {
       if (nextSel.has(it.id)) starts.set(it.id, { x: it.x, y: it.y });
     });
-    ref.current?.setPointerCapture(e.pointerId);
+    let dragging = false;
     const move = (ev: PointerEvent) => {
-      const dx = ev.clientX - startX, dy = ev.clientY - startY;
+      const dx = (ev.clientX - startX) / sx, dy = (ev.clientY - startY) / sy;
+      if (!dragging) {
+        const dist = Math.hypot(dx, dy);
+        if (dist < 4) return;
+        dragging = true;
+        ref.current?.setPointerCapture(e.pointerId);
+      }
       setIcons((list) => list.map((i) => {
         if (!nextSel.has(i.id)) return i;
         const s = starts.get(i.id) || { x: i.x, y: i.y };
@@ -397,6 +418,9 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     const up = () => {
       window.removeEventListener("pointermove", move as (this: Window, ev: PointerEvent) => void);
       window.removeEventListener("pointerup", up);
+      if (dragging) {
+        try { ref.current?.releasePointerCapture(e.pointerId); } catch {}
+      }
     };
     window.addEventListener("pointermove", move as (this: Window, ev: PointerEvent) => void);
     window.addEventListener("pointerup", up);
@@ -430,11 +454,19 @@ function Window({ id, title, windows, frontWin, closeWin, children }: { id: stri
   if (!w?.open) return null;
   const down = (e: React.PointerEvent) => {
     const startX = e.clientX, startY = e.clientY;
+    // Compute scale of embedded screen to adjust drag deltas
+    const screenEl = divRef.current?.closest('.embedded-screen') as HTMLElement | null;
+    const rect = screenEl?.getBoundingClientRect();
+    const css = screenEl ? window.getComputedStyle(screenEl) : null;
+    const cssW = css ? parseFloat(css.width || '0') : 0;
+    const cssH = css ? parseFloat(css.height || '0') : 0;
+    const scaleX = rect && cssW ? rect.width / cssW : 1;
+    const scaleY = rect && cssH ? rect.height / cssH : 1;
     const sx = parseInt(divRef.current?.style.left || "80", 10);
     const sy = parseInt(divRef.current?.style.top || "80", 10);
     frontWin(id);
     const move = (ev: PointerEvent) => {
-      const dx = ev.clientX - startX, dy = ev.clientY - startY;
+      const dx = (ev.clientX - startX) / scaleX, dy = (ev.clientY - startY) / scaleY;
       if (divRef.current) {
         divRef.current.style.left = `${Math.max(0, sx + dx)}px`;
         divRef.current.style.top = `${Math.max(28, sy + dy)}px`;
