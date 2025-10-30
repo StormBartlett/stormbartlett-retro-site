@@ -60,7 +60,7 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .pm-editor .ProseMirror p{margin:0}
 .pm-editor .cm-editor{min-height:180px;border:1px dashed var(--border);background:transparent}
 .pm-editor .cm-content{padding:8px; user-select:text; -webkit-user-select:text}
-.pm-editor .cm-editor{transform:translateZ(0); backface-visibility:hidden; will-change:transform}
+.pm-editor .cm-editor{transform:translateZ(0); backface-visibility:hidden; will-change:transform; transform-style: preserve-3d; top: 0}
 /* Use thin caret in normal mode to avoid 3D offset artifacts */
 .cm-fat-cursor .cm-cursor{display:none!important}
 .embedded-screen{ --text:#101010 }
@@ -86,18 +86,11 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .crt-curvature-overlay{display:none}
 .crt-curvature-gloss{display:none}
 
-/* Simulate bulge by warping content using perspective and border-radius with a mask */
-.embedded-screen{
-  perspective: none;
-}
-.embedded-screen > *:not(.crt-curvature-overlay):not(.crt-curvature-gloss){
-  transform: translateZ(calc(var(--crt-bulge) * 30px));
-}
-.embedded-screen{
+/* .embedded-screen{
   border-radius: clamp(6px, 1.2vw, 14px);
 }
 .embedded-screen .menubar{position:absolute; top:0; left:0; right:0; z-index:2000}
-.embedded-screen .desktop{position:absolute; inset:28px 0 0 0; padding:8px; z-index:100}
+.embedded-screen .desktop{position:absolute; inset:28px 0 0 0; padding:8px; z-index:100} */
 
 /* In-screen custom cursor */
 .embedded-cursor{position:absolute; left:0; top:0; width:17px; height:17px; pointer-events:none; background:url("/retro-cursor-light.svg") 0 0 / 17px 17px no-repeat; image-rendering:pixelated; z-index:10000; will-change:transform; transform:translate(-1px,-1px)}
