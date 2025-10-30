@@ -7,6 +7,7 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as React from "react";
 import * as THREE from "three";
 import { CSS3DRenderer, CSS3DObject } from "three/examples/jsm/renderers/CSS3DRenderer.js";
+import { CursorUpdateContext } from "./CursorContext";
 
 // Tweak points
 // const MODEL_ROT_Y = 0; // rotate around Y (radians). e.g. Math.PI * 0.5 = 90°
@@ -21,8 +22,8 @@ import { CSS3DRenderer, CSS3DObject } from "three/examples/jsm/renderers/CSS3DRe
 //custom model values
 // const MODEL_ROT_Y = 0; // rotate around Y (radians). e.g. Math.PI * 0.5 = 90° - now set directly in MacGLBModel component
 const MODEL_SCALE = 1; // overall model size
-const MODEL_OFFSET_X = -.9; // move model left(-)/right(+) relative to screen (in model's rotated space)
-const MODEL_OFFSET_Y = 0; // move model down(-)/up(+) relative to screen
+const MODEL_OFFSET_X = 0;  //-.92; // move model left(-)/right(+) relative to screen (in model's rotated space)
+const MODEL_OFFSET_Y = -.0; // move model down(-)/up(+) relative to screen
 const MODEL_OFFSET_Z = 0; // move model back(-)/forward(+) relative to screen (in model's rotated space)
 const SCREEN_ROT_Y = 0; //Math.PI/2; // independent screen rotation (Y) - rotate screen to face user (0 = forward when parent is rotated -90°)
 const SCREEN_ROT_X = -Math.PI/30; // independent screen rotation (X tilt) - tilt screen up/down
@@ -68,7 +69,7 @@ const ORBIT_POLAR_MAX = Math.PI / 2.15;  // slightly under top-down
 
 // Zoom limits (distance from target)
 const ZOOM_MIN_DISTANCE = 3; // How close you can zoom in
-const ZOOM_MAX_DISTANCE = 140;   // How far you can zoom out
+const ZOOM_MAX_DISTANCE = 14;   // How far you can zoom out
 
 // Approximate screen plane size in local units (tweak to fit cutout)
 const SCREEN_PLANE_W = 2.6;
@@ -303,10 +304,11 @@ function useCSS3DScreen(
     const isBrave = !!(nav && nav.brave && typeof nav.brave.isBrave === 'function');
 
     // Position and scale based on device
+    //todo: remove this branching code as mobile now has a default OS and no 3D
     if (!isMobile) {
       // Desktop
       css3dObject.position.set(-.04, .24, 0);
-      css3dObject.scale.set(0.0017, 0.0017, 0.0017);
+      css3dObject.scale.set(0.001795, 0.001795, 0.001795);
     } else if (isBrave) {
       // Brave Mobile - only too far left
       css3dObject.position.set(.135, .24, 0); // Adjusted X, kept Y same as desktop
@@ -327,14 +329,98 @@ function useCSS3DScreen(
   }, [screenRef, scene, divElement]);
 }
 
-function CSS3DScreenBridge({ 
+function CSS3DScreenBridge({
   screenRef,
   screenDivElement,
-}: { 
+}: {
   screenRef: React.MutableRefObject<THREE.Group | null>;
   screenDivElement: HTMLDivElement | null;
 }) {
   useCSS3DScreen(screenRef, screenDivElement);
+  return null;
+}
+
+// Hook to attach CSS3D cursor object to Three.js scene
+function useCSS3DCursor(
+  screenRef: React.MutableRefObject<THREE.Group | null>,
+  cursorDiv: HTMLDivElement | null,
+  cursorPosition: { x: number; y: number; width: number; height: number; visible: boolean } | null
+) {
+  const { scene } = useThree();
+  const cursorObjRef = React.useRef<CSS3DObject | null>(null);
+
+  React.useEffect(() => {
+    if (!cursorDiv || !screenRef.current) return;
+
+    const currentScreenRef = screenRef.current;
+
+    // Create CSS3DObject from the cursor div
+    const css3dCursor = new CSS3DObject(cursorDiv);
+    cursorObjRef.current = css3dCursor;
+
+    // Device detection
+    const isMobile = typeof window !== "undefined" && (
+      window.innerWidth <= 820 ||
+      matchMedia("(pointer: coarse)").matches
+    );
+
+    const nav = (typeof navigator !== 'undefined' ? navigator : undefined) as { brave?: { isBrave?: () => boolean } } | undefined;
+    const isBrave = !!(nav && nav.brave && typeof nav.brave.isBrave === 'function');
+
+    // Use same base positioning and scale as screen
+    const baseScale = !isMobile ? 0.001795 : 0.00176;
+    const baseX = !isMobile ? -0.04 : 0.135;
+    const baseY = !isMobile ? 0.24 : (isBrave ? 0.24 : 0.41);
+
+    css3dCursor.scale.set(baseScale, baseScale, baseScale);
+    css3dCursor.position.set(baseX, baseY, 0);
+
+    // Add to the screen group so it inherits all transforms
+    currentScreenRef.add(css3dCursor);
+
+    return () => {
+      if (currentScreenRef && cursorObjRef.current) {
+        currentScreenRef.remove(cursorObjRef.current);
+      }
+    };
+  }, [screenRef, scene, cursorDiv]);
+
+  // Update cursor position when it changes
+  React.useEffect(() => {
+    if (!cursorObjRef.current || !cursorPosition) return;
+
+    const isMobile = typeof window !== "undefined" && (
+      window.innerWidth <= 820 ||
+      matchMedia("(pointer: coarse)").matches
+    );
+
+    const nav = (typeof navigator !== 'undefined' ? navigator : undefined) as { brave?: { isBrave?: () => boolean } } | undefined;
+    const isBrave = !!(nav && nav.brave && typeof nav.brave.isBrave === 'function');
+
+    const baseScale = !isMobile ? 0.001795 : 0.00176;
+    const baseX = !isMobile ? -0.04 : 0.135;
+    const baseY = !isMobile ? 0.24 : (isBrave ? 0.24 : 0.41);
+
+    // Convert pixel coordinates (top-left origin) to local screen space anchored at top-left
+    const posX = baseX + cursorPosition.x * baseScale;
+    const posY = baseY - cursorPosition.y * baseScale; // Flip Y since CSS Y grows downward
+    const posZ = 0.001; // Slightly in front to avoid z-fighting
+
+    cursorObjRef.current.position.set(posX, posY, posZ);
+    cursorObjRef.current.visible = cursorPosition.visible;
+  }, [cursorPosition]);
+}
+
+function CSS3DCursorBridge({
+  screenRef,
+  cursorDivElement,
+  cursorPosition,
+}: {
+  screenRef: React.MutableRefObject<THREE.Group | null>;
+  cursorDivElement: HTMLDivElement | null;
+  cursorPosition: { x: number; y: number; width: number; height: number; visible: boolean } | null;
+}) {
+  useCSS3DCursor(screenRef, cursorDivElement, cursorPosition);
   return null;
 }
 
@@ -363,6 +449,8 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
   const css3dRendererRef = React.useRef<CSS3DRenderer | null>(null);
   const canvasContainerRef = React.useRef<HTMLDivElement>(null);
   const [screenDivElement, setScreenDivElement] = React.useState<HTMLDivElement | null>(null);
+  const [cursorDivElement, setCursorDivElement] = React.useState<HTMLDivElement | null>(null);
+  const [cursorPosition, setCursorPosition] = React.useState<{ x: number; y: number; width: number; height: number; visible: boolean } | null>(null);
   const clickDataRef = React.useRef<{ down: boolean; x: number; y: number; t: number }>({ down: false, x: 0, y: 0, t: 0 });
 
   // Cursor texture (SVG)
@@ -434,6 +522,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
       css3dRenderer.setSize(window.innerWidth, window.innerHeight);
       css3dRenderer.domElement.style.position = "absolute";
       css3dRenderer.domElement.style.top = "0";
+      // Default to pass-through; we'll enable pointer events when hovering the screen
       css3dRenderer.domElement.style.pointerEvents = "none";
       container.appendChild(css3dRenderer.domElement);
       css3dRendererRef.current = css3dRenderer;
@@ -451,6 +540,29 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
       };
     }
   }, []);
+
+  // Enable clicks only when the pointer is over the embedded screen
+  React.useEffect(() => {
+    const rendererEl = css3dRendererRef.current?.domElement;
+    if (!rendererEl || !screenDivElement) return;
+    const onMove = (e: PointerEvent) => {
+      const rect = screenDivElement.getBoundingClientRect();
+      const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+      rendererEl.style.pointerEvents = inside ? "auto" : "none";
+      if (inside) {
+        setHoveringMac(false);
+      }
+    };
+    const onLeave = () => { rendererEl.style.pointerEvents = "none"; };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('scroll', onLeave, { passive: true });
+    window.addEventListener('resize', onLeave);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('scroll', onLeave);
+      window.removeEventListener('resize', onLeave);
+    };
+  }, [screenDivElement]);
   return (
     <div className="r3f-wrap" ref={canvasContainerRef} onPointerMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}>
       <Canvas
@@ -551,8 +663,15 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
           screenSpacePanning={false}
         />
 
-        {/* Retro 3D mouse */}
-        <Mouse3D controlsRef={controlsRef} cursorUV={cursorUV} setCursorUV={setCursorUV} canvasContainerRef={canvasContainerRef} />
+        {/* Retro 3D mouse - disabled */}
+        {/**
+         * <Mouse3D
+         *   controlsRef={controlsRef}
+         *   cursorUV={cursorUV}
+         *   setCursorUV={setCursorUV}
+         *   canvasContainerRef={canvasContainerRef}
+         * />
+         */}
 
         {/* Camera animation driver */}
         <CameraAnimator controlsRef={controlsRef} animRef={animRef} />
@@ -569,6 +688,15 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
         {uiMounted && screenDivElement && (
           <CSS3DScreenBridge screenRef={screenRef} screenDivElement={screenDivElement} />
         )}
+
+        {/* Bridge for CSS3D cursor */}
+        {uiMounted && cursorDivElement && cursorPosition && (
+          <CSS3DCursorBridge
+            screenRef={screenRef}
+            cursorDivElement={cursorDivElement}
+            cursorPosition={cursorPosition}
+          />
+        )}
       </Canvas>
 
       {/* CSS3D UI rendered outside Canvas */}
@@ -583,72 +711,85 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
             position: "absolute",
             width: "800px",
             height: "600px",
+            // Allow clicks within the embedded screen, but keep it non-blocking outside
             pointerEvents: "auto",
           }}
         >
           <div className="embedded-screen" style={{ width: "800px", height: "600px", position: 'relative' }}>
-            {children}
-            {/* DOM cursor icon overlay inside the screen (always visible above WebGL) */}
-            <img
-              src="/cursor-light.svg"
-              alt="cursor"
-              style={{
-                position: 'absolute',
-                left: `${cursorUV.u * 800}px`,
-                top: `${(1 - cursorUV.v) * 600}px`,
-                transform: 'translate(-10%, -10%)',
-                width: 18,
-                height: 28,
-                imageRendering: 'pixelated',
-                pointerEvents: 'none',
-                zIndex: 3,
-              }}
-            />
+            <CursorUpdateContext.Provider value={{ onCursorUpdate: setCursorPosition }}>
+              {children}
+            </CursorUpdateContext.Provider>
           </div>
         </div>
       )}
 
-      {/* Retro mouse controller */}
+      {/* CSS3D Cursor element - make it bright red for debugging */}
       {uiMounted && (
         <div
+          ref={(el) => {
+            if (el && !cursorDivElement) {
+              setCursorDivElement(el);
+            }
+          }}
           style={{
-            position: 'absolute',
-            right: matchMedia('(pointer: coarse)').matches ? '50%' : '16px',
-            bottom: matchMedia('(pointer: coarse)').matches ? '8%' : '16px',
-            transform: matchMedia('(pointer: coarse)').matches ? 'translateX(50%)' : 'none',
-            display: 'flex', gap: 12, alignItems: 'center', zIndex: 20,
-            pointerEvents: 'auto',
-            userSelect: 'none',
+            position: "absolute",
+            width: `${cursorPosition?.width || 10}px`,
+            height: `${cursorPosition?.height || 20}px`,
+            background: "red", // Bright red for debugging
+            pointerEvents: "none",
+            opacity: 1, // Always visible for debugging
+            zIndex: 999999,
           }}
         >
-          <button type="button"
-            onPointerDown={(e)=>{e.preventDefault();}}
-            onClick={()=>{
-              const el = document.elementFromPoint(window.innerWidth*cursorUV.u, window.innerHeight*(1-cursorUV.v)) as HTMLElement | null;
-              if (el) el.click();
-            }}
-          >L</button>
-          <div
-            onPointerDown={(e)=>{ draggingPadRef.current = true; controlsRef.current && (controlsRef.current.enableRotate = false); }}
-            onPointerUp={(e)=>{ draggingPadRef.current = false; controlsRef.current && (controlsRef.current.enableRotate = true); }}
-            onPointerMove={(e)=>{
-              if (!draggingPadRef.current) return;
-              const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-              const u = Math.min(1, Math.max(0, (e.clientX - rect.left)/rect.width));
-              const v = Math.min(1, Math.max(0, 1 - (e.clientY - rect.top)/rect.height));
-              setCursorUV({ u, v });
-            }}
-            style={{ width: 200, height: 140, background: '#222', border: '2px solid #555' }}
-          />
-          <button type="button"
-            onPointerDown={(e)=>{e.preventDefault();}}
-            onClick={()=>{
-              const el = document.elementFromPoint(window.innerWidth*cursorUV.u, window.innerHeight*(1-cursorUV.v)) as HTMLElement | null;
-              if (el) el.dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, cancelable:true }));
-            }}
-          >R</button>
+          <div style={{ color: 'white', fontSize: '10px' }}>
+            CURSOR {cursorPosition ? `${Math.round(cursorPosition.x)},${Math.round(cursorPosition.y)}` : 'NULL'}
+          </div>
         </div>
       )}
+
+      {/* Retro mouse controller - disabled */}
+      {/**
+       * {uiMounted && (
+       *   <div
+       *     style={{
+       *       position: 'absolute',
+       *       right: matchMedia('(pointer: coarse)').matches ? '50%' : '16px',
+       *       bottom: matchMedia('(pointer: coarse)').matches ? '8%' : '16px',
+       *       transform: matchMedia('(pointer: coarse)').matches ? 'translateX(50%)' : 'none',
+       *       display: 'flex', gap: 12, alignItems: 'center', zIndex: 20,
+       *       pointerEvents: 'auto',
+       *       userSelect: 'none',
+       *     }}
+       *   >
+       *     <button type="button"
+       *       onPointerDown={(e)=>{e.preventDefault();}}
+       *       onClick={()=>{
+       *         const el = document.elementFromPoint(window.innerWidth*cursorUV.u, window.innerHeight*(1-cursorUV.v)) as HTMLElement | null;
+       *         if (el) el.click();
+       *       }}
+       *     >L</button>
+       *     <div
+       *       onPointerDown={(e)=>{ draggingPadRef.current = true; controlsRef.current && (controlsRef.current.enableRotate = false); }}
+       *       onPointerUp={(e)=>{ draggingPadRef.current = false; controlsRef.current && (controlsRef.current.enableRotate = true); }}
+       *       onPointerMove={(e)=>{
+       *         if (!draggingPadRef.current) return;
+       *         const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+       *         const u = Math.min(1, Math.max(0, (e.clientX - rect.left)/rect.width));
+       *         const v = Math.min(1, Math.max(0, 1 - (e.clientY - rect.top)/rect.height));
+       *         setCursorUV({ u, v });
+       *       }}
+       *       style={{ width: 200, height: 140, background: '#222', border: '2px solid #555' }}
+       *     />
+       *     <button type="button"
+       *       onPointerDown={(e)=>{e.preventDefault();}}
+       *       onClick={()=>{
+       *         const el = document.elementFromPoint(window.innerWidth*cursorUV.u, window.innerHeight*(1-cursorUV.v)) as HTMLElement | null;
+       *         if (el) el.dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, cancelable:true }));
+       *       }}
+       *     >R</button>
+       *   </div>
+       * )}
+       */}
 
       {/* CRT cursor overlay removed */}
 

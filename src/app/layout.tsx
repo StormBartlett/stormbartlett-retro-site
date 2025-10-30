@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import MatrixBackground from "./MatrixBackground";
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -18,7 +17,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body>
         <div className="crt">
-          <MatrixBackground backgroundColor="#000000" backgroundFade="rgba(11, 10, 10, 0.06)" opacity={0.92} />
           <div className="content">
             {/* Inline 1-bit icon sprite */}
             <svg width="0" height="0" style={{position:"absolute", left:-9999, visibility:"hidden"}} aria-hidden="true" focusable="false">
