@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import ExperienceEditor from "./ExperienceEditor";
+import TiptapEditor from "./TiptapEditor";
 
 type Icon = { id: string; label: string; app: string; x: number; y: number };
 type Win = { id: string; open: boolean; z: number };
@@ -592,19 +592,19 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
         </button>
 
         <Window id="about" title="About Me" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <ExperienceEditor initialText={"Hi, I'm Storm Bartlett. Retro UI enjoyer, frontend-focused full‑stack engineer.\nTypeScript, React/Next.js, Node, design systems, accessibility."} />
+          <TiptapEditor initialText={"Hi, I'm Storm Bartlett. Retro UI enjoyer, frontend-focused full‑stack engineer.\nTypeScript, React/Next.js, Node, design systems, accessibility."} />
         </Window>
         <Window id="skills" title="Skills" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <ExperienceEditor initialText={"Languages: TypeScript, JavaScript, HTML/CSS\nFrameworks: Next.js, SvelteKit, Node\nUI: A11y, motion, design systems"} />
+          <TiptapEditor initialText={"Languages: TypeScript, JavaScript, HTML/CSS\nFrameworks: Next.js, SvelteKit, Node\nUI: A11y, motion, design systems"} />
         </Window>
         <Window id="experience" title="Experience" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <ExperienceEditor />
+          <TiptapEditor />
         </Window>
         <Window id="calculator" title="Calculator" windows={windows} frontWin={frontWin} closeWin={closeWin}>
           <Calculator />
         </Window>
         <Window id="readme" title="README.txt" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <ExperienceEditor initialText={`Welcome to my retro desktop.
+          <TiptapEditor initialText={`Welcome to my retro desktop.
 
 This is a playground portfolio — part Lisa, part classic Mac.
 
@@ -616,7 +616,7 @@ Highlights:
 Beware: Clicking icons may open portals.`} />
         </Window>
         <Window id="todo" title="TODO.txt" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <ExperienceEditor initialText={`Ship something delightful
+          <TiptapEditor initialText={`Ship something delightful
 Add a spinning watch cursor (for dramatic effect)
 Refill coffee ☕`} />
         </Window>

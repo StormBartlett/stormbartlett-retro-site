@@ -22,7 +22,7 @@ import { CursorUpdateContext } from "./CursorContext";
 //custom model values
 // const MODEL_ROT_Y = 0; // rotate around Y (radians). e.g. Math.PI * 0.5 = 90° - now set directly in MacGLBModel component
 const MODEL_SCALE = 1; // overall model size
-const MODEL_OFFSET_X = 0;  //-.92; // move model left(-)/right(+) relative to screen (in model's rotated space)
+const MODEL_OFFSET_X = -.92; // move model left(-)/right(+) relative to screen (in model's rotated space)
 const MODEL_OFFSET_Y = -.0; // move model down(-)/up(+) relative to screen
 const MODEL_OFFSET_Z = 0; // move model back(-)/forward(+) relative to screen (in model's rotated space)
 const SCREEN_ROT_Y = 0; //Math.PI/2; // independent screen rotation (Y) - rotate screen to face user (0 = forward when parent is rotated -90°)

@@ -57,6 +57,11 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 
 /* ProseMirror editor surface */
 .pm-editor .ProseMirror{min-height:180px;padding:8px;outline:none;border:1px dashed var(--border);background:transparent; user-select:text; -webkit-user-select:text; caret-color: auto}
+.pm-editor .ProseMirror[vim-active="true"][mode="normal"]{caret-color:transparent}
+.pm-editor .ProseMirror[vim-active="true"][mode="normal"] .vim-cursor{background:var(--accent);color:#101010;border-radius:2px;animation:vim-blink 1s steps(1,end) infinite}
+/* Widget-based normal-mode cursor (for empty lines/EOL) */
+.pm-editor .ProseMirror[vim-active="true"][mode="normal"] .vim-cursor-widget{display:inline-block;width:.6ch;height:1em;background:var(--accent);border-radius:2px;animation:vim-blink 1s steps(1,end) infinite;vertical-align:baseline}
+@keyframes vim-blink{0%{opacity:1}50%{opacity:.15}100%{opacity:1}}
 .pm-editor .ProseMirror p{margin:0}
 .pm-editor .cm-editor{min-height:180px;border:1px dashed var(--border);background:transparent}
 .pm-editor .cm-content{padding:8px; user-select:text; -webkit-user-select:text}
