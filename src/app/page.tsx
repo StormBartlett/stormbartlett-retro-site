@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import OldMac3D from "./OldMac3D";
 import DesktopOS from "./DesktopOS";
+import { FullscreenProvider, useFullscreen } from "./FullscreenContext";
 
-export default function Home() {
+function HomeContent() {
   const [isMobile, setIsMobile] = useState(false);
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("landscape");
+  const { isFullscreen } = useFullscreen();
 
   useEffect(() => {
     const update = () => {
@@ -44,10 +46,27 @@ export default function Home() {
     );
   }
 
+  // Fullscreen mode: render DesktopOS directly without 3D component
+  if (isFullscreen) {
+    return (
+      <div className="embedded-screen" style={{ width: "100vw", height: "100vh" }}>
+        <DesktopOS embedded />
+      </div>
+    );
+  }
+
   return (
     <OldMac3D>
       <DesktopOS embedded />
     </OldMac3D>
+  );
+}
+
+export default function Home() {
+  return (
+    <FullscreenProvider>
+      <HomeContent />
+    </FullscreenProvider>
   );
 }
 
