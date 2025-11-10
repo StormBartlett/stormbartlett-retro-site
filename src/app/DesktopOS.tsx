@@ -10,9 +10,9 @@ type Icon = { id: string; label: string; app: string; x: number; y: number };
 type Win = { id: string; open: boolean; z: number };
 
 const baseIcons: Icon[] = [
-  { id: "about", label: "About Me.txt", app: "about", x: 40, y: 64 },
+  { id: "about", label: "About.txt", app: "about", x: 40, y: 64 },
   { id: "skills", label: "Skills.txt", app: "skills", x: 160, y: 64 },
-  { id: "experience", label: "Experience.txt", app: "experience", x: 280, y: 64 },
+  // { id: "experience", label: "Xp.txt", app: "experience", x: 280, y: 64 },
   { id: "calculator", label: "Calculator", app: "calculator", x: 400, y: 64 },
   { id: "falling-sand", label: "Falling Sand", app: "falling-sand", x: 640, y: 64 },
 ];
@@ -51,7 +51,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
   // Shared draggable plane: items being dragged from folders appear here
   const [draggingFromFolder, setDraggingFromFolder] = useState<{ item: BrowserItem; x: number; y: number; sourceFolder: string } | null>(null);
   const [openMenu, setOpenMenu] = useState<null | "apple" | "file" | "edit" | "view" | "go" | "window" | "help">(null);
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; restricted?: boolean } | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement | null>(null);
   const menubarRef = useRef<HTMLElement | null>(null);
   const trashRef = useRef<HTMLButtonElement | null>(null);
@@ -300,20 +300,23 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
               setSelection(new Set()); // Clear selection after moving
             } else if (targetId === 'trash') {
               // Move to Blog folder (trash window)
-              if (blogBrowserAddItemRef.current) {
-                iconsToMove.forEach((icon, idx) => {
-                  const browserItem: BrowserItem = {
-                    id: icon.id,
-                    label: icon.label,
-                    type: icon.id === 'test-folder' || icon.app === 'test-folder' ? "folder" : "file",
-                    x: 20 + (idx % 3) * 100,
-                    y: 20 + Math.floor(idx / 3) * 100,
-                    windowId: icon.app
-                  };
-                  blogBrowserAddItemRef.current(browserItem);
-                });
-                setIcons(prev => prev.filter(i => !iconIds.includes(i.id)));
-                setSelection(new Set()); // Clear selection after moving
+              {
+                const addItem = blogBrowserAddItemRef.current;
+                if (addItem) {
+                  iconsToMove.forEach((icon, idx) => {
+                    const browserItem: BrowserItem = {
+                      id: icon.id,
+                      label: icon.label,
+                      type: icon.id === 'test-folder' || icon.app === 'test-folder' ? "folder" : "file",
+                      x: 20 + (idx % 3) * 100,
+                      y: 20 + Math.floor(idx / 3) * 100,
+                      windowId: icon.app
+                    };
+                    addItem(browserItem);
+                  });
+                  setIcons(prev => prev.filter(i => !iconIds.includes(i.id)));
+                  setSelection(new Set()); // Clear selection after moving
+                }
               }
             }
           }
@@ -499,9 +502,19 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
 
   function clampToDesktop(x: number, y: number): { x: number; y: number } {
     const deskRect = desktopRef.current?.getBoundingClientRect();
-    const width = deskRect?.width ?? (typeof window !== "undefined" ? window.innerWidth : 1280);
+    // Detect current CSS transform scale applied to the embedded screen (if any)
+    const screenEl = desktopRef.current?.closest('.embedded-screen') as HTMLElement | null;
+    const screenRect = screenEl?.getBoundingClientRect();
+    const css = screenEl ? window.getComputedStyle(screenEl) : null;
+    const cssW = css ? parseFloat(css.width || '0') : 0;
+    const cssH = css ? parseFloat(css.height || '0') : 0;
+    const scaleX = screenRect && cssW ? screenRect.width / cssW : 1;
+    const scaleY = screenRect && cssH ? screenRect.height / cssH : 1;
+
+    // Convert the (possibly scaled) desktop rect back into unscaled CSS pixels
+    const width = (deskRect?.width ?? (typeof window !== "undefined" ? window.innerWidth : 1280)) / (scaleX || 1);
     // Subtract menubar height (28px) from viewport when desktop rect is unavailable
-    const height = deskRect?.height ?? (typeof window !== "undefined" ? window.innerHeight - 28 : 772);
+    const height = (deskRect?.height ?? (typeof window !== "undefined" ? window.innerHeight - 28 : 772)) / (scaleY || 1);
     // Trash icon is 96px wide, so ensure it fits with padding
     const maxX = Math.max(8, width - 96 - 8);
     const maxY = Math.max(0, height - 96 - 8);
@@ -595,6 +608,8 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
     // If right-clicked an icon and it's not selected, select it
     const target = e.target as HTMLElement;
     const iconBtn = target.closest<HTMLButtonElement>('.desktop-icon');
+    // If clicking on empty desktop (no icon), restrict to Select All only
+    const restricted = !iconBtn;
     if (iconBtn) {
       const id = iconBtn.dataset.id || "";
       if (id && !selection.has(id)) setSelection(new Set([id]));
@@ -610,7 +625,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
     const d = desktopRef.current.getBoundingClientRect();
     const left = (e.clientX - d.left) / scaleX;
     const top = (e.clientY - d.top) / scaleY;
-    setCtxMenu({ x: left, y: top });
+    setCtxMenu({ x: left, y: top, restricted });
   }
 
   function onDesktopMouseDown(e: React.MouseEvent) {
@@ -928,7 +943,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
         {/* Trash bin icon (draggable) */}
         <button
           ref={binRef}
-          className={`desktop-icon trash-icon ${trash.length > 0 ? 'has-items' : ''} ${dragOverBin ? 'is-over' : ''}`}
+          className={`desktop-icon trash-icon ${trash.length > 0 ? 'has-items' : ''} ${dragOverBin ? 'is-over' : ''} ${selection.has("bin") ? "is-selected" : ""}`}
           data-id="bin"
           style={{ 
             position: 'absolute', 
@@ -945,6 +960,9 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             binDragStateRef.current.hasDragged = false;
+            // Toggle selection (like DesktopIcon)
+            const nextSel = selection.has("bin") ? new Set(selection) : new Set(["bin"]);
+            setSelection(nextSel);
             const startX = e.clientX, startY = e.clientY;
             if (!desktopRef.current) return;
             
@@ -1013,18 +1031,23 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
           aria-label="Trash"
         >
           <div className="icon">
-            <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
-              <use href={trash.length > 0 ? "#icon-trash-full" : "#icon-trash"}></use>
-            </svg>
+            <img 
+              src={trash.length > 0 ? "/trash-full.svg" : "/trash.svg"} 
+              alt="" 
+              width="48" 
+              height="48"
+              aria-hidden="true"
+            />
           </div>
           <span className="icon-label">Trash</span>
         </button>
 
         <Window id="about" title="About Me" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <TiptapEditor initialText={"Hi, I'm Storm Bartlett. Retro UI enjoyer, frontend-focused full‑stack engineer.\nTypeScript, React/Next.js, Node, design systems, accessibility."} />
+          <TiptapEditor initialText={"Hi, I'm Storm Bartlett, a frontend-focused full‑stack engineer.\nMy main focus is on TypeScript, React/Next.js and backends like Node.js and PostgreSQL."} />
         </Window>
         <Window id="skills" title="Skills" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <TiptapEditor initialText={"Languages: TypeScript, JavaScript, HTML/CSS\nFrameworks: Next.js, SvelteKit, Node\nUI: A11y, motion, design systems"} />
+          <TiptapEditor initialText={"Front-End:\nReact (Hooks), Next.js, HTML5, CSS3/Sass, Tailwind\nAccessible/Responsive UI, Chrome extensions\n\nBack-End:\nNode.js (Express), Python (Django/Flask)\nREST APIs, JWT/OAuth, WebSockets\n\nDatabases:\nPostgreSQL, MongoDB, SQL, Firebase Firestore\n\nCloud & Tools:\nGit/GitHub, GitHub Actions (CI/CD), Docker, Linux, GCP\n"
+            } />
         </Window>
         <Window id="experience" title="Experience" windows={windows} frontWin={frontWin} closeWin={closeWin}>
           <TiptapEditor />
@@ -1057,6 +1080,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
             draggingFromFolder={draggingFromFolder}
             setDraggingFromFolder={setDraggingFromFolder}
             addItemRef={blogBrowserAddItemRef}
+            darkMode={darkMode}
           />
         </Window>
         
@@ -1074,6 +1098,9 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
             desktopRef={desktopRef}
             draggingFromFolder={draggingFromFolder}
             setDraggingFromFolder={setDraggingFromFolder}
+            darkMode={darkMode}
+            openWin={openWin}
+            windows={windows}
           />
         </Window>
         
@@ -1098,6 +1125,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
             desktopIcons={icons}
             setDesktopIcons={setIcons}
             desktopRef={desktopRef}
+            darkMode={darkMode}
             folderId="test-folder"
             initialItems={testFolderItems}
             testFolderItems={testFolderItems}
@@ -1124,16 +1152,22 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
             }}
             role="menu"
           >
-            <button className="menu-entry" role="menuitem" onClick={() => {
-              if (selection.size === 0) return;
-              Array.from(selection).forEach((id) => {
-                const i = icons.find((it) => it.id === id);
-                if (i) openWin(i.app);
-              });
-              setCtxMenu(null);
-            }}>Open</button>
-            <button className="menu-entry" role="menuitem" onClick={() => { deleteSelectedIcons(); setCtxMenu(null); }}>Delete</button>
-            <button className="menu-entry" role="menuitem" onClick={() => { setSelection(new Set(icons.map(i => i.id))); setCtxMenu(null); }}>Select All</button>
+            {ctxMenu.restricted ? (
+              <button className="menu-entry" role="menuitem" onClick={() => { setSelection(new Set(icons.map(i => i.id))); setCtxMenu(null); }}>Select All</button>
+            ) : (
+              <>
+                <button className="menu-entry" role="menuitem" onClick={() => {
+                  if (selection.size === 0) return;
+                  Array.from(selection).forEach((id) => {
+                    const i = icons.find((it) => it.id === id);
+                    if (i) openWin(i.app);
+                  });
+                  setCtxMenu(null);
+                }}>Open</button>
+                <button className="menu-entry" role="menuitem" onClick={() => { deleteSelectedIcons(); setCtxMenu(null); }}>Delete</button>
+                <button className="menu-entry" role="menuitem" onClick={() => { setSelection(new Set(icons.map(i => i.id))); setCtxMenu(null); }}>Select All</button>
+              </>
+            )}
           </div>
         )}
         {trashCtxMenu && trashCtxMenu.id === 'bin' && (
@@ -1161,7 +1195,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
               </>
             )}
             {trash.length === 0 && (
-              <div className="menu-entry" style={{ color: darkMode ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)", cursor: "default" }}>Trash is empty</div>
+              <div className="menu-entry" style={{ color: "var(--text)", opacity: 0.7, cursor: "default" }}>Trash is empty</div>
             )}
           </div>
         )}
@@ -1189,6 +1223,13 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     const cssH = css ? parseFloat(css.height || '0') : 0;
     const sx = rect && cssW ? rect.width / cssW : 1;
     const sy = rect && cssH ? rect.height / cssH : 1;
+    // Compute desktop bounds in unscaled CSS pixels for proper clamping
+    const desktopEl = ref.current?.closest('.desktop') as HTMLElement | null;
+    const deskRect = desktopEl?.getBoundingClientRect();
+    const deskWidth = (deskRect?.width ?? (typeof window !== "undefined" ? window.innerWidth : 1280)) / (sx || 1);
+    const deskHeight = (deskRect?.height ?? (typeof window !== "undefined" ? window.innerHeight - 28 : 772)) / (sy || 1);
+    const maxX = Math.max(8, deskWidth - 96 - 8);
+    const maxY = Math.max(0, deskHeight - 96 - 8);
     const starts = new Map<string, { x: number; y: number }>();
     icons.forEach((it) => {
       if (nextSel.has(it.id)) starts.set(it.id, { x: it.x, y: it.y });
@@ -1206,7 +1247,9 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
       setIcons((list) => list.map((i) => {
         if (!nextSel.has(i.id)) return i;
         const s = starts.get(i.id) || { x: i.x, y: i.y };
-        return { ...i, x: Math.max(8, s.x + dx), y: Math.max(0, s.y + dy) };
+        const nx = Math.min(maxX, Math.max(8, s.x + dx));
+        const ny = Math.min(maxY, Math.max(0, s.y + dy));
+        return { ...i, x: nx, y: ny };
       }));
       if (onDragMove) onDragMove(ev.clientX, ev.clientY);
     };
@@ -1269,17 +1312,6 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
   
   if (!w?.open) return null;
   
-  const getScale = () => {
-    const screenEl = divRef.current?.closest('.embedded-screen') as HTMLElement | null;
-    const rect = screenEl?.getBoundingClientRect();
-    const css = screenEl ? window.getComputedStyle(screenEl) : null;
-    const cssW = css ? parseFloat(css.width || '0') : 0;
-    const cssH = css ? parseFloat(css.height || '0') : 0;
-    const scaleX = rect && cssW ? rect.width / cssW : 1;
-    const scaleY = rect && cssH ? rect.height / cssH : 1;
-    return { scaleX, scaleY };
-  };
-  
   const toggleMaximize = () => {
     const el = divRef.current;
     if (!el) return;
@@ -1336,15 +1368,27 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
   
   const down = (e: React.PointerEvent) => {
     const startX = e.clientX, startY = e.clientY;
-    const { scaleX, scaleY } = getScale();
-    const sx = parseInt(divRef.current?.style.left || "80", 10);
-    const sy = parseInt(divRef.current?.style.top || "80", 10);
+    // Compute current CSS transform scale of the embedded screen (same as DesktopIcon)
+    const screenEl = divRef.current?.closest('.embedded-screen') as HTMLElement | null;
+    const rect = screenEl?.getBoundingClientRect();
+    const css = screenEl ? window.getComputedStyle(screenEl) : null;
+    const cssW = css ? parseFloat(css.width || '0') : 0;
+    const cssH = css ? parseFloat(css.height || '0') : 0;
+    const sx = rect && cssW ? rect.width / cssW : 1;
+    const sy = rect && cssH ? rect.height / cssH : 1;
+    
+    // Get initial window position - read from computed style, which is already in CSS pixels
+    const computedStyle = divRef.current ? window.getComputedStyle(divRef.current) : null;
+    const windowStartX = computedStyle ? parseFloat(computedStyle.left) || 80 : 80;
+    const windowStartY = computedStyle ? parseFloat(computedStyle.top) || 80 : 80;
+    
     frontWin(id);
     const move = (ev: PointerEvent) => {
-      const dx = (ev.clientX - startX) / scaleX, dy = (ev.clientY - startY) / scaleY;
+      const dx = (ev.clientX - startX) / sx, dy = (ev.clientY - startY) / sy;
       if (divRef.current && !isMaximizedRef.current) {
-        divRef.current.style.left = `${Math.max(0, sx + dx)}px`;
-        divRef.current.style.top = `${Math.max(0, sy + dy)}px`;
+        // Allow full-screen movement - windows can move anywhere
+        divRef.current.style.left = `${windowStartX + dx}px`;
+        divRef.current.style.top = `${windowStartY + dy}px`;
       }
     };
     const up = () => {
@@ -1362,7 +1406,14 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
     frontWin(id);
     const startX = e.clientX;
     const startY = e.clientY;
-    const { scaleX, scaleY } = getScale();
+    // Compute current CSS transform scale of the embedded screen (same as DesktopIcon)
+    const screenEl = divRef.current?.closest('.embedded-screen') as HTMLElement | null;
+    const rect = screenEl?.getBoundingClientRect();
+    const css = screenEl ? window.getComputedStyle(screenEl) : null;
+    const cssW = css ? parseFloat(css.width || '0') : 0;
+    const cssH = css ? parseFloat(css.height || '0') : 0;
+    const scaleX = rect && cssW ? rect.width / cssW : 1;
+    const scaleY = rect && cssH ? rect.height / cssH : 1;
     const el = divRef.current;
     if (!el) return;
     
@@ -1398,8 +1449,9 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
       }
       
       if (el) {
-        el.style.left = `${Math.max(0, newLeft)}px`;
-        el.style.top = `${Math.max(0, newTop)}px`;
+        // Allow full-screen movement - windows can be positioned anywhere
+        el.style.left = `${newLeft}px`;
+        el.style.top = `${newTop}px`;
         el.style.width = `${newWidth}px`;
         el.style.height = `${newHeight}px`;
       }
@@ -1448,7 +1500,10 @@ function TrashBrowser({
   setDesktopIcons,
   desktopRef,
   draggingFromFolder,
-  setDraggingFromFolder
+  setDraggingFromFolder,
+  darkMode,
+  openWin,
+  windows
 }: {
   trash: Icon[];
   restoreIcon: (id: string, at?: { x: number; y: number }) => void;
@@ -1462,12 +1517,18 @@ function TrashBrowser({
   desktopRef?: React.RefObject<HTMLDivElement | null>;
   draggingFromFolder?: { item: BrowserItem; x: number; y: number; sourceFolder: string } | null;
   setDraggingFromFolder?: React.Dispatch<React.SetStateAction<{ item: BrowserItem; x: number; y: number; sourceFolder: string } | null>>;
+  darkMode: boolean;
+  openWin: (id: string) => void;
+  windows: Record<string, { id: string; open: boolean; z: number }>;
 }) {
   const browserRef = useRef<HTMLDivElement | null>(null);
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
   const dragStateRef = useRef<{ hasDragged: boolean }>({ hasDragged: false });
   const desktopDraggedIconRef = useRef<string | null>(null);
+  const clickTimeoutRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
+  const lastClickTimeRef = useRef<{ [key: string]: number }>({});
+  const isDoubleClickRef = useRef<{ [key: string]: boolean }>({});
 
   // Convert trash items to BrowserItem format with positions
   const [trashItems, setTrashItems] = useState<BrowserItem[]>(() => {
@@ -1639,8 +1700,8 @@ function TrashBrowser({
             // Update trash state with new position
             setTrash(prev => prev.map(i => i.id === itemId ? { ...i, x: newX, y: newY } : i));
           }
-        } else if (desktopCoords && setDesktopIcons) {
-          // Dropped on desktop - restore icon
+        } else if (desktopCoords && setDesktopIcons && !isDoubleClickRef.current[itemId]) {
+          // Dropped on desktop - restore icon (but not if it was a double-click)
           restoreIcon(itemId, desktopCoords);
           setTrashItems(list => list.filter(i => i.id !== itemId));
         }
@@ -1740,7 +1801,7 @@ function TrashBrowser({
     >
       {trashItems.length === 0 ? (
         <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text)' }}>
-          <p>Trash is empty</p>
+          <p style={{ color: '#ffffff' }}>Trash is empty</p>
         </div>
       ) : (
         trashItems.map((item) => {
@@ -1758,15 +1819,61 @@ function TrashBrowser({
                 pointerEvents: isDraggingToDesktop ? 'none' : 'auto'
               }}
               onClick={() => {
+                const now = Date.now();
+                const lastClick = lastClickTimeRef.current[item.id] || 0;
+                const timeSinceLastClick = now - lastClick;
+                
+                // If clicks are very close together, mark as potential double-click
+                if (timeSinceLastClick < 300) {
+                  isDoubleClickRef.current[item.id] = true;
+                }
+                lastClickTimeRef.current[item.id] = now;
+                
                 if (!dragStateRef.current.hasDragged) {
-                  const nextSel = selection.has(item.id) ? new Set(selection) : new Set([item.id]);
-                  setSelection(nextSel);
+                  // If there's already a pending timeout, this is likely a double-click
+                  // Let onDoubleClick handle it, but don't create another timeout
+                  if (clickTimeoutRef.current[item.id]) {
+                    return;
+                  }
+                  
+                  // Delay the click action to allow double-click to cancel it
+                  clickTimeoutRef.current[item.id] = setTimeout(() => {
+                    // Only select if it wasn't a double-click
+                    if (!isDoubleClickRef.current[item.id]) {
+                      const nextSel = selection.has(item.id) ? new Set(selection) : new Set([item.id]);
+                      setSelection(nextSel);
+                    }
+                    delete clickTimeoutRef.current[item.id];
+                    isDoubleClickRef.current[item.id] = false;
+                  }, 200);
                 }
                 dragStateRef.current.hasDragged = false;
               }}
-              onDoubleClick={() => {
-                restoreIcon(item.id);
+              onDoubleClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Mark as double-click to prevent restore on pointer up
+                isDoubleClickRef.current[item.id] = true;
+                
+                // Cancel any pending click timeout
+                if (clickTimeoutRef.current[item.id]) {
+                  clearTimeout(clickTimeoutRef.current[item.id]);
+                  delete clickTimeoutRef.current[item.id];
+                }
+                
+                // Open the file/app if it has a valid windowId
+                // Don't check hasDragged - double-click intent is clear even with small movements
+                if (item.windowId && windows[item.windowId]) {
+                  openWin(item.windowId);
+                }
+                dragStateRef.current.hasDragged = false;
                 setSelection(new Set());
+                
+                // Clear the double-click flag after a delay
+                setTimeout(() => {
+                  isDoubleClickRef.current[item.id] = false;
+                }, 300);
               }}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -1810,8 +1917,8 @@ function TrashBrowser({
             top: trashCtxMenu.y,
             minWidth: 200,
             padding: 4,
-            background: 'var(--bg-window)',
-            color: 'var(--text)',
+            background: darkMode ? "var(--bg-window)" : "#ffffff",
+            color: darkMode ? "#ffffff" : "#101010",
             border: '2px solid var(--border)',
             boxShadow: '0 4px 12px var(--shadow)',
             zIndex: 4000,
@@ -1855,7 +1962,8 @@ function BlogBrowser({
   setTestFolderItems: setExternalTestFolderItems,
   draggingFromFolder,
   setDraggingFromFolder,
-  addItemRef
+  addItemRef,
+  darkMode
 }: { 
   windows: Record<string, Win>; 
   openWin: (id: string) => void; 
@@ -1873,6 +1981,7 @@ function BlogBrowser({
   draggingFromFolder?: { item: BrowserItem; x: number; y: number; sourceFolder: string } | null;
   setDraggingFromFolder?: React.Dispatch<React.SetStateAction<{ item: BrowserItem; x: number; y: number; sourceFolder: string } | null>>;
   addItemRef?: React.MutableRefObject<((item: BrowserItem) => void) | null>;
+  darkMode: boolean;
 }) {
   const browserRef = useRef<HTMLDivElement | null>(null);
   const [items, setItems] = useState<BrowserItem[]>(initialItems || [
@@ -2421,8 +2530,8 @@ function BlogBrowser({
             top: browserCtxMenu.y,
             minWidth: 200,
             padding: 4,
-            background: 'var(--bg-window)',
-            color: 'var(--text)',
+            background: darkMode ? "var(--bg-window)" : "#ffffff",
+            color: darkMode ? "#ffffff" : "#101010",
             border: '2px solid var(--border)',
             boxShadow: '0 4px 12px var(--shadow)',
             zIndex: 4000,

@@ -61,8 +61,8 @@ const VIEW_FIT_CLAMP: [number, number] = [0.28, 2.2]; // clamp min/max distance 
 
 // Rotation limits (left/right and up/down)
 // Azimuth (left/right) limits relative to target
-const ORBIT_AZIMUTH_MIN = -Math.PI / 1; // rotate left limit
-const ORBIT_AZIMUTH_MAX = Math.PI / 1;  // rotate right limit
+const ORBIT_AZIMUTH_MIN = -Math.PI / 10; // rotate left limit
+const ORBIT_AZIMUTH_MAX = Math.PI / 10;  // rotate right limit
 // Polar (vertical) limits to avoid top/bottom extremes
 const ORBIT_POLAR_MIN = Math.PI / 4.2;   // how far up from below
 const ORBIT_POLAR_MAX = Math.PI / 2.15;  // slightly under top-down

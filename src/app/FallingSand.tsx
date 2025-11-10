@@ -688,9 +688,6 @@ export default function FallingSand() {
             Clear
           </button>
         </div>
-        <div className="hud-footer">
-          <div className="hud-hint">Click & drag to place particles</div>
-        </div>
       </div>
     </div>
   );

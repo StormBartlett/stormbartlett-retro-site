@@ -6,8 +6,8 @@
   <!-- Vertical lines - curved outward symmetrically with even bulge on both sides -->
   <!-- Left line: bulges left by 0.5 units, symmetric around y=19.5 -->
   <path d="M 12 10.5 C 11.75 13.5 11.5 16.5 11.5 19.5 C 11.5 22.5 11.75 25.5 12 28.5" fill="none" stroke="#000" stroke-width="1"/>
-  <!-- Middle line: bulges left by 1 unit, symmetric around y=19.5 -->
-  <path d="M 16 10.5 C 15.5 13.5 15 16.5 15 19.5 C 15 22.5 15.5 25.5 16 28.5" fill="none" stroke="#000" stroke-width="1"/>
+  <!-- Middle line: vertical (straight) -->
+  <line x1="16" y1="10.5" x2="16" y2="28.5" stroke="#000" stroke-width="1"/>
   <!-- Right line: bulges right by 0.5 units, symmetric around y=19.5 -->
   <path d="M 20 10.5 C 20.25 13.5 20.5 16.5 20.5 19.5 C 20.5 22.5 20.25 25.5 20 28.5" fill="none" stroke="#000" stroke-width="1"/>
 </svg>

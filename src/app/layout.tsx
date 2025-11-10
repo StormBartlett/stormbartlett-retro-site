@@ -91,10 +91,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 // Aggressive zoom reset function
                 function resetZoom() {
                   enforceViewport();
-                  // Force reset via document.body.style.zoom (if supported)
-                  if (typeof document.body !== 'undefined' && typeof document.body.style.zoom !== 'undefined') {
-                    document.body.style.zoom = 1;
-                  }
                   // Use visualViewport API if available
                   if (window.visualViewport) {
                     if (window.visualViewport.scale !== 1) {
@@ -191,26 +187,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   <path d="M3 9.5h9l2 3h15v15H3z" fill="#fff" stroke="#000" strokeWidth="1"/>
                   <path d="M3 9.5h9l2 3h15" fill="none" stroke="#000" strokeWidth="1"/>
                   <rect x="3" y="12.5" width="26" height="15" fill="#fff" stroke="#000" strokeWidth="1"/>
-                </symbol>
-                <symbol id="icon-trash" viewBox="0 0 32 32">
-                  <rect x="9" y="7.5" width="14" height="3" fill="#fff" stroke="#000" strokeWidth="1"/>
-                  <rect x="8" y="10.5" width="16" height="18" fill="#fff" stroke="#000" strokeWidth="1"/>
-                  <line x1="12" y1="10.5" x2="12" y2="28.5" stroke="#000" strokeWidth="1"/>
-                  <line x1="16" y1="10.5" x2="16" y2="28.5" stroke="#000" strokeWidth="1"/>
-                  <line x1="20" y1="10.5" x2="20" y2="28.5" stroke="#000" strokeWidth="1"/>
-                </symbol>
-                <symbol id="icon-trash-full" viewBox="0 0 32 32">
-                  {/* Lid */}
-                  <rect x="9" y="7.5" width="14" height="3" fill="#fff" stroke="#000" strokeWidth="1"/>
-                  {/* Main body - bulged outward symmetrically in the center */}
-                  <path d="M 8 10.5 L 7 14 L 7 17 L 7 20 L 7 23 L 8 24 L 8 28.5 L 24 28.5 L 24 24 L 25 23 L 25 20 L 25 17 L 25 14 L 24 10.5 Z" fill="#fff" stroke="#000" strokeWidth="1"/>
-                  {/* Vertical lines - curved outward symmetrically with even bulge on both sides */}
-                  {/* Left line: bulges left by 0.5 units, symmetric around y=19.5 */}
-                  <path d="M 12 10.5 C 11.75 13.5 11.5 16.5 11.5 19.5 C 11.5 22.5 11.75 25.5 12 28.5" fill="none" stroke="#000" strokeWidth="1"/>
-                  {/* Middle line: bulges left by 1 unit, symmetric around y=19.5 */}
-                  <path d="M 16 10.5 C 15.5 13.5 15 16.5 15 19.5 C 15 22.5 15.5 25.5 16 28.5" fill="none" stroke="#000" strokeWidth="1"/>
-                  {/* Right line: bulges right by 0.5 units, symmetric around y=19.5 */}
-                  <path d="M 20 10.5 C 20.25 13.5 20.5 16.5 20.5 19.5 C 20.5 22.5 20.25 25.5 20 28.5" fill="none" stroke="#000" strokeWidth="1"/>
                 </symbol>
 
                 {/* Sun for dark mode toggle (light mode active) */}
