@@ -10,10 +10,139 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=VT323&display=swap" rel="stylesheet" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                // Immediately set viewport to prevent any zoom
+                function enforceViewport() {
+                  const viewport = document.querySelector('meta[name="viewport"]');
+                  if (viewport) {
+                    viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover');
+                  }
+                }
+                enforceViewport();
+                
+                // Prevent zoom gestures immediately
+                if (document.addEventListener) {
+                  document.addEventListener('gesturestart', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                  }, { passive: false, capture: true });
+                  
+                  document.addEventListener('gesturechange', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                  }, { passive: false, capture: true });
+                  
+                  document.addEventListener('gestureend', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                  }, { passive: false, capture: true });
+                  
+                  // Prevent ALL double-tap zoom
+                  let lastTouchEnd = 0;
+                  let touchStartTime = 0;
+                  document.addEventListener('touchstart', function(e) {
+                    touchStartTime = Date.now();
+                    // Prevent multi-touch zoom everywhere
+                    if (e.touches.length > 1) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return false;
+                    }
+                    enforceViewport();
+                  }, { passive: false, capture: true });
+                  
+                  document.addEventListener('touchend', function(e) {
+                    const now = Date.now();
+                    const timeSinceStart = now - touchStartTime;
+                    const timeSinceLastEnd = now - lastTouchEnd;
+                    
+                    // Prevent double-tap zoom (two taps within 300ms)
+                    if (timeSinceLastEnd < 300 && timeSinceStart < 500) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      enforceViewport();
+                      return false;
+                    }
+                    lastTouchEnd = now;
+                    enforceViewport();
+                  }, { passive: false, capture: true });
+                  
+                  // Prevent zoom on touchmove
+                  document.addEventListener('touchmove', function(e) {
+                    if (e.touches.length > 1) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      enforceViewport();
+                      return false;
+                    }
+                  }, { passive: false, capture: true });
+                }
+                
+                // Aggressive zoom reset function
+                function resetZoom() {
+                  enforceViewport();
+                  // Force reset via document.body.style.zoom (if supported)
+                  if (typeof document.body !== 'undefined' && typeof document.body.style.zoom !== 'undefined') {
+                    document.body.style.zoom = 1;
+                  }
+                  // Use visualViewport API if available
+                  if (window.visualViewport) {
+                    if (window.visualViewport.scale !== 1) {
+                      enforceViewport();
+                    }
+                  }
+                }
+                
+                // Reset zoom very frequently
+                if (typeof window !== 'undefined') {
+                  setInterval(function() {
+                    resetZoom();
+                  }, 50);
+                  
+                  // Reset on any event that might cause zoom
+                  window.addEventListener('orientationchange', function() {
+                    setTimeout(resetZoom, 0);
+                    setTimeout(resetZoom, 100);
+                    setTimeout(resetZoom, 300);
+                  });
+                  
+                  window.addEventListener('resize', function() {
+                    resetZoom();
+                  });
+                  
+                  // Reset on focus (when user returns to tab)
+                  window.addEventListener('focus', resetZoom);
+                  
+                  // Reset on scroll (some browsers zoom on scroll)
+                  window.addEventListener('scroll', resetZoom, { passive: true });
+                  
+                  // Use visualViewport API to detect zoom changes
+                  if (window.visualViewport) {
+                    window.visualViewport.addEventListener('resize', resetZoom);
+                    window.visualViewport.addEventListener('scroll', resetZoom);
+                  }
+                }
+                
+                // Run immediately when DOM is ready
+                if (document.readyState === 'loading') {
+                  document.addEventListener('DOMContentLoaded', resetZoom);
+                } else {
+                  resetZoom();
+                }
+              })();
+            `,
+          }}
+        />
       </head>
       <body>
         <div className="crt">

@@ -732,19 +732,17 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
             </div>
           )}
 
-          {!isMobilePortrait && (
-            <div className={`menu ${openMenu === "view" ? "is-open" : ""}`}>
-              <button className="menu-trigger" type="button" aria-haspopup="menu" aria-expanded={openMenu === "view"} onClick={() => toggleMenu("view")} onMouseEnter={() => trackHover("view")}>
-                View
-              </button>
-              <div className="menu-dropdown" role="menu">
-                <button className="menu-entry" role="menuitem" onClick={() => { toggleCRT(); setOpenMenu(null); }}>Toggle CRT Scanlines</button>
-                <button className="menu-entry" role="menuitem" onClick={() => { arrangeIcons(); setOpenMenu(null); }}>Arrange Icons</button>
-                <button className="menu-entry" role="menuitem" onClick={() => { resetIcons(); setOpenMenu(null); }}>Reset Desktop Icons</button>
+          <div className={`menu ${openMenu === "view" ? "is-open" : ""}`}>
+            <button className="menu-trigger" type="button" aria-haspopup="menu" aria-expanded={openMenu === "view"} onClick={() => toggleMenu("view")} onMouseEnter={() => trackHover("view")}>
+              View
+            </button>
+            <div className="menu-dropdown" role="menu">
+              <button className="menu-entry" role="menuitem" onClick={() => { toggleCRT(); setOpenMenu(null); }}>Toggle CRT Scanlines</button>
+              <button className="menu-entry" role="menuitem" onClick={() => { arrangeIcons(); setOpenMenu(null); }}>Arrange Icons</button>
+              <button className="menu-entry" role="menuitem" onClick={() => { resetIcons(); setOpenMenu(null); }}>Reset Desktop Icons</button>
               <button className="menu-entry" role="menuitem" onClick={() => { resetTrashPosition(); setOpenMenu(null); }}>Reset Trash Position</button>
-              </div>
             </div>
-          )}
+          </div>
 
           <div className={`menu ${openMenu === "go" ? "is-open" : ""}`} data-id="go">
             <button className="menu-trigger" type="button" aria-haspopup="menu" aria-expanded={openMenu === "go"} onClick={() => toggleMenu("go")} onMouseEnter={() => trackHover("go")}>
