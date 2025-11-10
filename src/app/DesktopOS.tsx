@@ -13,8 +13,7 @@ const baseIcons: Icon[] = [
   { id: "about", label: "About Me.txt", app: "about", x: 40, y: 64 },
   { id: "skills", label: "Skills.txt", app: "skills", x: 160, y: 64 },
   { id: "experience", label: "Experience.txt", app: "experience", x: 280, y: 64 },
-  { id: "calculator", label: "Calculator.txt", app: "calculator", x: 400, y: 64 },
-  { id: "readme", label: "README.txt", app: "readme", x: 520, y: 64 },
+  { id: "calculator", label: "Calculator", app: "calculator", x: 400, y: 64 },
   { id: "falling-sand", label: "Falling Sand", app: "falling-sand", x: 640, y: 64 },
 ];
 
@@ -31,7 +30,6 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
     skills: { id: "skills", open: false, z: 10 },
     experience: { id: "experience", open: false, z: 10 },
     calculator: { id: "calculator", open: false, z: 10 },
-    readme: { id: "readme", open: false, z: 10 },
     todo: { id: "todo", open: false, z: 10 },
     "falling-sand": { id: "falling-sand", open: false, z: 10 },
     trash: { id: "trash", open: false, z: 10 },
@@ -506,8 +504,8 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
     const height = deskRect?.height ?? (typeof window !== "undefined" ? window.innerHeight - 28 : 772);
     // Trash icon is 96px wide, so ensure it fits with padding
     const maxX = Math.max(8, width - 96 - 8);
-    const maxY = Math.max(36, height - 96 - 8);
-    return { x: Math.min(Math.max(8, x), maxX), y: Math.min(Math.max(36, y), maxY) };
+    const maxY = Math.max(0, height - 96 - 8);
+    return { x: Math.min(Math.max(8, x), maxX), y: Math.min(Math.max(0, y), maxY) };
   }
 
   function restoreIcon(id: string, at?: { x: number; y: number }) {
@@ -847,8 +845,12 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
           </div>
         )}
 
+        {/* ============================================
+            BLOG FOLDER ICON - TEMPORARILY HIDDEN
+            To restore: Uncomment the block below
+            ============================================ */}
         {/* Blog folder icon (draggable) */}
-        <button
+        {/* <button
           ref={trashRef}
           className={`desktop-icon trash-icon ${dragOverTrash ? 'is-over' : ''}`}
           data-id="trash"
@@ -923,7 +925,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
             </svg>
           </div>
           <span className="icon-label">Blog</span>
-        </button>
+        </button> */}
 
         {/* Trash bin icon (draggable) */}
         <button
@@ -1029,20 +1031,8 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
         <Window id="experience" title="Experience" windows={windows} frontWin={frontWin} closeWin={closeWin}>
           <TiptapEditor />
         </Window>
-        <Window id="calculator" title="Calculator" windows={windows} frontWin={frontWin} closeWin={closeWin}>
+        <Window id="calculator" title="Calculator" windows={windows} frontWin={frontWin} closeWin={closeWin} className="calculator-window">
           <Calculator />
-        </Window>
-        <Window id="readme" title="README.txt" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <TiptapEditor initialText={`Welcome to my retro desktop.
-
-This is a playground portfolio — part Lisa, part classic Mac.
-
-Highlights:
-- TypeScript + React/Next.js
-- A11y-first UI & motion
-- Design systems enjoyer
-
-Beware: Clicking icons may open portals.`} />
         </Window>
         <Window id="todo" title="TODO.txt" windows={windows} frontWin={frontWin} closeWin={closeWin}>
           <TodoEditor initialText={`[ ] Ship something delightful
@@ -1218,7 +1208,7 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
       setIcons((list) => list.map((i) => {
         if (!nextSel.has(i.id)) return i;
         const s = starts.get(i.id) || { x: i.x, y: i.y };
-        return { ...i, x: Math.max(8, s.x + dx), y: Math.max(36, s.y + dy) };
+        return { ...i, x: Math.max(8, s.x + dx), y: Math.max(0, s.y + dy) };
       }));
       if (onDragMove) onDragMove(ev.clientX, ev.clientY);
     };
@@ -1237,12 +1227,12 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
   const spriteId = icon.id === "about"
     ? "icon-file-txt"
     : icon.id === "skills"
-    ? "icon-file-binary"
+    ? "icon-file-txt"
     : icon.id === "experience"
-    ? "icon-file-html"
+    ? "icon-file-txt"
     : icon.id === "calculator"
     ? "icon-file-binary"
-    : icon.id === "readme" || icon.id === "todo"
+    : icon.id === "todo"
     ? "icon-file-txt"
     : icon.id === "falling-sand"
     ? "icon-file-binary"
@@ -1309,7 +1299,7 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
     } else {
       // Maximize
       const defaultWidth = className?.includes('blog-window') ? "600px" : 
-                           className?.includes('calculator-window') ? "180px" : 
+                           className?.includes('calculator-window') ? "160px" : 
                            "420px";
       restoreStateRef.current = {
         left: el.style.left || "80px",
@@ -1356,7 +1346,7 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
       const dx = (ev.clientX - startX) / scaleX, dy = (ev.clientY - startY) / scaleY;
       if (divRef.current && !isMaximizedRef.current) {
         divRef.current.style.left = `${Math.max(0, sx + dx)}px`;
-        divRef.current.style.top = `${Math.max(28, sy + dy)}px`;
+        divRef.current.style.top = `${Math.max(0, sy + dy)}px`;
       }
     };
     const up = () => {
@@ -1411,7 +1401,7 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
       
       if (el) {
         el.style.left = `${Math.max(0, newLeft)}px`;
-        el.style.top = `${Math.max(28, newTop)}px`;
+        el.style.top = `${Math.max(0, newTop)}px`;
         el.style.width = `${newWidth}px`;
         el.style.height = `${newHeight}px`;
       }
@@ -1557,7 +1547,7 @@ function TrashBrowser({
     const desktopX = (clientX - desktopRect.left) / scaleX - 48;
     const desktopY = (clientY - desktopRect.top) / scaleY - 24;
     
-    return { x: Math.max(8, desktopX), y: Math.max(36, desktopY) };
+    return { x: Math.max(8, desktopX), y: Math.max(0, desktopY) };
   };
 
   const handleItemPointerDown = (itemId: string, e: React.PointerEvent) => {
@@ -1956,7 +1946,7 @@ function BlogBrowser({
     const desktopX = (clientX - desktopRect.left) / scaleX - 48;
     const desktopY = (clientY - desktopRect.top) / scaleY - 24;
     
-    return { x: Math.max(8, desktopX), y: Math.max(36, desktopY) };
+    return { x: Math.max(8, desktopX), y: Math.max(0, desktopY) };
   };
 
   // Helper to find which window is on top at a given point
@@ -2589,11 +2579,11 @@ function mergeIconsWithDefaults(saved: Icon[]): Icon[] {
   const width = typeof window !== "undefined" ? window.innerWidth : 1280;
   const height = typeof window !== "undefined" ? window.innerHeight : 800;
   const maxX = Math.max(8, width - 140);
-  const maxY = Math.max(36, height - 200);
+  const maxY = Math.max(0, height - 200);
   return merged.map((i) => ({
     ...i,
     x: Math.min(Math.max(8, i.x), maxX),
-    y: Math.min(Math.max(36, i.y), maxY),
+    y: Math.min(Math.max(0, i.y), maxY),
   }));
 }
 
