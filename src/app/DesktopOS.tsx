@@ -741,7 +741,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
                 Edit
               </button>
               <div className="menu-dropdown" role="menu">
-                <a className="menu-entry" role="menuitem" href="mailto:storm@stormbartlett.com" onClick={() => setOpenMenu(null)}>Email Storm…</a>
+                <a className="menu-entry" role="menuitem" href="mailto:stormbartlett@icloud.com" onClick={() => setOpenMenu(null)}>Email Storm…</a>
               </div>
             </div>
           )}
