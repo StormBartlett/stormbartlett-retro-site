@@ -1,6 +1,7 @@
 {
   "name": "next-lisa-portfolio",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
@@ -11,6 +12,8 @@
   "dependencies": {
     "@react-three/drei": "10.7.6",
     "@react-three/fiber": "9.4.0",
+    "@tiptap/core": "^3.10.4",
+    "@tiptap/extension-list": "^3.10.4",
     "@tiptap/extension-task-item": "^3.10.4",
     "@tiptap/extension-task-list": "^3.10.4",
     "@tiptap/pm": "^3.9.1",
