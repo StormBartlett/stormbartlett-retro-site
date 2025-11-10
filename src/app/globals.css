@@ -28,9 +28,15 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .menu[data-id="go"] .menu-dropdown .menu-entry{display:block;padding:8px 10px;border-top:1px solid var(--border)}
 .menu[data-id="go"] .menu-dropdown .menu-entry:first-child{border-top:none}
 
+/* Style Edit menu dropdown as stacked buttons (same as Go menu) */
+.menu[data-id="edit"] .menu-dropdown{min-width:220px}
+.menu[data-id="edit"] .menu-dropdown .menu-entry{display:block;padding:8px 10px;border-top:1px solid var(--border)}
+.menu[data-id="edit"] .menu-dropdown .menu-entry:first-child{border-top:none}
+
 /* More padding on mobile */
 .mobile .menu[data-id="go"] .menu-dropdown .menu-entry{padding:12px 14px}
-.menu-entry:hover,.menu-entry:focus{background:#ddd6c8}
+.mobile .menu[data-id="edit"] .menu-dropdown .menu-entry{padding:12px 14px}
+.menu-entry:hover,.menu-entry:focus{background:#c4b8a8}
 .menu-label{padding:6px 8px;font-weight:700}
 :root.dark-mode .menu-entry:hover,:root.dark-mode .menu-entry:focus{background:#3d3d3d}
 :root.dark-mode .is-selected{outline:2px dashed var(--border);outline-offset:2px;background:rgba(255,255,255,.08)}

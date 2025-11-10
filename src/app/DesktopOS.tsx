@@ -720,7 +720,6 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
             <div className="menu-dropdown" role="menu">
               <div className="menu-label">Storm Bartlett</div>
               <button className="menu-entry" role="menuitem" onClick={() => { openWin("about"); setOpenMenu(null); }}>About Storm Bartlett</button>
-              <a className="menu-entry" role="menuitem" href="https://github.com/stormbartlett" target="_blank" rel="noopener noreferrer" onClick={() => setOpenMenu(null)}>GitHub</a>
             </div>
           </div>
 
@@ -737,7 +736,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
           </div>
 
           {(true) && (
-            <div className={`menu ${openMenu === "edit" ? "is-open" : ""}`}>
+            <div className={`menu ${openMenu === "edit" ? "is-open" : ""}`} data-id="edit">
               <button className="menu-trigger" type="button" aria-haspopup="menu" aria-expanded={openMenu === "edit"} onClick={() => toggleMenu("edit")} onMouseEnter={() => trackHover("edit")}>
                 Edit
               </button>
@@ -766,6 +765,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
             <div className="menu-dropdown" role="menu">
               <a className="menu-entry" role="menuitem" href="https://github.com/stormbartlett" target="_blank" rel="noopener noreferrer" onClick={() => setOpenMenu(null)}>GitHub</a>
               <a className="menu-entry" role="menuitem" href="https://www.linkedin.com/in/stormbartlett/" target="_blank" rel="noopener noreferrer" onClick={() => setOpenMenu(null)}>LinkedIn</a>
+              <a className="menu-entry" role="menuitem" href="https://www.youtube.com/@stormbartlett64" target="_blank" rel="noopener noreferrer" onClick={() => setOpenMenu(null)}>YouTube</a>
               {/* <a className="menu-entry" role="menuitem" href="/Storm_Bartlett_Resume.pdf" target="_blank" rel="noopener noreferrer" onClick={() => setOpenMenu(null)}>Resume</a> */}
             </div>
           </div>

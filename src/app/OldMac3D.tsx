@@ -54,8 +54,10 @@ const VIEW_FIT_MODE: ViewFitMode = "max"; // choose how to fit: height, width, m
 const VIEW_FIT_MARGIN = .04; // multiplier margin around the fitted view
 const VIEW_FIT_MARGIN_MOBILE = .03; // slightly more margin on mobile (if needed)
 const VIEW_FIT_EXTRA_SCALE = 1.0; // additional multiplier after fit calculation
-const VIEW_FIT_OFFSET = 0.0; // additive world-units along screen normal after fit
+const VIEW_FIT_OFFSET = 0.4; // additive world-units along screen normal after fit
 const VIEW_FIT_CLAMP: [number, number] = [0.28, 2.2]; // clamp min/max distance along normal
+// Vertical offset to raise the camera target when viewing the screen
+const VIEW_TARGET_Y_OFFSET = 0.25;
 
 // Platform compensation removed - now use SCREEN_LOCAL_X/Y/Z for fine positioning
 
@@ -473,6 +475,9 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
       );
       worldQuat.setFromEuler(new THREE.Euler(SCREEN_ROT_X, SCREEN_ROT_Y, SCREEN_ROT_Z, "XYZ"));
     }
+    // Raise target slightly upward in screen's local up direction
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuat).normalize();
+    toTarget.add(up.multiplyScalar(VIEW_TARGET_Y_OFFSET));
     const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat).normalize();
     // Compute world size of the screen plane (include model scale)
     const screenWidthWorld = SCREEN_W * SCREEN_SCALE * MODEL_SCALE;
