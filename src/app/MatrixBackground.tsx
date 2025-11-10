@@ -50,7 +50,7 @@ const defaultProgrammerGlyphs = [
 
 const defaultWords = [
   // frameworks & libs
-  // "react","next","typescript","three","node","vercel","vite","webpack",
+  "react","next","typescript","three","node","vercel","vite","webpack",
   // // concepts
   // "hooks","state","props","jsx","ts","async","await","promise","fn",
   // // patterns / terms
