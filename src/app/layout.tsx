@@ -4,6 +4,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Storm Bartlett",
   description: "Storm Bartlett's Portfolio",
+  icons: {
+    icon: "/lightning-logo-black.svg",
+    shortcut: "/lightning-logo-black.svg",
+    apple: "/lightning-logo-black.png",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
