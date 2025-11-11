@@ -1043,10 +1043,10 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
         </button>
 
         <Window id="about" title="About Me" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <TiptapEditor initialText={"Hi, I'm Storm Bartlett, a frontend-focused full‑stack engineer.\nMy main focus is on TypeScript, React/Next.js and backends like Node.js and PostgreSQL."} />
+          <TiptapEditor initialText={"Hi, I'm Storm Bartlett, a frontend-focused full‑stack engineer. \n I like making fast, pretty apps with TypeScript, React/Next.js and backends like Node.js and PostgreSQL.\n\nAbout This Site:\n• Retro desktop OS interface design\n• Built with Next.js, React, and TypeScript\n• Uses Three.js for 3D rendering and TipTap for text editing"} />
         </Window>
         <Window id="skills" title="Skills" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <TiptapEditor initialText={"Front-End:\nReact (Hooks), Next.js, HTML5, CSS3/Sass, Tailwind\nAccessible/Responsive UI, Chrome extensions\n\nBack-End:\nNode.js (Express), Python (Django/Flask)\nREST APIs, JWT/OAuth, WebSockets\n\nDatabases:\nPostgreSQL, MongoDB, SQL, Firebase Firestore\n\nCloud & Tools:\nGit/GitHub, GitHub Actions (CI/CD), Docker, Linux, GCP\n"
+          <TiptapEditor initialText={"Front-End:\nReact, Next.js, Typescript, HTML5, CSS3/Sass, Tailwind\nAccessible/Responsive UI, Chrome extensions\n\nBack-End:\nNode.js (Express), Python (Django/Flask)\nREST APIs, JWT/OAuth, WebSockets\n\nDatabases:\nPostgreSQL, MongoDB, SQL, Firebase Firestore\n\nCloud & Tools:\nGit/GitHub, GitHub Actions (CI/CD), Docker, Linux, GCP\n"
             } />
         </Window>
         <Window id="experience" title="Experience" windows={windows} frontWin={frontWin} closeWin={closeWin}>
