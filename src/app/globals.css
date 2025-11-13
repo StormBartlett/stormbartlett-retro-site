@@ -52,7 +52,7 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .menu-user{margin-right:4px}
 .desktop{position:fixed;inset:28px 0 0 0;padding:16px;overflow:hidden; touch-action:none}
 .desktop-icon{appearance:none;background:transparent;border:none;padding:8px 4px;width:96px;text-align:center;color:var(--text);position:absolute;user-select:none;cursor:inherit;z-index:1}
-.desktop-icon.dragging{opacity:0.7; z-index:10000}
+.desktop-icon.dragging{opacity:0.7 !important; z-index:10000; transform:translateZ(0); will-change:transform,opacity; -moz-user-select:none; backface-visibility:hidden; -webkit-backface-visibility:hidden}
 .desktop-icon .icon{width:48px;height:48px;display:block;margin:0 auto 6px;pointer-events:none;position:relative}
 .desktop-icon .icon-label{font-size:13px; font-weight:550; line-height: 1.2;color:var(--text);font-family: "Lucida Console",
   "Lucida Sans Typewriter",
@@ -303,7 +303,7 @@ html,body,#__next{height:100%}
 :root.dark-mode .browser-icon .icon-label{color:#ffffff}
 .browser-icon.is-selected{outline:2px dashed var(--border); outline-offset:2px; background:rgba(0,0,0,.05)}
 :root.dark-mode .browser-icon.is-selected{background:rgba(255,255,255,.08)}
-.browser-icon.dragging{opacity:0.7; z-index:1000}
+.browser-icon.dragging{opacity:0.7 !important; z-index:1000; transform:translateZ(0); will-change:transform,opacity; -moz-user-select:none; backface-visibility:hidden; -webkit-backface-visibility:hidden}
 .browser-icon.drag-over{outline:2px dashed var(--border); background:rgba(255,255,255,.1)}
 .browser-icon.folder .folder-count{position:absolute; top:2px; right:2px; background:var(--accent); color:#101010; font-size:9px; font-weight:700; padding:1px 4px; border-radius:8px; min-width:14px; text-align:center; border:1px solid var(--border); box-shadow:0 1px 3px rgba(0,0,0,.3); line-height:1.4; z-index:10}
 
