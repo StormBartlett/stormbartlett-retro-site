@@ -14,6 +14,8 @@ export const defaultKeymap: KeyType[] = [
   // Motions
   { keys: 'H', type: 'motion', motion: Motions.FocusStart },
   { keys: 'h', type: 'motion', motion: Motions.MoveToLeft },
+  { keys: 'j', type: 'motion', motion: Motions.MoveDown },
+  { keys: 'k', type: 'motion', motion: Motions.MoveUp },
   { keys: 'L', type: 'motion', motion: Motions.FocusEnd },
   { keys: 'l', type: 'motion', motion: Motions.MoveToRight },
   { keys: 'w', type: 'motion', motion: Motions.WordJumpForward },

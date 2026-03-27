@@ -13,6 +13,8 @@ export type Motion = ({ editor }: { editor: Editor }) => boolean
 export enum Motions {
   MoveToRight = 'moveToRight',
   MoveToLeft = 'moveToLeft',
+  MoveDown = 'moveDown',
+  MoveUp = 'moveUp',
   FocusStart = 'focusStart',
   FocusEnd = 'focusEnd',
   WordJumpForward = 'wordJumpForward',

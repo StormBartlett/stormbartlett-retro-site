@@ -66,6 +66,40 @@ const motions: MotionsInterface = {
     dispatch(state.tr.setSelection(selection));
     return true;
   },
+  [Motions.MoveDown]: ({ editor }) => {
+    const { state, view: { dispatch } } = editor as Editor;
+    const storage = (editor.storage as unknown as { vimirror: VimirrorStorage }).vimirror;
+    if (storage.currentVimMode === VimModes.Insert) return false;
+    const { doc } = state;
+    const from = state.selection.from;
+    const $pos = doc.resolve(from);
+    const offset = from - $pos.start();
+    try {
+      const after = $pos.after($pos.depth);
+      if (after >= doc.content.size) return false;
+      const $next = doc.resolve(after + 1);
+      const target = Math.min($next.start() + offset, $next.end());
+      dispatch(state.tr.setSelection(new TextSelection(doc.resolve(target), doc.resolve(target))));
+      return true;
+    } catch { return false; }
+  },
+  [Motions.MoveUp]: ({ editor }) => {
+    const { state, view: { dispatch } } = editor as Editor;
+    const storage = (editor.storage as unknown as { vimirror: VimirrorStorage }).vimirror;
+    if (storage.currentVimMode === VimModes.Insert) return false;
+    const { doc } = state;
+    const from = state.selection.from;
+    const $pos = doc.resolve(from);
+    const offset = from - $pos.start();
+    try {
+      const before = $pos.before($pos.depth);
+      if (before <= 0) return false;
+      const $prev = doc.resolve(before - 1);
+      const target = Math.min($prev.start() + offset, $prev.end());
+      dispatch(state.tr.setSelection(new TextSelection(doc.resolve(target), doc.resolve(target))));
+      return true;
+    } catch { return false; }
+  },
   [Motions.FocusStart]: ({ editor }) => {
     const storage = (editor.storage as unknown as { vimirror: VimirrorStorage }).vimirror;
     if (storage.currentVimMode === VimModes.Insert) return false;
@@ -390,6 +424,38 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                   const deleted = state.doc.textBetween(lo, hi, "\n", "\n");
                   storage.yankText = deleted;
                   if (storage.pendingOp.type === 'd') view.dispatch(state.tr.delete(lo, hi));
+                  storage.pendingOp = null;
+                  event.preventDefault();
+                  return true;
+                }
+                case 'j': {
+                  // dj/yj: operate on current line + next line
+                  const $h = state.doc.resolve(head);
+                  try {
+                    const after = $h.after($h.depth);
+                    if (after < state.doc.content.size) {
+                      const $next = state.doc.resolve(after + 1);
+                      const deleted = state.doc.textBetween(lineStart, $next.end(), "\n", "\n");
+                      storage.yankText = deleted;
+                      if (storage.pendingOp!.type === 'd') view.dispatch(state.tr.delete(lineStart, $next.end()));
+                    }
+                  } catch { /* at last line */ }
+                  storage.pendingOp = null;
+                  event.preventDefault();
+                  return true;
+                }
+                case 'k': {
+                  // dk/yk: operate on previous line + current line
+                  const $h = state.doc.resolve(head);
+                  try {
+                    const before = $h.before($h.depth);
+                    if (before > 0) {
+                      const $prev = state.doc.resolve(before - 1);
+                      const deleted = state.doc.textBetween($prev.start(), lineEnd, "\n", "\n");
+                      storage.yankText = deleted;
+                      if (storage.pendingOp!.type === 'd') view.dispatch(state.tr.delete($prev.start(), lineEnd));
+                    }
+                  } catch { /* at first line */ }
                   storage.pendingOp = null;
                   event.preventDefault();
                   return true;
