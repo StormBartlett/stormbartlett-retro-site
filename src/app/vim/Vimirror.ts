@@ -249,6 +249,7 @@ interface VimirrorStorage {
   showCursor: boolean;
   cursorDecoration: Decoration;
   pendingOp: null | { type: 'd' | 'y'; from: number };
+  pendingKey: string | null;
   yankText: string;
 }
 
@@ -270,6 +271,7 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
       currentVimMode: VimModes.Normal,
       showCursor: false,
       pendingOp: null,
+      pendingKey: null,
       yankText: "",
     };
   },
@@ -358,6 +360,31 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
               }
               return Math.max(pos, end - 1);
             };
+
+            // Handle pending key (e.g. gg, dgg) — must be before pendingOp handler
+            if (storage.pendingKey === 'g') {
+              storage.pendingKey = null;
+              if (event.key === 'g') {
+                if (storage.pendingOp) {
+                  // dgg/ygg: operate from cursor to start of document
+                  const head = getHead();
+                  const { end: lineEnd } = getLineBounds(head);
+                  const firstStart = state.doc.resolve(1).start();
+                  const deleted = state.doc.textBetween(firstStart, lineEnd, "\n", "\n");
+                  storage.yankText = deleted;
+                  if (storage.pendingOp.type === 'd') view.dispatch(state.tr.delete(firstStart, lineEnd));
+                  storage.pendingOp = null;
+                } else {
+                  // gg: go to start of document
+                  const target = 1;
+                  view.dispatch(state.tr.setSelection(new TextSelection(state.doc.resolve(target), state.doc.resolve(target))));
+                }
+                event.preventDefault();
+                return true;
+              }
+              // Unknown g-combo, cancel pending
+              if (storage.pendingOp) { storage.pendingOp = null; }
+            }
 
             // Complete pending delete operator
             if (storage.pendingOp) {
@@ -460,6 +487,22 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                   event.preventDefault();
                   return true;
                 }
+                case 'G': {
+                  // dG/yG: operate from current line to end of document
+                  const lastEnd = state.doc.resolve(state.doc.content.size - 1).end();
+                  const deleted = state.doc.textBetween(lineStart, lastEnd, "\n", "\n");
+                  storage.yankText = deleted;
+                  if (storage.pendingOp!.type === 'd') view.dispatch(state.tr.delete(lineStart, lastEnd));
+                  storage.pendingOp = null;
+                  event.preventDefault();
+                  return true;
+                }
+                case 'g': {
+                  // dg -> wait for second g (dgg)
+                  storage.pendingKey = 'g';
+                  event.preventDefault();
+                  return true;
+                }
                 case 'y': { // yy -> yank line
                   const deleted = state.doc.textBetween(lineStart, lineEnd, "\n", "\n");
                   storage.yankText = deleted;
@@ -473,6 +516,67 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                   return false;
                 }
               }
+            }
+
+            // 0: move to start of line
+            if (event.key === '0' && !storage.pendingOp) {
+              const head = getHead();
+              const { start } = getLineBounds(head);
+              view.dispatch(state.tr.setSelection(new TextSelection(state.doc.resolve(start), state.doc.resolve(start))));
+              event.preventDefault();
+              return true;
+            }
+
+            // $: move to end of line
+            if (event.key === '$' && !storage.pendingOp) {
+              const head = getHead();
+              const { end } = getLineBounds(head);
+              view.dispatch(state.tr.setSelection(new TextSelection(state.doc.resolve(end), state.doc.resolve(end))));
+              event.preventDefault();
+              return true;
+            }
+
+            // ^: move to first non-whitespace character
+            if (event.key === '^' && !storage.pendingOp) {
+              const head = getHead();
+              const { start, end } = getLineBounds(head);
+              const text = state.doc.textBetween(start, end, "\0", "\0");
+              let offset = 0;
+              while (offset < text.length && /\s/.test(text[offset])) offset++;
+              const target = start + offset;
+              view.dispatch(state.tr.setSelection(new TextSelection(state.doc.resolve(target), state.doc.resolve(target))));
+              event.preventDefault();
+              return true;
+            }
+
+            // e: move to end of word
+            if (event.key === 'e' && !storage.pendingOp) {
+              const head = getHead();
+              // Move at least one character forward before finding word end
+              const startPos = Math.min(head + 1, state.doc.content.size);
+              const target = wordEndPos(startPos);
+              view.dispatch(state.tr.setSelection(new TextSelection(state.doc.resolve(target), state.doc.resolve(target))));
+              event.preventDefault();
+              return true;
+            }
+
+            // G: go to end of document
+            if (event.key === 'G' && !storage.pendingOp) {
+              const lastChild = state.doc.lastChild;
+              if (lastChild) {
+                const target = state.doc.content.size - 1; // inside last paragraph
+                const $target = state.doc.resolve(target);
+                view.dispatch(state.tr.setSelection(new TextSelection(state.doc.resolve($target.start()), state.doc.resolve($target.start()))));
+              }
+              event.preventDefault();
+              return true;
+            }
+
+            // g: start pending key for gg
+            if (event.key === 'g' && !storage.pendingOp) {
+              storage.pendingKey = 'g';
+              event.preventDefault();
+              return true;
             }
 
             // Start delete operator

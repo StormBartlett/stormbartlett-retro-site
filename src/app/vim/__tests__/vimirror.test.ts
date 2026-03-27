@@ -198,10 +198,101 @@ describe('Batch 2: a/A/I/o/O insert mode variants', () => {
     pressKey(editor, 'O');
     expect(getMode(editor)).toBe('insert');
     expect(editor.state.doc.childCount).toBe(2);
-    // Cursor is in first (new) paragraph, "Only" is now second
     const $pos = editor.state.doc.resolve(cursorPos(editor));
     expect($pos.parent.textContent).toBe('');
-    // Second paragraph still has "Only"
     expect(editor.state.doc.child(1).textContent).toBe('Only');
+  });
+});
+
+describe('Batch 3: standalone motions 0/$/^/e/G/gg', () => {
+  let editor: Editor;
+
+  afterEach(() => {
+    editor?.destroy();
+  });
+
+  it('0 moves to start of line', () => {
+    editor = createEditor('<p>Hello World</p>');
+    setCursor(editor, 6); // on space
+    pressKey(editor, '0');
+    expect(cursorPos(editor)).toBe(1); // start of line
+  });
+
+  it('$ moves to end of line', () => {
+    editor = createEditor('<p>Hello</p>');
+    setCursor(editor, 1); // on "H"
+    pressKey(editor, '$');
+    expect(cursorPos(editor)).toBe(6); // end of "Hello"
+  });
+
+  it('^ moves to first non-whitespace character', () => {
+    // Use non-breaking spaces (\u00a0) since HTML collapses regular spaces
+    editor = createEditor('<p>\u00a0\u00a0\u00a0Hello</p>');
+    setCursor(editor, 6); // somewhere in middle
+    pressKey(editor, '^');
+    expect(cursorPos(editor)).toBe(4); // on "H" (after 3 nbsp)
+  });
+
+  it('^ on line with no leading whitespace goes to start', () => {
+    editor = createEditor('<p>Hello</p>');
+    setCursor(editor, 3);
+    pressKey(editor, '^');
+    expect(cursorPos(editor)).toBe(1);
+  });
+
+  it('e moves to end of current/next word', () => {
+    editor = createEditor('<p>Hello World</p>');
+    setCursor(editor, 1); // on "H"
+    pressKey(editor, 'e');
+    // Should move to end of "Hello" (position 5, on "o")
+    expect(cursorPos(editor)).toBeLessThanOrEqual(6);
+    expect(cursorPos(editor)).toBeGreaterThanOrEqual(5);
+  });
+
+  it('G moves to start of last line', () => {
+    editor = createEditor('<p>First</p><p>Second</p><p>Third</p>');
+    setCursor(editor, 1); // on "F"
+    pressKey(editor, 'G');
+    const $pos = editor.state.doc.resolve(cursorPos(editor));
+    const lineText = editor.state.doc.textBetween($pos.start(), $pos.end());
+    expect(lineText).toBe('Third');
+  });
+
+  it('gg moves to start of document', () => {
+    editor = createEditor('<p>First</p><p>Second</p><p>Third</p>');
+    // Move to third line first
+    setCursor(editor, 15); // somewhere in "Third"
+    pressKey(editor, 'g');
+    pressKey(editor, 'g');
+    expect(cursorPos(editor)).toBe(1); // start of doc
+  });
+
+  it('gg from first line stays at start', () => {
+    editor = createEditor('<p>Hello</p>');
+    setCursor(editor, 3);
+    pressKey(editor, 'g');
+    pressKey(editor, 'g');
+    expect(cursorPos(editor)).toBe(1);
+  });
+
+  it('dG deletes from current line to end of document', () => {
+    editor = createEditor('<p>First</p><p>Second</p><p>Third</p>');
+    setCursor(editor, 8); // on "S" in "Second"
+    pressKey(editor, 'd');
+    pressKey(editor, 'G');
+    expect(docText(editor)).toContain('First');
+    expect(docText(editor)).not.toContain('Second');
+    expect(docText(editor)).not.toContain('Third');
+  });
+
+  it('dgg deletes from current line to start of document', () => {
+    editor = createEditor('<p>First</p><p>Second</p><p>Third</p>');
+    setCursor(editor, 8); // on "S" in "Second"
+    pressKey(editor, 'd');
+    pressKey(editor, 'g');
+    pressKey(editor, 'g');
+    expect(docText(editor)).not.toContain('First');
+    expect(docText(editor)).not.toContain('Second');
+    expect(docText(editor)).toContain('Third');
   });
 });
