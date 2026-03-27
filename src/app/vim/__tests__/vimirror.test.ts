@@ -124,3 +124,84 @@ describe('Batch 1: j/k line movement', () => {
     expect(docText(editor)).not.toContain('World');
   });
 });
+
+describe('Batch 2: a/A/I/o/O insert mode variants', () => {
+  let editor: Editor;
+
+  afterEach(() => {
+    editor?.destroy();
+  });
+
+  it('a enters insert mode one position after cursor', () => {
+    editor = createEditor('<p>Hello</p>');
+    setCursor(editor, 1); // on "H"
+    pressKey(editor, 'a');
+    expect(getMode(editor)).toBe('insert');
+    expect(cursorPos(editor)).toBe(2); // after "H"
+  });
+
+  it('A enters insert mode at end of line', () => {
+    editor = createEditor('<p>Hello</p>');
+    setCursor(editor, 1); // on "H"
+    pressKey(editor, 'A');
+    expect(getMode(editor)).toBe('insert');
+    expect(cursorPos(editor)).toBe(6); // end of "Hello"
+  });
+
+  it('I enters insert mode at start of line', () => {
+    editor = createEditor('<p>Hello</p>');
+    setCursor(editor, 4); // on second "l"
+    pressKey(editor, 'I');
+    expect(getMode(editor)).toBe('insert');
+    expect(cursorPos(editor)).toBe(1); // start of line
+  });
+
+  it('o opens new line below and enters insert mode', () => {
+    editor = createEditor('<p>Hello</p><p>World</p>');
+    setCursor(editor, 1); // on "H"
+    pressKey(editor, 'o');
+    expect(getMode(editor)).toBe('insert');
+    // New empty paragraph inserted between Hello and World
+    // Cursor should be inside the new paragraph
+    const $pos = editor.state.doc.resolve(cursorPos(editor));
+    const lineText = editor.state.doc.textBetween($pos.start(), $pos.end());
+    expect(lineText).toBe(''); // new empty line
+    // Doc should now have 3 paragraphs
+    expect(editor.state.doc.childCount).toBe(3);
+  });
+
+  it('O opens new line above and enters insert mode', () => {
+    editor = createEditor('<p>Hello</p><p>World</p>');
+    setCursor(editor, 8); // on "W"
+    pressKey(editor, 'O');
+    expect(getMode(editor)).toBe('insert');
+    const $pos = editor.state.doc.resolve(cursorPos(editor));
+    const lineText = editor.state.doc.textBetween($pos.start(), $pos.end());
+    expect(lineText).toBe('');
+    expect(editor.state.doc.childCount).toBe(3);
+  });
+
+  it('o at last line creates line at end', () => {
+    editor = createEditor('<p>Only</p>');
+    setCursor(editor, 1);
+    pressKey(editor, 'o');
+    expect(getMode(editor)).toBe('insert');
+    expect(editor.state.doc.childCount).toBe(2);
+    // Cursor is in second (new) paragraph
+    const $pos = editor.state.doc.resolve(cursorPos(editor));
+    expect($pos.parent.textContent).toBe('');
+  });
+
+  it('O at first line creates line at top', () => {
+    editor = createEditor('<p>Only</p>');
+    setCursor(editor, 1);
+    pressKey(editor, 'O');
+    expect(getMode(editor)).toBe('insert');
+    expect(editor.state.doc.childCount).toBe(2);
+    // Cursor is in first (new) paragraph, "Only" is now second
+    const $pos = editor.state.doc.resolve(cursorPos(editor));
+    expect($pos.parent.textContent).toBe('');
+    // Second paragraph still has "Only"
+    expect(editor.state.doc.child(1).textContent).toBe('Only');
+  });
+});

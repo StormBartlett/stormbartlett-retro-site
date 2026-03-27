@@ -519,6 +519,69 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
               return true;
             }
 
+            // a: append after cursor
+            if (event.key === 'a') {
+              const head = getHead();
+              const { end } = getLineBounds(head);
+              const newPos = Math.min(head + 1, end);
+              let tr = state.tr.setSelection(new TextSelection(state.doc.resolve(newPos), state.doc.resolve(newPos)));
+              tr = tr.setMeta(TransactionMeta.ChangeModeTo, VimModes.Insert);
+              view.dispatch(tr);
+              event.preventDefault();
+              return true;
+            }
+
+            // A: append at end of line
+            if (event.key === 'A') {
+              const head = getHead();
+              const { end } = getLineBounds(head);
+              let tr = state.tr.setSelection(new TextSelection(state.doc.resolve(end), state.doc.resolve(end)));
+              tr = tr.setMeta(TransactionMeta.ChangeModeTo, VimModes.Insert);
+              view.dispatch(tr);
+              event.preventDefault();
+              return true;
+            }
+
+            // I: insert at start of line
+            if (event.key === 'I') {
+              const head = getHead();
+              const { start } = getLineBounds(head);
+              let tr = state.tr.setSelection(new TextSelection(state.doc.resolve(start), state.doc.resolve(start)));
+              tr = tr.setMeta(TransactionMeta.ChangeModeTo, VimModes.Insert);
+              view.dispatch(tr);
+              event.preventDefault();
+              return true;
+            }
+
+            // o: open line below
+            if (event.key === 'o') {
+              const head = getHead();
+              const { end } = getLineBounds(head);
+              const $end = state.doc.resolve(end);
+              const after = $end.after($end.depth);
+              let tr = state.tr.insert(after, state.schema.nodes.paragraph.create());
+              const newPos = after + 1; // inside the new empty paragraph
+              tr = tr.setSelection(new TextSelection(tr.doc.resolve(newPos), tr.doc.resolve(newPos)));
+              tr = tr.setMeta(TransactionMeta.ChangeModeTo, VimModes.Insert);
+              view.dispatch(tr);
+              event.preventDefault();
+              return true;
+            }
+
+            // O: open line above
+            if (event.key === 'O') {
+              const head = getHead();
+              const $pos = state.doc.resolve(head);
+              const before = $pos.before($pos.depth);
+              let tr = state.tr.insert(before, state.schema.nodes.paragraph.create());
+              const newPos = before + 1; // inside the new empty paragraph
+              tr = tr.setSelection(new TextSelection(tr.doc.resolve(newPos), tr.doc.resolve(newPos)));
+              tr = tr.setMeta(TransactionMeta.ChangeModeTo, VimModes.Insert);
+              view.dispatch(tr);
+              event.preventDefault();
+              return true;
+            }
+
             // x: delete character under cursor
             if (event.key === 'x') {
               const head = getHead();
