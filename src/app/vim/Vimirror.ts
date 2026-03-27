@@ -519,6 +519,34 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                   event.preventDefault();
                   return true;
                 }
+                case '}': {
+                  // d}/c}: operate from current line to end of next paragraph
+                  const $h = state.doc.resolve(head);
+                  try {
+                    const after = $h.after($h.depth);
+                    if (after < state.doc.content.size) {
+                      const $next = state.doc.resolve(after + 1);
+                      execOp(lineStart, $next.end(), true);
+                    }
+                  } catch { /* at last paragraph */ }
+                  storage.pendingOp = null;
+                  event.preventDefault();
+                  return true;
+                }
+                case '{': {
+                  // d{/c{: operate from current line to start of previous paragraph
+                  const $h = state.doc.resolve(head);
+                  try {
+                    const before = $h.before($h.depth);
+                    if (before > 0) {
+                      const $prev = state.doc.resolve(before - 1);
+                      execOp($prev.start(), lineEnd, true);
+                    }
+                  } catch { /* at first paragraph */ }
+                  storage.pendingOp = null;
+                  event.preventDefault();
+                  return true;
+                }
                 case 'y': {
                   // yy: yank line
                   const deleted = state.doc.textBetween(lineStart, lineEnd, "\n", "\n");
@@ -607,6 +635,36 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
               if (target !== head) {
                 view.dispatch(state.tr.setSelection(new TextSelection(state.doc.resolve(target), state.doc.resolve(target))));
               }
+              event.preventDefault();
+              return true;
+            }
+
+            // }: jump to start of next paragraph
+            if (event.key === '}' && !storage.pendingOp) {
+              const head = getHead();
+              const $pos = state.doc.resolve(head);
+              try {
+                const after = $pos.after($pos.depth);
+                if (after < state.doc.content.size) {
+                  const target = state.doc.resolve(after + 1).start();
+                  view.dispatch(state.tr.setSelection(new TextSelection(state.doc.resolve(target), state.doc.resolve(target))));
+                }
+              } catch { /* at last paragraph */ }
+              event.preventDefault();
+              return true;
+            }
+
+            // {: jump to start of previous paragraph
+            if (event.key === '{' && !storage.pendingOp) {
+              const head = getHead();
+              const $pos = state.doc.resolve(head);
+              try {
+                const before = $pos.before($pos.depth);
+                if (before > 0) {
+                  const target = state.doc.resolve(before - 1).start();
+                  view.dispatch(state.tr.setSelection(new TextSelection(state.doc.resolve(target), state.doc.resolve(target))));
+                }
+              } catch { /* at first paragraph */ }
               event.preventDefault();
               return true;
             }

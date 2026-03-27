@@ -455,3 +455,67 @@ describe('Bugfix: p/P paste', () => {
     expect(editor.state.doc.child(2).textContent).toBe('World');
   });
 });
+
+describe('Paragraph movement: { and }', () => {
+  let editor: Editor;
+  afterEach(() => { editor?.destroy(); });
+
+  it('} moves to start of next paragraph', () => {
+    editor = createEditor('<p>First</p><p>Second</p><p>Third</p>');
+    setCursor(editor, 1); // on "F"
+    pressKey(editor, '}');
+    const $pos = editor.state.doc.resolve(cursorPos(editor));
+    expect(editor.state.doc.textBetween($pos.start(), $pos.end())).toBe('Second');
+  });
+
+  it('} at last paragraph does not move', () => {
+    editor = createEditor('<p>First</p><p>Second</p>');
+    setCursor(editor, 8); // on "S" in "Second"
+    pressKey(editor, '}');
+    expect(cursorPos(editor)).toBe(8); // stays put
+  });
+
+  it('{ moves to start of previous paragraph', () => {
+    editor = createEditor('<p>First</p><p>Second</p><p>Third</p>');
+    setCursor(editor, 8); // on "S" in "Second"
+    pressKey(editor, '{');
+    const $pos = editor.state.doc.resolve(cursorPos(editor));
+    expect(editor.state.doc.textBetween($pos.start(), $pos.end())).toBe('First');
+  });
+
+  it('{ at first paragraph does not move', () => {
+    editor = createEditor('<p>First</p><p>Second</p>');
+    setCursor(editor, 1); // on "F"
+    pressKey(editor, '{');
+    expect(cursorPos(editor)).toBe(1); // stays put
+  });
+
+  it('} works across multiple paragraphs', () => {
+    editor = createEditor('<p>AAA</p><p>BBB</p><p>CCC</p>');
+    setCursor(editor, 1); // on first "A"
+    pressKey(editor, '}');
+    pressKey(editor, '}');
+    const $pos = editor.state.doc.resolve(cursorPos(editor));
+    expect(editor.state.doc.textBetween($pos.start(), $pos.end())).toBe('CCC');
+  });
+
+  it('d} deletes current and next paragraph', () => {
+    editor = createEditor('<p>First</p><p>Second</p><p>Third</p>');
+    setCursor(editor, 1); // on "F"
+    pressKey(editor, 'd');
+    pressKey(editor, '}');
+    expect(docText(editor)).not.toContain('First');
+    expect(docText(editor)).not.toContain('Second');
+    expect(docText(editor)).toContain('Third');
+  });
+
+  it('d{ deletes previous and current paragraph', () => {
+    editor = createEditor('<p>First</p><p>Second</p><p>Third</p>');
+    setCursor(editor, 8); // on "S" in "Second"
+    pressKey(editor, 'd');
+    pressKey(editor, '{');
+    expect(docText(editor)).not.toContain('First');
+    expect(docText(editor)).not.toContain('Second');
+    expect(docText(editor)).toContain('Third');
+  });
+});
