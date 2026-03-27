@@ -296,3 +296,68 @@ describe('Batch 3: standalone motions 0/$/^/e/G/gg', () => {
     expect(docText(editor)).toContain('Third');
   });
 });
+
+describe('Batch 4: c operator (change)', () => {
+  let editor: Editor;
+
+  afterEach(() => {
+    editor?.destroy();
+  });
+
+  it('cw deletes word and enters insert mode', () => {
+    editor = createEditor('<p>Hello World</p>');
+    setCursor(editor, 1); // on "H"
+    pressKey(editor, 'c');
+    pressKey(editor, 'w');
+    expect(getMode(editor)).toBe('insert');
+    expect(docText(editor)).not.toContain('Hello');
+    expect(docText(editor)).toContain('World');
+  });
+
+  it('cc deletes line content and enters insert mode', () => {
+    editor = createEditor('<p>Hello</p><p>World</p>');
+    setCursor(editor, 1); // on "H"
+    pressKey(editor, 'c');
+    pressKey(editor, 'c');
+    expect(getMode(editor)).toBe('insert');
+    expect(docText(editor)).not.toContain('Hello');
+    expect(docText(editor)).toContain('World');
+  });
+
+  it('c$ deletes to end of line and enters insert mode', () => {
+    editor = createEditor('<p>Hello World</p>');
+    setCursor(editor, 6); // on space before "World"
+    pressKey(editor, 'c');
+    pressKey(editor, '$');
+    expect(getMode(editor)).toBe('insert');
+    expect(docText(editor)).toContain('Hello');
+  });
+
+  it('c0 deletes to start of line and enters insert mode', () => {
+    editor = createEditor('<p>Hello World</p>');
+    setCursor(editor, 7); // on "W"
+    pressKey(editor, 'c');
+    pressKey(editor, '0');
+    expect(getMode(editor)).toBe('insert');
+    expect(docText(editor)).toContain('World');
+  });
+
+  it('ce deletes to end of word and enters insert mode', () => {
+    editor = createEditor('<p>Hello World</p>');
+    setCursor(editor, 1); // on "H"
+    pressKey(editor, 'c');
+    pressKey(editor, 'e');
+    expect(getMode(editor)).toBe('insert');
+    // "Hello" or most of it should be deleted
+    expect(docText(editor)).toContain('World');
+  });
+
+  it('cb deletes backward to word start and enters insert mode', () => {
+    editor = createEditor('<p>Hello World</p>');
+    setCursor(editor, 11); // on "d" in "World"
+    pressKey(editor, 'c');
+    pressKey(editor, 'b');
+    expect(getMode(editor)).toBe('insert');
+    expect(docText(editor)).toContain('Hello');
+  });
+});

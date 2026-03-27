@@ -248,7 +248,7 @@ interface VimirrorStorage {
   currentVimMode: VimModes;
   showCursor: boolean;
   cursorDecoration: Decoration;
-  pendingOp: null | { type: 'd' | 'y'; from: number };
+  pendingOp: null | { type: 'd' | 'y' | 'c'; from: number };
   pendingKey: string | null;
   yankText: string;
 }
@@ -335,11 +335,11 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
               let i = text.length - 1;
               const isWord = (ch: string) => /[A-Za-z0-9_]/.test(ch);
               if (isWord(text[i])) {
-                while (i >= 0 && isWord(text[i])) i--;
-                while (i >= 0 && !isWord(text[i])) i--;
+                // Inside a word: skip to its start
                 while (i >= 0 && isWord(text[i])) i--;
                 return Math.max(start, start + i + 1);
               } else {
+                // On whitespace/separator: skip non-word, then skip the word before it
                 while (i >= 0 && !isWord(text[i])) i--;
                 while (i >= 0 && isWord(text[i])) i--;
                 return Math.max(start, start + i + 1);
@@ -366,13 +366,16 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
               storage.pendingKey = null;
               if (event.key === 'g') {
                 if (storage.pendingOp) {
-                  // dgg/ygg: operate from cursor to start of document
+                  // dgg/ygg/cgg: operate from cursor to start of document
                   const head = getHead();
                   const { end: lineEnd } = getLineBounds(head);
                   const firstStart = state.doc.resolve(1).start();
                   const deleted = state.doc.textBetween(firstStart, lineEnd, "\n", "\n");
                   storage.yankText = deleted;
-                  if (storage.pendingOp.type === 'd') view.dispatch(state.tr.delete(firstStart, lineEnd));
+                  let tr = state.tr;
+                  if (storage.pendingOp.type === 'd' || storage.pendingOp.type === 'c') tr = tr.delete(firstStart, lineEnd);
+                  if (storage.pendingOp.type === 'c') tr = tr.setMeta(TransactionMeta.ChangeModeTo, VimModes.Insert);
+                  view.dispatch(tr);
                   storage.pendingOp = null;
                 } else {
                   // gg: go to start of document
@@ -386,85 +389,61 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
               if (storage.pendingOp) { storage.pendingOp = null; }
             }
 
-            // Complete pending delete operator
+            // Complete pending operator (d/y/c + motion)
             if (storage.pendingOp) {
+              const opType = storage.pendingOp.type;
               const from = storage.pendingOp.from;
               const head = getHead();
               const { start: lineStart, end: lineEnd } = getLineBounds(head);
+
+              // Helper: execute the operator on a range
+              const execOp = (lo: number, hi: number) => {
+                if (lo > hi) { const tmp = lo; lo = hi; hi = tmp; }
+                const deleted = state.doc.textBetween(lo, hi, "\n", "\n");
+                storage.yankText = deleted;
+                let tr = state.tr;
+                if (opType === 'd' || opType === 'c') tr = tr.delete(lo, hi);
+                if (opType === 'c') tr = tr.setMeta(TransactionMeta.ChangeModeTo, VimModes.Insert);
+                view.dispatch(tr);
+                storage.pendingOp = null;
+                event.preventDefault();
+              };
+
               switch (event.key) {
                 case 'w': {
-                  const to = wordForwardPos(head);
-                  const lo = Math.min(from, to);
-                  const hi = Math.max(from, to);
-                  const deleted = state.doc.textBetween(lo, hi, "\n", "\n");
-                  if (storage.pendingOp.type === 'd') view.dispatch(state.tr.delete(lo, hi));
-                  if (storage.pendingOp.type === 'y') storage.yankText = deleted;
-                  storage.pendingOp = null;
-                  event.preventDefault();
+                  execOp(Math.min(from, wordForwardPos(head)), Math.max(from, wordForwardPos(head)));
                   return true;
                 }
-                case 'd': {
-                  // dd: delete line content
-                  const deleted = state.doc.textBetween(lineStart, lineEnd, "\n", "\n");
-                  storage.yankText = deleted;
-                  if (storage.pendingOp.type === 'd') view.dispatch(state.tr.delete(lineStart, lineEnd));
-                  storage.pendingOp = null;
-                  event.preventDefault();
+                case 'd': case 'c': {
+                  // dd/cc: operate on whole line
+                  execOp(lineStart, lineEnd);
                   return true;
                 }
                 case '0': {
-                  const lo = Math.min(from, lineStart);
-                  const hi = Math.max(from, lineStart);
-                  const deleted = state.doc.textBetween(lo, hi, "\n", "\n");
-                  storage.yankText = deleted;
-                  if (storage.pendingOp.type === 'd') view.dispatch(state.tr.delete(lo, hi));
-                  storage.pendingOp = null;
-                  event.preventDefault();
+                  execOp(Math.min(from, lineStart), Math.max(from, lineStart));
                   return true;
                 }
                 case '$': {
                   const to = Math.max(lineStart, lineEnd - 1);
-                  const lo = Math.min(from, to);
-                  const hi = Math.max(from, to);
-                  const deleted = state.doc.textBetween(lo, hi, "\n", "\n");
-                  storage.yankText = deleted;
-                  if (storage.pendingOp.type === 'd') view.dispatch(state.tr.delete(lo, hi));
-                  storage.pendingOp = null;
-                  event.preventDefault();
+                  execOp(Math.min(from, to), Math.max(from, to));
                   return true;
                 }
                 case 'e': {
                   const to = wordEndPos(head);
-                  const lo = Math.min(from, to + 1);
-                  const hi = Math.max(from, to + 1);
-                  const deleted = state.doc.textBetween(lo, hi, "\n", "\n");
-                  storage.yankText = deleted;
-                  if (storage.pendingOp.type === 'd') view.dispatch(state.tr.delete(lo, hi));
-                  storage.pendingOp = null;
-                  event.preventDefault();
+                  execOp(Math.min(from, to + 1), Math.max(from, to + 1));
                   return true;
                 }
                 case 'b': {
-                  const to = wordBackwardPos(head);
-                  const lo = Math.min(from, to);
-                  const hi = Math.max(from, to);
-                  const deleted = state.doc.textBetween(lo, hi, "\n", "\n");
-                  storage.yankText = deleted;
-                  if (storage.pendingOp.type === 'd') view.dispatch(state.tr.delete(lo, hi));
-                  storage.pendingOp = null;
-                  event.preventDefault();
+                  execOp(Math.min(from, wordBackwardPos(head)), Math.max(from, wordBackwardPos(head)));
                   return true;
                 }
                 case 'j': {
-                  // dj/yj: operate on current line + next line
                   const $h = state.doc.resolve(head);
                   try {
                     const after = $h.after($h.depth);
                     if (after < state.doc.content.size) {
                       const $next = state.doc.resolve(after + 1);
-                      const deleted = state.doc.textBetween(lineStart, $next.end(), "\n", "\n");
-                      storage.yankText = deleted;
-                      if (storage.pendingOp!.type === 'd') view.dispatch(state.tr.delete(lineStart, $next.end()));
+                      execOp(lineStart, $next.end());
                     }
                   } catch { /* at last line */ }
                   storage.pendingOp = null;
@@ -472,15 +451,12 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                   return true;
                 }
                 case 'k': {
-                  // dk/yk: operate on previous line + current line
                   const $h = state.doc.resolve(head);
                   try {
                     const before = $h.before($h.depth);
                     if (before > 0) {
                       const $prev = state.doc.resolve(before - 1);
-                      const deleted = state.doc.textBetween($prev.start(), lineEnd, "\n", "\n");
-                      storage.yankText = deleted;
-                      if (storage.pendingOp!.type === 'd') view.dispatch(state.tr.delete($prev.start(), lineEnd));
+                      execOp($prev.start(), lineEnd);
                     }
                   } catch { /* at first line */ }
                   storage.pendingOp = null;
@@ -488,22 +464,18 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                   return true;
                 }
                 case 'G': {
-                  // dG/yG: operate from current line to end of document
                   const lastEnd = state.doc.resolve(state.doc.content.size - 1).end();
-                  const deleted = state.doc.textBetween(lineStart, lastEnd, "\n", "\n");
-                  storage.yankText = deleted;
-                  if (storage.pendingOp!.type === 'd') view.dispatch(state.tr.delete(lineStart, lastEnd));
-                  storage.pendingOp = null;
-                  event.preventDefault();
+                  execOp(lineStart, lastEnd);
                   return true;
                 }
                 case 'g': {
-                  // dg -> wait for second g (dgg)
+                  // dg/cg -> wait for second g
                   storage.pendingKey = 'g';
                   event.preventDefault();
                   return true;
                 }
-                case 'y': { // yy -> yank line
+                case 'y': {
+                  // yy: yank line
                   const deleted = state.doc.textBetween(lineStart, lineEnd, "\n", "\n");
                   storage.yankText = deleted;
                   storage.pendingOp = null;
@@ -511,7 +483,6 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                   return true;
                 }
                 default: {
-                  // cancel op if unknown
                   storage.pendingOp = null;
                   return false;
                 }
@@ -589,6 +560,13 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
             // Start yank operator
             if (event.key === 'y') {
               storage.pendingOp = { type: 'y', from: getHead() };
+              event.preventDefault();
+              return true;
+            }
+
+            // Start change operator
+            if (event.key === 'c') {
+              storage.pendingOp = { type: 'c', from: getHead() };
               event.preventDefault();
               return true;
             }
