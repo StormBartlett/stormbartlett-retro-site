@@ -361,3 +361,97 @@ describe('Batch 4: c operator (change)', () => {
     expect(docText(editor)).toContain('Hello');
   });
 });
+
+describe('Bugfix: w/b standalone motions', () => {
+  let editor: Editor;
+  afterEach(() => { editor?.destroy(); });
+
+  it('w jumps to start of next word', () => {
+    editor = createEditor('<p>Hello World</p>');
+    setCursor(editor, 1); // on "H"
+    pressKey(editor, 'w');
+    expect(cursorPos(editor)).toBe(7); // on "W"
+  });
+
+  it('w from middle of word jumps to next word', () => {
+    editor = createEditor('<p>Hello World End</p>');
+    setCursor(editor, 3); // on first "l"
+    pressKey(editor, 'w');
+    expect(cursorPos(editor)).toBe(7); // on "W"
+  });
+
+  it('w skips multiple spaces', () => {
+    // Use non-breaking spaces since HTML collapses regular spaces
+    editor = createEditor('<p>Hello\u00a0\u00a0\u00a0World</p>');
+    setCursor(editor, 1); // on "H"
+    pressKey(editor, 'w');
+    expect(cursorPos(editor)).toBe(9); // on "W" (after "Hello" + 3 nbsps)
+  });
+
+  it('w at last word stays at end of line', () => {
+    editor = createEditor('<p>Hello World</p>');
+    setCursor(editor, 7); // on "W"
+    pressKey(editor, 'w');
+    // Should go to end of line (no next word)
+    expect(cursorPos(editor)).toBe(12);
+  });
+
+  it('b jumps to start of previous word', () => {
+    editor = createEditor('<p>Hello World</p>');
+    setCursor(editor, 7); // on "W"
+    pressKey(editor, 'b');
+    expect(cursorPos(editor)).toBe(1); // on "H"
+  });
+
+  it('b from middle of word goes to start of that word', () => {
+    editor = createEditor('<p>Hello World</p>');
+    setCursor(editor, 9); // on "r"
+    pressKey(editor, 'b');
+    expect(cursorPos(editor)).toBe(7); // on "W"
+  });
+});
+
+describe('Bugfix: p/P paste', () => {
+  let editor: Editor;
+  afterEach(() => { editor?.destroy(); });
+
+  it('p cursor lands on last char of pasted text', () => {
+    editor = createEditor('<p>Hello World</p>');
+    setCursor(editor, 1);
+    // yank "Hello " with dw
+    pressKey(editor, 'd');
+    pressKey(editor, 'w');
+    // doc is now "World", cursor at 1
+    pressKey(editor, 'P'); // paste before cursor
+    // "Hello World" restored, cursor on last char of "Hello " = space at pos 6
+    const pos = cursorPos(editor);
+    expect(pos).toBeLessThan(1 + 6 + 1); // not past the pasted text
+  });
+
+  it('dd + p pastes as new line below', () => {
+    editor = createEditor('<p>First</p><p>Second</p><p>Third</p>');
+    setCursor(editor, 1); // on "F"
+    pressKey(editor, 'd');
+    pressKey(editor, 'd'); // delete "First" line
+    // Now 2 paragraphs: "Second", "Third"
+    expect(editor.state.doc.childCount).toBe(2);
+    pressKey(editor, 'p'); // paste below current line
+    // Should restore to 3 paragraphs with "First" after "Second"
+    expect(editor.state.doc.childCount).toBe(3);
+    // "First" should be in the doc
+    expect(docText(editor)).toContain('First');
+  });
+
+  it('yy + p pastes line below without deleting', () => {
+    editor = createEditor('<p>Hello</p><p>World</p>');
+    setCursor(editor, 1); // on "H"
+    pressKey(editor, 'y');
+    pressKey(editor, 'y'); // yank "Hello" line
+    pressKey(editor, 'p'); // paste below
+    expect(editor.state.doc.childCount).toBe(3);
+    // First and third paragraphs should both be "Hello"
+    expect(editor.state.doc.child(0).textContent).toBe('Hello');
+    expect(editor.state.doc.child(1).textContent).toBe('Hello');
+    expect(editor.state.doc.child(2).textContent).toBe('World');
+  });
+});

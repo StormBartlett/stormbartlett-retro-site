@@ -250,7 +250,10 @@ interface VimirrorStorage {
   cursorDecoration: Decoration;
   pendingOp: null | { type: 'd' | 'y' | 'c'; from: number };
   pendingKey: string | null;
+  pendingReplace: boolean;
   yankText: string;
+  yankIsLinewise: boolean;
+  lastAction: null | { keys: string[] };
 }
 
 const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
@@ -272,7 +275,10 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
       showCursor: false,
       pendingOp: null,
       pendingKey: null,
+      pendingReplace: false,
       yankText: "",
+      yankIsLinewise: false,
+      lastAction: null,
     };
   },
 
@@ -309,6 +315,23 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
             if (storage.currentVimMode === VimModes.Insert) return false;
 
             const state = view.state;
+
+            // Handle pending replace (r + next char)
+            if (storage.pendingReplace) {
+              storage.pendingReplace = false;
+              if (event.key.length === 1) {
+                const head = state.selection.from;
+                const to = Math.min(state.doc.content.size, head + 1);
+                if (to > head) {
+                  let tr = state.tr.delete(head, to);
+                  tr = tr.insertText(event.key, head);
+                  view.dispatch(tr);
+                  storage.lastAction = { keys: ['r', event.key] };
+                }
+              }
+              event.preventDefault();
+              return true;
+            }
             const getHead = () => state.selection.from;
             const getLineBounds = (pos: number) => {
               const $pos = state.doc.resolve(pos);
@@ -397,10 +420,11 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
               const { start: lineStart, end: lineEnd } = getLineBounds(head);
 
               // Helper: execute the operator on a range
-              const execOp = (lo: number, hi: number) => {
+              const execOp = (lo: number, hi: number, linewise = false) => {
                 if (lo > hi) { const tmp = lo; lo = hi; hi = tmp; }
                 const deleted = state.doc.textBetween(lo, hi, "\n", "\n");
                 storage.yankText = deleted;
+                storage.yankIsLinewise = linewise;
                 let tr = state.tr;
                 if (opType === 'd' || opType === 'c') tr = tr.delete(lo, hi);
                 if (opType === 'c') tr = tr.setMeta(TransactionMeta.ChangeModeTo, VimModes.Insert);
@@ -416,7 +440,28 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                 }
                 case 'd': case 'c': {
                   // dd/cc: operate on whole line
-                  execOp(lineStart, lineEnd);
+                  const $h = state.doc.resolve(head);
+                  const nodeStart = $h.before($h.depth);
+                  const nodeEnd = $h.after($h.depth);
+                  const deleted = state.doc.textBetween(lineStart, lineEnd, "\n", "\n");
+                  storage.yankText = deleted;
+                  storage.yankIsLinewise = true;
+                  let tr = state.tr;
+                  if (opType === 'd') {
+                    // Delete whole paragraph node if more than one exists, otherwise clear content
+                    if (state.doc.childCount > 1) {
+                      tr = tr.delete(nodeStart, nodeEnd);
+                    } else {
+                      tr = tr.delete(lineStart, lineEnd);
+                    }
+                  } else {
+                    // cc: clear content but keep the paragraph, enter insert
+                    tr = tr.delete(lineStart, lineEnd);
+                    tr = tr.setMeta(TransactionMeta.ChangeModeTo, VimModes.Insert);
+                  }
+                  view.dispatch(tr);
+                  storage.pendingOp = null;
+                  event.preventDefault();
                   return true;
                 }
                 case '0': {
@@ -443,7 +488,7 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                     const after = $h.after($h.depth);
                     if (after < state.doc.content.size) {
                       const $next = state.doc.resolve(after + 1);
-                      execOp(lineStart, $next.end());
+                      execOp(lineStart, $next.end(), true);
                     }
                   } catch { /* at last line */ }
                   storage.pendingOp = null;
@@ -456,7 +501,7 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                     const before = $h.before($h.depth);
                     if (before > 0) {
                       const $prev = state.doc.resolve(before - 1);
-                      execOp($prev.start(), lineEnd);
+                      execOp($prev.start(), lineEnd, true);
                     }
                   } catch { /* at first line */ }
                   storage.pendingOp = null;
@@ -465,7 +510,7 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                 }
                 case 'G': {
                   const lastEnd = state.doc.resolve(state.doc.content.size - 1).end();
-                  execOp(lineStart, lastEnd);
+                  execOp(lineStart, lastEnd, true);
                   return true;
                 }
                 case 'g': {
@@ -478,6 +523,7 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                   // yy: yank line
                   const deleted = state.doc.textBetween(lineStart, lineEnd, "\n", "\n");
                   storage.yankText = deleted;
+                  storage.yankIsLinewise = true;
                   storage.pendingOp = null;
                   event.preventDefault();
                   return true;
@@ -543,6 +589,28 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
               return true;
             }
 
+            // w: jump to start of next word (using wordForwardPos)
+            if (event.key === 'w' && !storage.pendingOp) {
+              const head = getHead();
+              const target = wordForwardPos(head);
+              if (target !== head) {
+                view.dispatch(state.tr.setSelection(new TextSelection(state.doc.resolve(target), state.doc.resolve(target))));
+              }
+              event.preventDefault();
+              return true;
+            }
+
+            // b: jump to start of previous word (using wordBackwardPos)
+            if (event.key === 'b' && !storage.pendingOp) {
+              const head = getHead();
+              const target = wordBackwardPos(head);
+              if (target !== head) {
+                view.dispatch(state.tr.setSelection(new TextSelection(state.doc.resolve(target), state.doc.resolve(target))));
+              }
+              event.preventDefault();
+              return true;
+            }
+
             // g: start pending key for gg
             if (event.key === 'g' && !storage.pendingOp) {
               storage.pendingKey = 'g';
@@ -573,29 +641,49 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
 
             // Paste after/before
             if (event.key === 'p') {
-              const insertAt = (() => {
-                const pos = getHead();
-                const hasNextChar = state.doc.textBetween(pos, pos + 1, '\\0', '\\0').length > 0;
-                return hasNextChar ? Math.min(state.doc.content.size, pos + 1) : pos;
-              })();
               if (storage.yankText && storage.yankText.length > 0) {
-                let tr = state.tr.insertText(storage.yankText, insertAt);
-                const newPos = Math.min(tr.doc.content.size, insertAt + storage.yankText.length);
-                const $pos = tr.doc.resolve(newPos);
-                tr = tr.setSelection(new TextSelection($pos, $pos));
-                view.dispatch(tr);
+                if (storage.yankIsLinewise) {
+                  // Line-wise paste: insert new paragraph below current line
+                  const head = getHead();
+                  const $pos = state.doc.resolve(head);
+                  const after = $pos.after($pos.depth);
+                  let tr = state.tr.insert(after, state.schema.nodes.paragraph.create(null, storage.yankText ? state.schema.text(storage.yankText) : null));
+                  const newPos = after + 1; // start of new paragraph
+                  tr = tr.setSelection(new TextSelection(tr.doc.resolve(newPos), tr.doc.resolve(newPos)));
+                  view.dispatch(tr);
+                } else {
+                  // Char-wise paste: insert after cursor, cursor on last pasted char
+                  const head = getHead();
+                  const hasNextChar = state.doc.textBetween(head, Math.min(head + 1, state.doc.content.size), '\0', '\0').length > 0;
+                  const insertAt = hasNextChar ? Math.min(state.doc.content.size, head + 1) : head;
+                  let tr = state.tr.insertText(storage.yankText, insertAt);
+                  const newPos = Math.min(tr.doc.content.size - 1, insertAt + storage.yankText.length - 1);
+                  tr = tr.setSelection(new TextSelection(tr.doc.resolve(newPos), tr.doc.resolve(newPos)));
+                  view.dispatch(tr);
+                }
               }
               event.preventDefault();
               return true;
             }
             if (event.key === 'P') {
-              const insertAt = getHead();
               if (storage.yankText && storage.yankText.length > 0) {
-                let tr = state.tr.insertText(storage.yankText, insertAt);
-                const newPos = Math.min(tr.doc.content.size, insertAt + storage.yankText.length);
-                const $pos = tr.doc.resolve(newPos);
-                tr = tr.setSelection(new TextSelection($pos, $pos));
-                view.dispatch(tr);
+                if (storage.yankIsLinewise) {
+                  // Line-wise paste: insert new paragraph above current line
+                  const head = getHead();
+                  const $pos = state.doc.resolve(head);
+                  const before = $pos.before($pos.depth);
+                  let tr = state.tr.insert(before, state.schema.nodes.paragraph.create(null, storage.yankText ? state.schema.text(storage.yankText) : null));
+                  const newPos = before + 1; // start of new paragraph
+                  tr = tr.setSelection(new TextSelection(tr.doc.resolve(newPos), tr.doc.resolve(newPos)));
+                  view.dispatch(tr);
+                } else {
+                  // Char-wise paste: insert before cursor, cursor on last pasted char
+                  const insertAt = getHead();
+                  let tr = state.tr.insertText(storage.yankText, insertAt);
+                  const newPos = Math.min(tr.doc.content.size - 1, insertAt + storage.yankText.length - 1);
+                  tr = tr.setSelection(new TextSelection(tr.doc.resolve(newPos), tr.doc.resolve(newPos)));
+                  view.dispatch(tr);
+                }
               }
               event.preventDefault();
               return true;
@@ -670,10 +758,73 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
               const to = Math.min(state.doc.content.size, head + 1);
               if (to > head) {
                 storage.yankText = state.doc.textBetween(head, to, '\\n', '\\n');
+                storage.yankIsLinewise = false;
                 view.dispatch(state.tr.delete(head, to));
+                storage.lastAction = { keys: ['x'] };
                 event.preventDefault();
                 return true;
               }
+            }
+
+            // r: replace character under cursor (waits for next key)
+            if (event.key === 'r') {
+              storage.pendingReplace = true;
+              event.preventDefault();
+              return true;
+            }
+
+            // J: join current line with next line
+            if (event.key === 'J') {
+              const head = getHead();
+              const $pos = state.doc.resolve(head);
+              try {
+                const after = $pos.after($pos.depth);
+                if (after < state.doc.content.size) {
+                  const $next = state.doc.resolve(after + 1);
+                  const nextText = state.doc.textBetween($next.start(), $next.end(), "\0", "\0");
+                  const { end: curEnd } = getLineBounds(head);
+                  // Delete the next paragraph and append its text to current line with a space
+                  let tr = state.tr;
+                  // Remove the next paragraph node
+                  tr = tr.delete($next.before($next.depth), $next.after($next.depth));
+                  // Insert the text at the end of the current line
+                  if (nextText.length > 0) {
+                    tr = tr.insertText(' ' + nextText, curEnd);
+                  }
+                  view.dispatch(tr);
+                  storage.lastAction = { keys: ['J'] };
+                }
+              } catch { /* at last line */ }
+              event.preventDefault();
+              return true;
+            }
+
+            // .: repeat last action
+            if (event.key === '.') {
+              if (storage.lastAction) {
+                for (const key of storage.lastAction.keys) {
+                  // Re-simulate the key sequence
+                  const fakeEvent = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+                  let handled = false;
+                  for (const plugin of view.state.plugins) {
+                    const handler = (plugin.props.handleDOMEvents as Record<string, any>)?.keydown;
+                    if (handler) {
+                      const result = handler(view, fakeEvent);
+                      if (result) { handled = true; break; }
+                    }
+                  }
+                  if (!handled) {
+                    for (const plugin of view.state.plugins) {
+                      if (plugin.props.handleKeyDown) {
+                        const result = plugin.props.handleKeyDown(view, fakeEvent);
+                        if (result) break;
+                      }
+                    }
+                  }
+                }
+              }
+              event.preventDefault();
+              return true;
             }
 
             return false;
