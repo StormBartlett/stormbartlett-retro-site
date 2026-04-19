@@ -643,29 +643,53 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
     const el = document.createElement("div");
     el.className = "marquee";
     marqueeRef.current = el;
-    desktopRef.current?.appendChild(el);
+    const desktop = desktopRef.current!;
+    desktop.appendChild(el);
+    // Compute screen-to-local coordinate transform using reference points
+    // This correctly handles rotation, scale, and perspective from CSS3D transforms
+    const toLocal = (() => {
+      const tmp = document.createElement('div');
+      tmp.style.cssText = 'position:absolute;pointer-events:none;width:0;height:0;visibility:hidden';
+      desktop.appendChild(tmp);
+      tmp.style.left = '0px'; tmp.style.top = '0px';
+      const p0 = tmp.getBoundingClientRect();
+      tmp.style.left = '100px';
+      const p1 = tmp.getBoundingClientRect();
+      tmp.style.left = '0px'; tmp.style.top = '100px';
+      const p2 = tmp.getBoundingClientRect();
+      tmp.remove();
+      // Forward: screen = A * local + T where A = [[a,c],[b,d]]
+      const a = (p1.left - p0.left) / 100;
+      const b = (p1.top - p0.top) / 100;
+      const c = (p2.left - p0.left) / 100;
+      const d = (p2.top - p0.top) / 100;
+      const tx = p0.left, ty = p0.top;
+      const det = a * d - c * b;
+      return (cx: number, cy: number) => {
+        const dx = cx - tx, dy = cy - ty;
+        return { x: (d * dx - c * dy) / det, y: (-b * dx + a * dy) / det };
+      };
+    })();
     const move = (ev: MouseEvent) => {
       if (!marqueeStart.current || !marqueeRef.current || !desktopRef.current) return;
-      const screenEl = desktopRef.current.closest('.embedded-screen') as HTMLElement | null;
-      const rect = screenEl?.getBoundingClientRect();
-      const css = screenEl ? window.getComputedStyle(screenEl) : null;
-      const cssW = css ? parseFloat(css.width || '0') : 0;
-      const cssH = css ? parseFloat(css.height || '0') : 0;
-      const scaleX = rect && cssW ? rect.width / cssW : 1;
-      const scaleY = rect && cssH ? rect.height / cssH : 1;
-      const d = desktopRef.current.getBoundingClientRect();
-      const left = (Math.min(marqueeStart.current.x, ev.clientX) - d.left) / scaleX;
-      const top = (Math.min(marqueeStart.current.y, ev.clientY) - d.top) / scaleY;
-      const width = Math.abs(ev.clientX - marqueeStart.current.x) / scaleX;
-      const height = Math.abs(ev.clientY - marqueeStart.current.y) / scaleY;
+      const s = toLocal(marqueeStart.current.x, marqueeStart.current.y);
+      const e = toLocal(ev.clientX, ev.clientY);
+      const left = Math.min(s.x, e.x);
+      const top = Math.min(s.y, e.y);
+      const width = Math.abs(e.x - s.x);
+      const height = Math.abs(e.y - s.y);
       Object.assign(marqueeRef.current.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
-      const box = new DOMRect(left + d.left, top + d.top, width, height);
+      // Hit-test in screen coordinates so zoom/rotation transforms don't cause offset
+      const boxLeft = Math.min(marqueeStart.current.x, ev.clientX);
+      const boxTop = Math.min(marqueeStart.current.y, ev.clientY);
+      const boxRight = Math.max(marqueeStart.current.x, ev.clientX);
+      const boxBottom = Math.max(marqueeStart.current.y, ev.clientY);
       const buttons = desktopRef.current.querySelectorAll<HTMLButtonElement>(`.desktop-icon`);
       const sel = new Set<string>();
       buttons.forEach((btn) => {
         const r = btn.getBoundingClientRect();
         const id = btn.dataset.id || "";
-        const inter = !(r.right < box.left || r.left > box.right || r.bottom < box.top || r.top > box.bottom);
+        const inter = !(r.right < boxLeft || r.left > boxRight || r.bottom < boxTop || r.top > boxBottom);
         if (inter) sel.add(id);
         btn.classList.toggle("is-selected", sel.has(id));
       });
