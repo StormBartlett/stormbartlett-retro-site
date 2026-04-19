@@ -874,7 +874,7 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                   if (!handled) {
                     for (const plugin of view.state.plugins) {
                       if (plugin.props.handleKeyDown) {
-                        const result = plugin.props.handleKeyDown(view, fakeEvent);
+                        const result = plugin.props.handleKeyDown.call(plugin, view, fakeEvent);
                         if (result) break;
                       }
                     }
