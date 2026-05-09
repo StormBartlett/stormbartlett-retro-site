@@ -11,7 +11,7 @@ type Win = { id: string; open: boolean; z: number; x?: number; y?: number };
 
 const WINDOW_CASCADE_BASE = { x: 80, y: 132 };
 const WINDOW_CASCADE_STEP = { x: 28, y: -18 };
-const MOBILE_WINDOW_CASCADE_STEP = { x: 8, y: -10 };
+const MOBILE_WINDOW_CASCADE_STEP = { x: 4, y: -8 };
 const WINDOW_CASCADE_SLOTS = 8;
 const DESKTOP_ICON_SIZE = 96;
 const BROWSER_ICON_SIZE = 96;
@@ -61,7 +61,7 @@ function buildMobileTopRowLayout(width: number, isPortrait: boolean) {
   return layout;
 }
 
-const aboutText = `Hi, I'm Storm Bartlett, a front-end-focused software engineer who builds interfaces for technical systems and works comfortably across the full stack when the problem needs it.
+const aboutText = `Hi, I'm Storm Bartlett, a front-end-focused software engineer who builds interfaces for technical systems and works across the full stack when the problem needs it.
 
 My strongest thread is turning complex workflows into usable software: React/Next.js product architecture at NoteTime, visualisation layers for simulation and data-heavy tooling, and AI/search-backed interfaces that need to stay understandable under real use.
 
@@ -177,7 +177,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
   const iconStorageKey = isMobile ? `nx-icons-mobile-${variantStorageSuffix}` : "nx-icons";
   const trashPosStorageKey = isMobile ? `nx-trash-pos-mobile-${variantStorageSuffix}` : "nx-trash-pos";
   const binPosStorageKey = isMobile ? `nx-bin-pos-mobile-${variantStorageSuffix}` : "nx-bin-pos";
-  const mobileWindowCascadeBase = { x: isMobilePortrait ? 24 : 14, y: isMobilePortrait ? 132 : 8 };
+  const mobileWindowCascadeBase = { x: isMobilePortrait ? 8 : 14, y: isMobilePortrait ? 20 : 8 };
   const initialWindowCascadeBase = isMobile ? mobileWindowCascadeBase : WINDOW_CASCADE_BASE;
   const [icons, setIcons] = useState<Icon[]>(initialIcons);
   const [trash, setTrash] = useState<Icon[]>([]);
@@ -1033,17 +1033,6 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
             </div>
           )}
 
-          <div className={`menu ${openMenu === "view" ? "is-open" : ""}`}>
-            <button className="menu-trigger" type="button" aria-haspopup="menu" aria-expanded={openMenu === "view"} onClick={() => toggleMenu("view")} onMouseEnter={() => trackHover("view")}>
-              View
-            </button>
-            <div className="menu-dropdown" role="menu">
-              <button className="menu-entry" role="menuitem" onClick={() => { arrangeIcons(); setOpenMenu(null); }}>Arrange Icons</button>
-              <button className="menu-entry" role="menuitem" onClick={() => { resetIcons(); setOpenMenu(null); }}>Reset Desktop Icons</button>
-              <button className="menu-entry" role="menuitem" onClick={() => { resetTrashPosition(); setOpenMenu(null); }}>Reset Trash Position</button>
-            </div>
-          </div>
-
           <div className={`menu ${openMenu === "go" ? "is-open" : ""}`} data-id="go">
             <button className="menu-trigger" type="button" aria-haspopup="menu" aria-expanded={openMenu === "go"} onClick={() => toggleMenu("go")} onMouseEnter={() => trackHover("go")}>
               Go
@@ -1053,6 +1042,19 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
               <a className="menu-entry" role="menuitem" href="https://www.linkedin.com/in/stormbartlett/" target="_blank" rel="noopener noreferrer" onClick={() => setOpenMenu(null)}>LinkedIn</a>
               <a className="menu-entry" role="menuitem" href="https://www.youtube.com/@stormbartlett64" target="_blank" rel="noopener noreferrer" onClick={() => setOpenMenu(null)}>YouTube</a>
               {/* <a className="menu-entry" role="menuitem" href="/Storm_Bartlett_Resume.pdf" target="_blank" rel="noopener noreferrer" onClick={() => setOpenMenu(null)}>Resume</a> */}
+            </div>
+          </div>
+
+          <div className={`menu ${openMenu === "view" ? "is-open" : ""}`} data-id="view">
+            <button className="menu-trigger" type="button" aria-haspopup="menu" aria-expanded={openMenu === "view"} onClick={() => toggleMenu("view")} onMouseEnter={() => trackHover("view")}>
+              View
+            </button>
+            <div className="menu-dropdown" role="menu">
+              <button className="menu-entry" role="menuitem" onClick={() => { arrangeIcons(); setOpenMenu(null); }}>Arrange Icons</button>
+              {!isMobile && (
+                <button className="menu-entry" role="menuitem" onClick={() => { resetIcons(); setOpenMenu(null); }}>Reset Desktop Icons</button>
+              )}
+              <button className="menu-entry" role="menuitem" onClick={() => { resetTrashPosition(); setOpenMenu(null); }}>{isMobile ? "Reset Trash" : "Reset Trash Position"}</button>
             </div>
           </div>
 
@@ -1725,8 +1727,11 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
     const startTop = parseInt(el.style.top || "80", 10);
     const startWidth = el.offsetWidth;
     const startHeight = el.offsetHeight;
-    const minWidth = 200;
-    const minHeight = 150;
+    const computedStyle = window.getComputedStyle(el);
+    const cssMinWidth = parseFloat(computedStyle.minWidth || "0");
+    const cssMinHeight = parseFloat(computedStyle.minHeight || "0");
+    const minWidth = Math.max(Number.isFinite(cssMinWidth) ? cssMinWidth : 0, 200);
+    const minHeight = Math.max(Number.isFinite(cssMinHeight) ? cssMinHeight : 0, 150);
     
     const move = (ev: PointerEvent) => {
       const dx = (ev.clientX - startX) / scaleX;
