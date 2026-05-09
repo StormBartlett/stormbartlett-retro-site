@@ -14,12 +14,21 @@ const WINDOW_CASCADE_STEP = { x: 28, y: -18 };
 const MOBILE_WINDOW_CASCADE_STEP = { x: 8, y: -10 };
 const WINDOW_CASCADE_SLOTS = 8;
 const DESKTOP_ICON_SIZE = 96;
+const BROWSER_ICON_SIZE = 96;
 const MOBILE_ICON_SIZE = 100;
 const DESKTOP_BIN_POSITION = { x: 252, y: 73 };
 const MOBILE_TOP_ROW_ORDER = ["about", "skills", "bin", "calculator", "projects", "falling-sand"] as const;
 const ICON_STORAGE_KEYS = ["nx-icons", "nx-icons-mobile-portrait", "nx-icons-mobile-landscape"];
 const TRASH_POSITION_STORAGE_KEYS = ["nx-trash-pos", "nx-trash-pos-mobile-portrait", "nx-trash-pos-mobile-landscape"];
 const BIN_POSITION_STORAGE_KEYS = ["nx-bin-pos", "nx-bin-pos-mobile-portrait", "nx-bin-pos-mobile-landscape"];
+const TEXT_FILE_EXTENSION_RE = /\.(txt|md|markdown|rtf)$/i;
+
+function getIconSpriteId(icon: Icon) {
+  if (icon.type === "folder") return "icon-folder";
+  if (icon.id === "calculator" || icon.id === "falling-sand") return "icon-file-binary";
+  if (icon.type === "file" || TEXT_FILE_EXTENSION_RE.test(icon.label)) return "icon-file-txt";
+  return "icon-file";
+}
 
 const baseIcons: Icon[] = [
   { id: "about", label: "About.txt", app: "about", x: 40, y: 64 },
@@ -52,11 +61,11 @@ function buildMobileTopRowLayout(width: number, isPortrait: boolean) {
   return layout;
 }
 
-const aboutText = `Hi, I'm Storm Bartlett, a front-end-focused software engineer who likes delving through the full stack and optimising how whole systems flow.
+const aboutText = `Hi, I'm Storm Bartlett, a front-end-focused software engineer who builds interfaces for technical systems and works comfortably across the full stack when the problem needs it.
 
-My strongest thread is building interfaces for technical systems: NoteTime's React/Next.js product and visualisation layers for simulation and data-heavy tooling.
+My strongest thread is turning complex workflows into usable software: React/Next.js product architecture at NoteTime, visualisation layers for simulation and data-heavy tooling, and AI/search-backed interfaces that need to stay understandable under real use.
 
-I like getting close to hard problems across the whole stack: digging into back-end components and databases, improving data flow, reducing processing time, and making the front end reflect what's happening across the system. I work across TypeScript, React, Next.js, Python, Node.js, Java, Rust, and SQL.
+I care about the parts that make software survive after the first version: clear component boundaries, fast UI, reliable data flow, tests, documentation, and enough system understanding to debug beyond the front end.
 
 About this site:
 - Retro desktop OS interface design
@@ -80,6 +89,78 @@ Java parallel genetic algorithms, clustering optimisation, simulation data flows
 
 Engineering Practice:
 Git/GitHub, GitHub Actions, Docker, Linux, CI/CD, automated testing, code review, ADRs, documentation, Agile/Scrum`;
+
+const blogPostTexts = {
+  recursion: `Understanding Recursive Algorithms
+Published: March 15, 2024
+
+Recursion is one of the most elegant problem-solving techniques in computer science. When we define a function that calls itself, we're leveraging the power of mathematical induction.
+
+The classic example is the Fibonacci sequence, defined as:
+
+F(n) = F(n-1) + F(n-2)
+
+where F(0) = 0 and F(1) = 1.
+
+In functional programming, this translates beautifully:
+
+function fibonacci(n) {
+  if (n <= 1) return n;
+  return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+The time complexity follows the golden ratio: O(phi^n) where phi ~= 1.618. This exponential growth makes naive recursion impractical for large n, but memoization can reduce it to O(n).`,
+  sorting: `The Mathematics of Sorting
+Published: February 28, 2024
+
+Sorting algorithms reveal fundamental limits in computation. The comparison-based sorting lower bound tells us that any comparison sort must perform at least Omega(n log n) comparisons in the worst case.
+
+This comes from information theory. With n! possible permutations, we need at least:
+
+log2(n!) ~= n log2(n) - n log2(e)
+
+bits of information to distinguish between all permutations.
+
+For merge sort, the recurrence relation is:
+
+T(n) = 2T(n/2) + O(n)
+
+Solving this using the master theorem gives us T(n) = O(n log n), which matches the theoretical lower bound. Quicksort achieves O(n log n) average case, but its worst case is O(n^2) due to poor pivot selection.
+
+The optimal sorting algorithm depends on your data distribution. For nearly-sorted data, insertion sort's O(n) best case makes it ideal.`,
+  graphs: `Graph Theory and Network Analysis
+Published: January 10, 2024
+
+Graphs model relationships in everything from social networks to routing algorithms. The shortest path problem is fundamental to network analysis.
+
+Dijkstra's algorithm finds the shortest path from a source vertex s to all other vertices in a weighted graph. The key insight is maintaining a priority queue of vertices ordered by their current shortest distance estimate.
+
+The algorithm's time complexity is O((V + E) log V) using a binary heap, where V is vertices and E is edges. For dense graphs, this becomes O(V^2 log V).
+
+The Bellman-Ford algorithm handles negative edge weights but has higher complexity: O(VE). It's based on the relaxation principle:
+
+d[v] = min(d[v], d[u] + w(u,v))
+
+where d[v] is the shortest distance to vertex v, and w(u,v) is the weight of edge (u,v).
+
+For unweighted graphs, breadth-first search gives us the shortest path in O(V + E) time, optimal for this case. The BFS tree structure reveals interesting properties about graph connectivity.
+
+Network flow problems extend these concepts. The max-flow min-cut theorem states that the maximum flow equals the minimum cut capacity, a beautiful duality result connecting optimization and graph structure.`,
+};
+
+const projectPostTexts = {
+  notetime: `NoteTime
+
+Try it at https://notetime.ai.`,
+  fallingsand: `Falling Sand Game (working title)
+Status: In development - not yet announced
+
+A falling-sand simulation crossed with a mining game, written in Rust. Every pixel is a cell with real physical behavior: sand piles, water flows, lava ignites wood, steam rises when the two meet, and the world is fully destructible.
+
+The simulation runs on the GPU via compute shaders, which is what makes it viable at a meaningful scale: millions of cells updated in parallel per frame instead of the thousands a CPU-bound cellular automaton tops out at. The mining layer sits on top of the sim, so tunnels collapse, fluids drain into what you dig, and ore veins react to heat and pressure like everything else.
+
+More details coming when it's ready to announce.`,
+};
 
 export default function DesktopOS({ embedded = false, mobileVariant }: { embedded?: boolean; mobileVariant?: "portrait" | "landscape" }) {
   const isMobile = !!mobileVariant;
@@ -1048,7 +1129,8 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
                 label: draggingFromFolder.item.label,
                 app: draggingFromFolder.item.windowId || draggingFromFolder.item.id,
                 x: 0,
-                y: 0
+                y: 0,
+                type: draggingFromFolder.item.type
               }}
               icons={[]}
               canDrag={false}
@@ -1497,19 +1579,7 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     window.addEventListener("pointermove", move as (this: Window, ev: PointerEvent) => void);
     window.addEventListener("pointerup", up);
   };
-  const spriteId = icon.type === "folder"
-    ? "icon-folder"
-    : icon.id === "about"
-    ? "icon-file-txt"
-    : icon.id === "skills"
-    ? "icon-file-txt"
-    : icon.id === "calculator"
-    ? "icon-file-binary"
-    : icon.id === "todo"
-    ? "icon-file-txt"
-    : icon.id === "falling-sand"
-    ? "icon-file-binary"
-    : "icon-file";
+  const spriteId = getIconSpriteId(icon);
   return (
     <button ref={ref} className={`desktop-icon ${selection.has(icon.id) ? "is-selected" : ""} ${burst ? "is-burst" : ""}`} data-id={icon.id} data-folder={icon.type === "folder" ? "true" : undefined} style={{ left: icon.x, top: icon.y, position: "absolute" }} onDoubleClick={onDbl} onPointerDown={down} onClick={() => { setBurst(true); window.setTimeout(() => setBurst(false), 500); }}>
       <div className="icon">
@@ -1773,7 +1843,7 @@ function TrashBrowser({
     return trash.map((icon, idx) => ({
       id: icon.id,
       label: icon.label,
-      type: "file" as const,
+      type: icon.type === "folder" ? "folder" as const : "file" as const,
       x: icon.x || (20 + (idx % 3) * 100),
       y: icon.y || (20 + Math.floor(idx / 3) * 100),
       windowId: icon.app
@@ -1789,7 +1859,7 @@ function TrashBrowser({
       // Update existing items and filter out removed ones
       const updated = prev.map(item => {
         const icon = trash.find(i => i.id === item.id);
-        return icon ? { ...item, label: icon.label, windowId: icon.app, x: icon.x || item.x, y: icon.y || item.y } : item;
+        return icon ? { ...item, label: icon.label, type: icon.type === "folder" ? "folder" as const : "file" as const, windowId: icon.app, x: icon.x || item.x, y: icon.y || item.y } : item;
       }).filter(item => trash.some(i => i.id === item.id));
       
       // Add new items with their positions from trash (which should already have x, y set)
@@ -1817,7 +1887,7 @@ function TrashBrowser({
         updated.push({
           id: icon.id,
           label: icon.label,
-          type: "file" as const,
+          type: icon.type === "folder" ? "folder" as const : "file" as const,
           x,
           y,
           windowId: icon.app
@@ -1988,14 +2058,15 @@ function TrashBrowser({
             
             setTrash(prev => {
               if (prev.some(i => i.id === desktopIcon.id)) {
-                return prev.map(i => i.id === desktopIcon.id ? { ...i, x: newX, y: newY } : i);
+                return prev.map(i => i.id === desktopIcon.id ? { ...i, x: newX, y: newY, type: desktopIcon.type } : i);
               }
               return [...prev, {
                 id: desktopIcon.id,
                 label: desktopIcon.label,
                 app: desktopIcon.app,
                 x: newX,
-                y: newY
+                y: newY,
+                type: desktopIcon.type
               }];
             });
             
@@ -2135,7 +2206,7 @@ function TrashBrowser({
             >
               <div className="icon">
                 <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
-                  <use href="#icon-file-txt"></use>
+                  <use href={item.type === "folder" ? "#icon-folder" : "#icon-file-txt"}></use>
                 </svg>
               </div>
               <span className="icon-label">{item.label}</span>
@@ -2280,6 +2351,64 @@ function BlogBrowser({
   const [browserCtxMenu, setBrowserCtxMenu] = useState<{ x: number; y: number; itemId: string } | null>(null);
   const browserCtxMenuRef = useRef<HTMLDivElement | null>(null);
 
+  const getBrowserMetrics = () => {
+    if (!browserRef.current) return null;
+    const rect = browserRef.current.getBoundingClientRect();
+    const screenEl = browserRef.current.closest('.embedded-screen') as HTMLElement | null;
+    const screenRect = screenEl?.getBoundingClientRect();
+    const css = screenEl ? window.getComputedStyle(screenEl) : null;
+    const cssW = css ? parseFloat(css.width || '0') : 0;
+    const cssH = css ? parseFloat(css.height || '0') : 0;
+    const scaleX = screenRect && cssW ? screenRect.width / cssW : 1;
+    const scaleY = screenRect && cssH ? screenRect.height / cssH : 1;
+
+    return {
+      rect,
+      scaleX,
+      scaleY,
+      width: rect.width / (scaleX || 1),
+      height: rect.height / (scaleY || 1),
+    };
+  };
+
+  const clientToBrowserCoords = (clientX: number, clientY: number) => {
+    const metrics = getBrowserMetrics();
+    if (!metrics) return null;
+
+    return {
+      x: (clientX - metrics.rect.left) / metrics.scaleX,
+      y: (clientY - metrics.rect.top) / metrics.scaleY,
+      width: metrics.width,
+      height: metrics.height,
+    };
+  };
+
+  const clampBrowserItemPosition = (x: number, y: number, width: number, height: number) => ({
+    x: Math.max(10, Math.min(width - BROWSER_ICON_SIZE - 8, x)),
+    y: Math.max(10, Math.min(height - BROWSER_ICON_SIZE - 8, y)),
+  });
+
+  const getDraggedDesktopIconBrowserPosition = (iconId: string, clientX: number, clientY: number) => {
+    const metrics = getBrowserMetrics();
+    if (!metrics) return null;
+    const escapedId = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(iconId) : iconId.replace(/"/g, '\\"');
+    const draggedEl = document.querySelector<HTMLElement>(`.desktop-icon.dragging[data-id="${escapedId}"]`);
+
+    if (draggedEl) {
+      const iconRect = draggedEl.getBoundingClientRect();
+      return clampBrowserItemPosition(
+        (iconRect.left - metrics.rect.left) / metrics.scaleX,
+        (iconRect.top - metrics.rect.top) / metrics.scaleY,
+        metrics.width,
+        metrics.height
+      );
+    }
+
+    const browserCoords = clientToBrowserCoords(clientX, clientY);
+    if (!browserCoords) return null;
+    return clampBrowserItemPosition(browserCoords.x - BROWSER_ICON_SIZE / 2, browserCoords.y - 24, browserCoords.width, browserCoords.height);
+  };
+
   // Helper to convert browser coordinates to desktop coordinates
   const browserToDesktopCoords = (browserX: number, browserY: number, clientX: number, clientY: number): { x: number; y: number } | null => {
     if (!browserRef.current || !desktopRef?.current) return null;
@@ -2331,6 +2460,8 @@ function BlogBrowser({
     // Store the starting position of the item
     const startItemX = item.x;
     const startItemY = item.y;
+    const startBrowserCoords = clientToBrowserCoords(e.clientX, e.clientY);
+    if (!startBrowserCoords) return;
     
     // Convert initial browser position to desktop coordinates
     const initialDesktopCoords = browserToDesktopCoords(item.x, item.y, e.clientX, e.clientY);
@@ -2352,47 +2483,49 @@ function BlogBrowser({
         if (dragging) {
           // Update browser item position during drag so it follows cursor
           if (browserRef.current) {
-            const browserRect = browserRef.current.getBoundingClientRect();
-            const browserX = ev.clientX - browserRect.left;
-            const browserY = ev.clientY - browserRect.top;
+            const browserCoords = clientToBrowserCoords(ev.clientX, ev.clientY);
+            if (!browserCoords) return;
+            const browserX = browserCoords.x;
+            const browserY = browserCoords.y;
             
             // Check if dragging outside browser bounds
-            const isOutsideBrowser = browserX < 0 || browserX > browserRect.width || browserY < 0 || browserY > browserRect.height;
+            const isOutsideBrowser = browserX < 0 || browserX > browserCoords.width || browserY < 0 || browserY > browserCoords.height;
             
             // Calculate new position based on delta from start (maintains grab point)
-            const newX = startItemX + dx;
-            const newY = startItemY + dy;
+            const localDx = browserX - startBrowserCoords.x;
+            const localDy = browserY - startBrowserCoords.y;
+            const newX = startItemX + localDx;
+            const newY = startItemY + localDy;
             
             // Only show desktop ghost if dragging outside browser
             if (isOutsideBrowser && setDraggingFromFolder) {
               // Start/update dragging on desktop plane
               const desktopCoords = browserToDesktopCoords(item.x, item.y, ev.clientX, ev.clientY);
               if (desktopCoords) {
-              setDraggingFromFolder(prev => prev ? {
-                ...prev,
+                setDraggingFromFolder(prev => prev ? {
+                  ...prev,
                   x: desktopCoords.x,
                   y: desktopCoords.y
-              } : {
-                item,
+                } : {
+                  item,
                   x: desktopCoords.x,
                   y: desktopCoords.y,
-                sourceFolder: folderId
-              });
+                  sourceFolder: folderId
+                });
               }
             } else if (setDraggingFromFolder) {
               // Clear desktop ghost if back inside browser
               setDraggingFromFolder(null);
             }
             
-            // Always update item position in browser during drag (whether inside or outside)
-            // Clamp to browser bounds
-            const clampedX = Math.max(10, Math.min(browserRect.width - 100, newX));
-            const clampedY = Math.max(10, Math.min(browserRect.height - 100, newY));
-            setItems(list => list.map(i => i.id === itemId ? { ...i, x: clampedX, y: clampedY } : i));
+            if (!isOutsideBrowser) {
+              const clamped = clampBrowserItemPosition(newX, newY, browserCoords.width, browserCoords.height);
+              setItems(list => list.map(i => i.id === itemId ? { ...i, x: clamped.x, y: clamped.y } : i));
+            }
             
             // Check if over folder within browser window
             dragOverTargetFolderRef.current = null;
-            if (browserX >= 0 && browserX <= browserRect.width && browserY >= 0 && browserY <= browserRect.height) {
+            if (!isOutsideBrowser) {
               const folders = items.filter(i => i.type === "folder" && i.id !== itemId);
               for (const folder of folders) {
                 const folderRect = { 
@@ -2427,7 +2560,8 @@ function BlogBrowser({
         if (dragging && ev && setDraggingFromFolder) {
           // Check if dropped within browser bounds first (more reliable than elementFromPoint)
           const browserRect = browserRef.current?.getBoundingClientRect();
-          const isWithinBrowser = browserRect && 
+          const dropBrowserCoords = ev ? clientToBrowserCoords(ev.clientX, ev.clientY) : null;
+          const isWithinBrowser = browserRect && dropBrowserCoords &&
             ev.clientX >= browserRect.left && 
             ev.clientX <= browserRect.right && 
             ev.clientY >= browserRect.top && 
@@ -2456,12 +2590,11 @@ function BlogBrowser({
             }
             
             // Always update position if dropped within same folder window (whether on folder icon or not)
-            if (browserRef.current) {
-              const dx = ev.clientX - startX;
-              const dy = ev.clientY - startY;
-              const newX = Math.max(10, Math.min(browserRect.width - 100, startItemX + dx));
-              const newY = Math.max(10, Math.min(browserRect.height - 100, startItemY + dy));
-              setItems(list => list.map(i => i.id === itemId ? { ...i, x: newX, y: newY } : i));
+            if (dropBrowserCoords) {
+              const newX = startItemX + dropBrowserCoords.x - startBrowserCoords.x;
+              const newY = startItemY + dropBrowserCoords.y - startBrowserCoords.y;
+              const clamped = clampBrowserItemPosition(newX, newY, dropBrowserCoords.width, dropBrowserCoords.height);
+              setItems(list => list.map(i => i.id === itemId ? { ...i, x: clamped.x, y: clamped.y } : i));
             }
           } else if (desktopCoords && setDesktopIcons) {
             // Dropped on desktop - add to desktop icons
@@ -2471,33 +2604,23 @@ function BlogBrowser({
                 if (prev.some(i => i.id === item.id)) {
                   return prev.map(i => 
                     i.id === item.id 
-                      ? { ...i, x: desktopCoords.x, y: desktopCoords.y }
+                      ? { ...i, x: desktopCoords.x, y: desktopCoords.y, type: item.type }
                       : i
                   );
                 }
-                if (item.type === "file") {
-                  return [...prev, {
-                    id: item.id,
-                    label: item.label,
-                    app: item.windowId || item.id,
-                    x: desktopCoords.x,
-                    y: desktopCoords.y
-                  }];
-                } else if (item.type === "folder") {
-                  return [...prev, {
-                    id: item.id,
-                    label: item.label,
-                    app: item.id,
-                    x: desktopCoords.x,
-                    y: desktopCoords.y
-                  }];
-                }
-                return prev;
+                return [...prev, {
+                  id: item.id,
+                  label: item.label,
+                  app: item.type === "folder" ? item.id : item.windowId || item.id,
+                  x: desktopCoords.x,
+                  y: desktopCoords.y,
+                  type: item.type
+                }];
               });
             } else {
               setDesktopIcons(prev => prev.map(i => 
                 i.id === item.id 
-                  ? { ...i, x: desktopCoords.x, y: desktopCoords.y }
+                  ? { ...i, x: desktopCoords.x, y: desktopCoords.y, type: item.type }
                   : i
               ));
             }
@@ -2547,23 +2670,24 @@ function BlogBrowser({
         desktopDraggedIconRef.current = desktopIcon.dataset.id || null;
         
         const rect = browserRef.current.getBoundingClientRect();
+        const browserCoords = clientToBrowserCoords(e.clientX, e.clientY);
         const overBrowser = e.clientX >= rect.left && e.clientX <= rect.right &&
                            e.clientY >= rect.top && e.clientY <= rect.bottom;
         
-        if (overBrowser) {
+        if (overBrowser && browserCoords) {
           // Check if over any folder
           desktopDragOverTargetRef.current = null;
           setItems(currentItems => {
             const folders = currentItems.filter(i => i.type === "folder");
             for (const folder of folders) {
               const folderRect = { 
-                left: folder.x + rect.left, 
-                top: folder.y + rect.top, 
-                right: folder.x + rect.left + 96, 
-                bottom: folder.y + rect.top + 96 
+                left: folder.x,
+                top: folder.y,
+                right: folder.x + BROWSER_ICON_SIZE,
+                bottom: folder.y + BROWSER_ICON_SIZE,
               };
-              const overFolder = e.clientX >= folderRect.left && e.clientX <= folderRect.right &&
-                                e.clientY >= folderRect.top && e.clientY <= folderRect.bottom;
+              const overFolder = browserCoords.x >= folderRect.left && browserCoords.x <= folderRect.right &&
+                                browserCoords.y >= folderRect.top && browserCoords.y <= folderRect.bottom;
               if (overFolder) {
                 desktopDragOverTargetRef.current = folder.id;
                 dragOverFolderRef.current = true;
@@ -2600,6 +2724,9 @@ function BlogBrowser({
         if (overBrowser) {
           const desktopIcon = desktopIcons?.find(i => i.id === draggedIconId);
           if (desktopIcon) {
+            const dropPosition = getDraggedDesktopIconBrowserPosition(draggedIconId, e.clientX, e.clientY);
+            if (!dropPosition) return;
+
             // Check if dropped on a folder FIRST
             if (dragOverTarget && wasOverFolder) {
               if (dragOverTarget === "test-folder") {
@@ -2608,7 +2735,7 @@ function BlogBrowser({
                   const newItems = [...prev, {
                     id: desktopIcon.id,
                     label: desktopIcon.label,
-                    type: "file" as const,
+                    type: desktopIcon.type === "folder" ? "folder" as const : "file" as const,
                     x: 20 + (prev.length % 3) * 100,
                     y: 20 + Math.floor(prev.length / 3) * 100,
                     windowId: desktopIcon.app
@@ -2634,19 +2761,22 @@ function BlogBrowser({
                 // Item already exists, just update position
                 return prev.map(i => 
                   i.id === desktopIcon.id 
-                    ? { ...i, x: Math.max(10, e.clientX - rect.left - 48), y: Math.max(10, e.clientY - rect.top - 24) }
+                    ? {
+                        ...i,
+                        x: dropPosition.x,
+                        y: dropPosition.y,
+                        type: desktopIcon.type === "folder" ? "folder" as const : "file" as const
+                      }
                     : i
                 );
               }
               // Add new item
-            const browserX = e.clientX - rect.left - 48;
-            const browserY = e.clientY - rect.top - 24;
               return [...prev, {
                 id: desktopIcon.id,
                 label: desktopIcon.label,
-                    type: "file" as const,
-                x: Math.max(10, browserX),
-                y: Math.max(10, browserY),
+                type: desktopIcon.type === "folder" ? "folder" as const : "file" as const,
+                x: dropPosition.x,
+                y: dropPosition.y,
                 windowId: desktopIcon.app
               }];
             });
@@ -2808,115 +2938,11 @@ function BlogBrowser({
 
   
 function BlogPostContent({ postId }: { postId: "recursion" | "sorting" | "graphs" }) {
-  const posts = {
-    recursion: {
-      title: "Understanding Recursive Algorithms",
-      meta: "Published: March 15, 2024",
-      content: (
-        <>
-          <p>Recursion is one of the most elegant problem-solving techniques in computer science. When we define a function that calls itself, we&apos;re leveraging the power of mathematical induction.</p>
-          <p>The classic example is the Fibonacci sequence, defined as:</p>
-          <div className="equation">
-            F(n) = F(n-1) + F(n-2)
-          </div>
-          <p>where F(0) = 0 and F(1) = 1.</p>
-          <p>In functional programming, this translates beautifully:</p>
-          <pre className="code-block">{`function fibonacci(n) {
-  if (n <= 1) return n;
-  return fibonacci(n - 1) + fibonacci(n - 2);
-}`}</pre>
-          <p>The time complexity follows the golden ratio: O(φⁿ) where φ ≈ 1.618. This exponential growth makes naive recursion impractical for large n, but memoization can reduce it to O(n).</p>
-        </>
-      ),
-    },
-    sorting: {
-      title: "The Mathematics of Sorting",
-      meta: "Published: February 28, 2024",
-      content: (
-        <>
-          <p>Sorting algorithms reveal fundamental limits in computation. The comparison-based sorting lower bound tells us that any comparison sort must perform at least Ω(n log n) comparisons in the worst case.</p>
-          <p>This comes from information theory. With n! possible permutations, we need at least:</p>
-          <div className="equation">
-            log₂(n!) ≈ n log₂(n) - n log₂(e)
-          </div>
-          <p>bits of information to distinguish between all permutations.</p>
-          <p>For merge sort, the recurrence relation is:</p>
-          <div className="equation">
-            T(n) = 2T(n/2) + O(n)
-          </div>
-          <p>Solving this using the master theorem gives us T(n) = O(n log n), which matches the theoretical lower bound. Quicksort achieves O(n log n) average case, but its worst case is O(n²) due to poor pivot selection.</p>
-          <p>The optimal sorting algorithm depends on your data distribution. For nearly-sorted data, insertion sort&apos;s O(n) best case makes it ideal.</p>
-        </>
-      ),
-    },
-    graphs: {
-      title: "Graph Theory and Network Analysis",
-      meta: "Published: January 10, 2024",
-      content: (
-        <>
-          <p>Graphs model relationships in everything from social networks to routing algorithms. The shortest path problem is fundamental to network analysis.</p>
-          <p>Dijkstra&apos;s algorithm finds the shortest path from a source vertex s to all other vertices in a weighted graph. The key insight is maintaining a priority queue of vertices ordered by their current shortest distance estimate.</p>
-          <p>The algorithm&apos;s time complexity is O((V + E) log V) using a binary heap, where V is vertices and E is edges. For dense graphs, this becomes O(V² log V).</p>
-          <p>The Bellman-Ford algorithm handles negative edge weights but has higher complexity: O(VE). It&apos;s based on the relaxation principle:</p>
-          <div className="equation">
-            d[v] = min(d[v], d[u] + w(u,v))
-          </div>
-          <p>where d[v] is the shortest distance to vertex v, and w(u,v) is the weight of edge (u,v).</p>
-          <p>For unweighted graphs, breadth-first search gives us the shortest path in O(V + E) time—optimal for this case. The BFS tree structure reveals interesting properties about graph connectivity.</p>
-          <p>Network flow problems extend these concepts. The max-flow min-cut theorem states that the maximum flow equals the minimum cut capacity, a beautiful duality result connecting optimization and graph structure.</p>
-        </>
-      ),
-    },
-  };
-
-  const post = posts[postId];
-  return (
-    <div className="blog-posts">
-      <article className="blog-post">
-        <h2 className="blog-title">{post.title}</h2>
-        <div className="blog-meta">{post.meta}</div>
-        <div className="blog-content">{post.content}</div>
-      </article>
-    </div>
-  );
+  return <TiptapEditor initialText={blogPostTexts[postId]} />;
 }
 
 function ProjectPostContent({ postId }: { postId: "notetime" | "fallingsand" }) {
-  const posts = {
-    notetime: {
-      title: "NoteTime",
-      meta: "Status: Shipped",
-      content: (
-        <>
-          <p>NoteTime is a notebook that turns raw lecture audio into structured, searchable study material. Upload a recording, get timestamped notes, summaries, and flashcards generated alongside the transcript — all time-linked so you can jump back to the exact moment an idea was spoken.</p>
-          <p>Built for students who take notes on an iPad or laptop and never want to re-listen to a two-hour lecture to find one sentence again.</p>
-          <p>Try it at <a href="https://notetime.ai" target="_blank" rel="noopener noreferrer">notetime.ai</a>.</p>
-        </>
-      ),
-    },
-    fallingsand: {
-      title: "Falling Sand Game (working title)",
-      meta: "Status: In development — not yet announced",
-      content: (
-        <>
-          <p>A falling-sand simulation crossed with a mining game, written in Rust. Every pixel is a cell with real physical behavior — sand piles, water flows, lava ignites wood, steam rises when the two meet — and the world is fully destructible.</p>
-          <p>The simulation runs on the GPU via <strong>compute shaders</strong>, which is what makes it viable at a meaningful scale: millions of cells updated in parallel per frame instead of the thousands a CPU-bound cellular automaton tops out at. The mining layer sits on top of the sim, so tunnels collapse, fluids drain into what you dig, and ore veins react to heat and pressure like everything else.</p>
-          <p>More details coming when it&apos;s ready to announce.</p>
-        </>
-      ),
-    },
-  };
-
-  const post = posts[postId];
-  return (
-    <div className="blog-posts">
-      <article className="blog-post">
-        <h2 className="blog-title">{post.title}</h2>
-        <div className="blog-meta">{post.meta}</div>
-        <div className="blog-content">{post.content}</div>
-      </article>
-    </div>
-  );
+  return <TiptapEditor initialText={projectPostTexts[postId]} />;
 }
 
 function Calculator() {
