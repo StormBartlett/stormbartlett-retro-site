@@ -1010,7 +1010,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
             </button>
             <div className="menu-dropdown" role="menu">
               <div className="menu-label">Storm Bartlett</div>
-              <button className="menu-entry" role="menuitem" onClick={() => { openWin("about"); setOpenMenu(null); }}>About Storm Bartlett</button>
+              <button className="menu-entry" role="menuitem" onClick={() => { openWin("about-portfolio"); setOpenMenu(null); }}>About Storm Bartlett</button>
             </div>
           </div>
 
@@ -1073,16 +1073,6 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
             </div>
           )}
 
-          {!isMobilePortrait && (
-            <div className={`menu ${openMenu === "help" ? "is-open" : ""}`}>
-              <button className="menu-trigger" type="button" aria-haspopup="menu" aria-expanded={openMenu === "help"} onClick={() => toggleMenu("help")} onMouseEnter={() => trackHover("help")}>
-                Help
-              </button>
-              <div className="menu-dropdown" role="menu">
-                <button className="menu-entry" role="menuitem" onClick={() => { openWin("about-portfolio"); setOpenMenu(null); }}>About This Portfolio</button>
-              </div>
-            </div>
-          )}
         </nav>
         <div className="menubar-right" aria-live="polite">
           <span className="menu-user">Storm Bartlett</span>
@@ -1337,7 +1327,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
         <Window id="about" title="About Me" windows={windows} frontWin={frontWin} closeWin={closeWin}>
           <TiptapEditor initialText={aboutText} />
         </Window>
-        <Window id="about-portfolio" title="About This Portfolio" windows={windows} frontWin={frontWin} closeWin={closeWin} className="about-portfolio-window">
+        <Window id="about-portfolio" title="About Storm Bartlett" windows={windows} frontWin={frontWin} closeWin={closeWin} className="about-portfolio-window">
           <AboutPortfolioContent />
         </Window>
         <Window id="skills" title="Skills" windows={windows} frontWin={frontWin} closeWin={closeWin}>
@@ -2963,7 +2953,7 @@ function AboutPortfolioContent() {
         <Image src="/about-portfolio-icons/mac.png" alt="" width={48} height={48} className="about-portfolio-mac" aria-hidden="true" />
         <div className="about-portfolio-copy">
           <div>Storm Bartlett</div>
-          <div>Builder. Problem Solver.</div>
+          <div>Builder.</div>
           <div>Forever Curious.</div>
         </div>
       </div>
@@ -2977,7 +2967,7 @@ function AboutPortfolioContent() {
         ))}
       </ul>
       <div className="about-portfolio-rule" aria-hidden="true" />
-      <div className="about-portfolio-location">Sydney, Australia</div>
+      <div className="about-portfolio-location">New South Wales, Australia</div>
     </div>
   );
 }
