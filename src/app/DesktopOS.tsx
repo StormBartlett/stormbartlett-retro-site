@@ -162,6 +162,13 @@ The simulation runs on the GPU via compute shaders, which is what makes it viabl
 More details coming when it's ready to announce.`,
 };
 
+const aboutPortfolioRows = [
+  { icon: "/about-portfolio-icons/terminal.png", label: "Full Stack Engineer" },
+  { icon: "/about-portfolio-icons/ai.png", label: "AI Explorer" },
+  { icon: "/about-portfolio-icons/chart.png", label: "Data Storyteller" },
+  { icon: "/about-portfolio-icons/bulb.png", label: "Product Thinker" },
+];
+
 export default function DesktopOS({ embedded = false, mobileVariant }: { embedded?: boolean; mobileVariant?: "portrait" | "landscape" }) {
   const isMobile = !!mobileVariant;
   const isMobilePortrait = mobileVariant === "portrait";
@@ -182,6 +189,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
   const blogBrowserAddItemRef = useRef<((item: BrowserItem) => void) | null>(null);
   const [windows, setWindows] = useState<Record<string, Win>>({
     about: { id: "about", open: false, z: 11, ...initialWindowCascadeBase },
+    "about-portfolio": { id: "about-portfolio", open: false, z: 10 },
     skills: { id: "skills", open: false, z: 10 },
     calculator: { id: "calculator", open: false, z: 10 },
     todo: { id: "todo", open: false, z: 10 },
@@ -1071,7 +1079,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
                 Help
               </button>
               <div className="menu-dropdown" role="menu">
-                <button className="menu-entry" role="menuitem" onClick={() => { openWin("about"); setOpenMenu(null); }}>About This Portfolio</button>
+                <button className="menu-entry" role="menuitem" onClick={() => { openWin("about-portfolio"); setOpenMenu(null); }}>About This Portfolio</button>
               </div>
             </div>
           )}
@@ -1328,6 +1336,9 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
 
         <Window id="about" title="About Me" windows={windows} frontWin={frontWin} closeWin={closeWin}>
           <TiptapEditor initialText={aboutText} />
+        </Window>
+        <Window id="about-portfolio" title="About This Portfolio" windows={windows} frontWin={frontWin} closeWin={closeWin} className="about-portfolio-window">
+          <AboutPortfolioContent />
         </Window>
         <Window id="skills" title="Skills" windows={windows} frontWin={frontWin} closeWin={closeWin}>
           <TiptapEditor initialText={skillsText} />
@@ -2943,6 +2954,32 @@ function BlogPostContent({ postId }: { postId: "recursion" | "sorting" | "graphs
 
 function ProjectPostContent({ postId }: { postId: "notetime" | "fallingsand" }) {
   return <TiptapEditor initialText={projectPostTexts[postId]} />;
+}
+
+function AboutPortfolioContent() {
+  return (
+    <div className="about-portfolio">
+      <div className="about-portfolio-header">
+        <Image src="/about-portfolio-icons/mac.png" alt="" width={48} height={48} className="about-portfolio-mac" aria-hidden="true" />
+        <div className="about-portfolio-copy">
+          <div>Storm Bartlett</div>
+          <div>Builder. Problem Solver.</div>
+          <div>Forever Curious.</div>
+        </div>
+      </div>
+      <div className="about-portfolio-rule" aria-hidden="true" />
+      <ul className="about-portfolio-list" aria-label="Portfolio highlights">
+        {aboutPortfolioRows.map((row) => (
+          <li key={row.label} className="about-portfolio-row">
+            <Image src={row.icon} alt="" width={28} height={28} className="about-portfolio-icon" aria-hidden="true" />
+            <span>{row.label}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="about-portfolio-rule" aria-hidden="true" />
+      <div className="about-portfolio-location">Sydney, Australia</div>
+    </div>
+  );
 }
 
 function Calculator() {
