@@ -40,7 +40,7 @@ function HomeContent() {
   if (isMobile) {
     // Fill entire viewport with the embedded CRT screen on portrait/landscape
     return (
-      <div className="embedded-screen" style={{ width: "100svw", height: "100svh" }}>
+      <div style={{ width: "100svw", height: "100svh" }}>
         <DesktopOS embedded mobileVariant={orientation} />
       </div>
     );
@@ -49,7 +49,7 @@ function HomeContent() {
   // Fullscreen mode: render DesktopOS directly without 3D component
   if (isFullscreen) {
     return (
-      <div className="embedded-screen" style={{ width: "100vw", height: "100vh" }}>
+      <div style={{ width: "100vw", height: "100vh" }}>
         <DesktopOS embedded />
       </div>
     );
@@ -69,7 +69,6 @@ export default function Home() {
     </FullscreenProvider>
   );
 }
-
 
 
 

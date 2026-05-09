@@ -7,21 +7,90 @@ import TodoEditor from "./TodoEditor";
 import FallingSand from "./FallingSand";
 
 type Icon = { id: string; label: string; app: string; x: number; y: number; type?: "file" | "folder" };
-type Win = { id: string; open: boolean; z: number };
+type Win = { id: string; open: boolean; z: number; x?: number; y?: number };
+
+const WINDOW_CASCADE_BASE = { x: 80, y: 132 };
+const WINDOW_CASCADE_STEP = { x: 28, y: -18 };
+const MOBILE_WINDOW_CASCADE_STEP = { x: 8, y: -10 };
+const WINDOW_CASCADE_SLOTS = 8;
+const DESKTOP_ICON_SIZE = 96;
+const MOBILE_ICON_SIZE = 100;
+const DESKTOP_BIN_POSITION = { x: 252, y: 73 };
+const MOBILE_TOP_ROW_ORDER = ["about", "skills", "bin", "calculator", "projects", "falling-sand"] as const;
+const ICON_STORAGE_KEYS = ["nx-icons", "nx-icons-mobile-portrait", "nx-icons-mobile-landscape"];
+const TRASH_POSITION_STORAGE_KEYS = ["nx-trash-pos", "nx-trash-pos-mobile-portrait", "nx-trash-pos-mobile-landscape"];
+const BIN_POSITION_STORAGE_KEYS = ["nx-bin-pos", "nx-bin-pos-mobile-portrait", "nx-bin-pos-mobile-landscape"];
 
 const baseIcons: Icon[] = [
   { id: "about", label: "About.txt", app: "about", x: 40, y: 64 },
   { id: "skills", label: "Skills.txt", app: "skills", x: 160, y: 64 },
-  // { id: "experience", label: "Xp.txt", app: "experience", x: 280, y: 64 },
   { id: "calculator", label: "Calculator", app: "calculator", x: 400, y: 64 },
-  { id: "falling-sand", label: "Falling Sand", app: "falling-sand", x: 640, y: 64 },
   { id: "projects", label: "Projects", app: "projects", x: 520, y: 64, type: "folder" },
+  { id: "falling-sand", label: "Falling Sand", app: "falling-sand", x: 640, y: 64 },
 ];
+
+function buildMobileTopRowLayout(width: number, isPortrait: boolean) {
+  const preferredColumnCount = isPortrait || width < 740 ? 3 : MOBILE_TOP_ROW_ORDER.length;
+  const maxColumnCount = Math.max(1, Math.min(MOBILE_TOP_ROW_ORDER.length, Math.floor(width / (MOBILE_ICON_SIZE + 2))));
+  const columnCount = Math.min(preferredColumnCount, maxColumnCount);
+  const gap = columnCount === 3 ? 4 : Math.max(2, Math.floor((width - MOBILE_ICON_SIZE * columnCount) / (columnCount + 1)));
+  const totalWidth = MOBILE_ICON_SIZE * columnCount + gap * (columnCount - 1);
+  const startX = columnCount === 3 ? 8 : Math.max(2, Math.floor((width - totalWidth) / 2));
+  const startY = isPortrait ? 64 : 48;
+  const rowHeight = isPortrait ? 112 : 104;
+  const layout: Partial<Record<(typeof MOBILE_TOP_ROW_ORDER)[number], { x: number; y: number }>> = {};
+
+  MOBILE_TOP_ROW_ORDER.forEach((id, index) => {
+    const column = index % columnCount;
+    const row = Math.floor(index / columnCount);
+    layout[id] = {
+      x: startX + column * (MOBILE_ICON_SIZE + gap),
+      y: startY + row * rowHeight,
+    };
+  });
+
+  return layout;
+}
+
+const aboutText = `Hi, I'm Storm Bartlett, a front-end-focused software engineer who likes delving through the full stack and optimising how whole systems flow.
+
+My strongest thread is building interfaces for technical systems: NoteTime's React/Next.js product and visualisation layers for simulation and data-heavy tooling.
+
+I like getting close to hard problems across the whole stack: digging into back-end components and databases, improving data flow, reducing processing time, and making the front end reflect what's happening across the system. I work across TypeScript, React, Next.js, Python, Node.js, Java, Rust, and SQL.
+
+About this site:
+- Retro desktop OS interface design
+- Built with Next.js, React, TypeScript, and Three.js
+- TipTap/ProseMirror editor with custom Vim behaviour
+- Interactive falling-sand simulation`;
+
+const skillsText = `Front-End:
+React, Next.js, TypeScript, JavaScript, HTML, CSS/Sass, Tailwind
+Component architecture, responsive and accessible UI, performance profiling, dashboards, search-backed UI, Chrome extensions
+
+AI & Product Systems:
+AI service integration, transcript and note workflows, indexed search, evaluation harnesses, regression suites, user-facing AI UX
+
+Back-End & Data:
+Node.js/Express, Python/Flask/Django, REST APIs, WebSockets, JWT/OAuth
+PostgreSQL, MongoDB, SQL, Firebase Firestore, ETL/data pipelines, time-series and IoT telemetry
+
+Simulation, Optimisation & Research:
+Java parallel genetic algorithms, clustering optimisation, simulation data flows, visualisation of model outputs, Rust/WGPU physics simulation, Three.js, Matplotlib, scikit-learn
+
+Engineering Practice:
+Git/GitHub, GitHub Actions, Docker, Linux, CI/CD, automated testing, code review, ADRs, documentation, Agile/Scrum`;
 
 export default function DesktopOS({ embedded = false, mobileVariant }: { embedded?: boolean; mobileVariant?: "portrait" | "landscape" }) {
   const isMobile = !!mobileVariant;
   const isMobilePortrait = mobileVariant === "portrait";
   const initialIcons: Icon[] = baseIcons;
+  const variantStorageSuffix = mobileVariant ?? "landscape";
+  const iconStorageKey = isMobile ? `nx-icons-mobile-${variantStorageSuffix}` : "nx-icons";
+  const trashPosStorageKey = isMobile ? `nx-trash-pos-mobile-${variantStorageSuffix}` : "nx-trash-pos";
+  const binPosStorageKey = isMobile ? `nx-bin-pos-mobile-${variantStorageSuffix}` : "nx-bin-pos";
+  const mobileWindowCascadeBase = { x: isMobilePortrait ? 24 : 14, y: isMobilePortrait ? 132 : 8 };
+  const initialWindowCascadeBase = isMobile ? mobileWindowCascadeBase : WINDOW_CASCADE_BASE;
   const [icons, setIcons] = useState<Icon[]>(initialIcons);
   const [trash, setTrash] = useState<Icon[]>([]);
   const [testFolderItems, setTestFolderItems] = useState<BrowserItem[]>([]);
@@ -31,9 +100,8 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
   ]);
   const blogBrowserAddItemRef = useRef<((item: BrowserItem) => void) | null>(null);
   const [windows, setWindows] = useState<Record<string, Win>>({
-    about: { id: "about", open: false, z: 11 },
+    about: { id: "about", open: false, z: 11, ...initialWindowCascadeBase },
     skills: { id: "skills", open: false, z: 10 },
-    experience: { id: "experience", open: false, z: 10 },
     calculator: { id: "calculator", open: false, z: 10 },
     todo: { id: "todo", open: false, z: 10 },
     "falling-sand": { id: "falling-sand", open: false, z: 10 },
@@ -52,6 +120,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
   const [clock, setClock] = useState("--:--");
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [iconsReady, setIconsReady] = useState(false);
+  const [loadedIconStorageKey, setLoadedIconStorageKey] = useState(iconStorageKey);
   const [darkMode, setDarkMode] = useState(true);
   const marqueeRef = useRef<HTMLDivElement | null>(null);
   const desktopRef = useRef<HTMLDivElement | null>(null);
@@ -75,8 +144,36 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
   const binDragStateRef = useRef<{ hasDragged: boolean }>({ hasDragged: false });
   const dragOverTargetRef = useRef<string | null>(null);
 
+  const getDesktopSize = () => {
+    const deskRect = desktopRef.current?.getBoundingClientRect();
+    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
+    const viewportHeight = typeof window !== "undefined" ? window.innerHeight - 28 : 772;
+    const width = deskRect?.width ?? viewportWidth;
+    const height = deskRect?.height ?? viewportHeight;
+
+    return {
+      width: isMobile ? Math.min(width, viewportWidth) : width,
+      height: isMobile ? Math.min(height, viewportHeight) : height,
+    };
+  };
+
+  const getMobileTopRowLayout = () => {
+    const { width } = getDesktopSize();
+    return buildMobileTopRowLayout(width, isMobilePortrait);
+  };
+
+  const getDefaultBinPosition = () => {
+    if (isMobile) {
+      const mobileLayout = getMobileTopRowLayout();
+      const bin = mobileLayout.bin ?? DESKTOP_BIN_POSITION;
+      return clampToDesktop(bin.x, bin.y);
+    }
+
+    return clampToDesktop(DESKTOP_BIN_POSITION.x, DESKTOP_BIN_POSITION.y);
+  };
+
   useEffect(() => {
-    const saved = localStorage.getItem("nx-icons");
+    const saved = localStorage.getItem(iconStorageKey);
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as Icon[];
@@ -93,7 +190,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
     if (savedTrash) {
       try { setTrash(JSON.parse(savedTrash) as Icon[]); } catch {}
     }
-    const savedTrashPos = localStorage.getItem("nx-trash-pos");
+    const savedTrashPos = localStorage.getItem(trashPosStorageKey);
     if (savedTrashPos) {
       try {
         const p = JSON.parse(savedTrashPos) as { x: number; y: number };
@@ -102,8 +199,10 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
           setTrashPos(c);
         }
       } catch {}
+    } else {
+      setTrashPos(null);
     }
-    const savedBinPos = localStorage.getItem("nx-bin-pos");
+    const savedBinPos = localStorage.getItem(binPosStorageKey);
     if (savedBinPos) {
       try {
         const p = JSON.parse(savedBinPos) as { x: number; y: number };
@@ -112,6 +211,8 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
           setBinPos(c);
         }
       } catch {}
+    } else {
+      setBinPos(null);
     }
     const savedCrt = localStorage.getItem("nx-crt-off");
     if (savedCrt === "1") setCrtOff(true);
@@ -121,8 +222,9 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
     };
     update();
     const t = setInterval(update, 30_000);
+    setLoadedIconStorageKey(iconStorageKey);
     return () => clearInterval(t);
-  }, [initialIcons]);
+  }, [binPosStorageKey, iconStorageKey, initialIcons, trashPosStorageKey]);
 
   // On mobile variants, arrange icons into a grid that fits the screen
   useEffect(() => {
@@ -149,44 +251,30 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
     });
   }, [iconsReady, isMobile, trashPos]);
 
-  // Initialize bin position on mobile if not set
   useEffect(() => {
-    if (!iconsReady) return;
-    if (!isMobile) return;
-    if (binPos !== null) return; // Only initialize if not already set
-    // Wait for next frame to ensure desktopRef is available
-    requestAnimationFrame(() => {
-      if (!desktopRef.current) return;
-      const deskRect = desktopRef.current.getBoundingClientRect();
-      const width = deskRect.width || (typeof window !== "undefined" ? window.innerWidth : 1280);
-      const height = deskRect.height || (typeof window !== "undefined" ? window.innerHeight - 28 : 772);
-      const defaultX = 8;
-      const defaultY = Math.max(36, height - 96 - 8);
-      const clamped = clampToDesktop(defaultX, defaultY);
-      setBinPos(clamped);
-    });
-  }, [iconsReady, isMobile, binPos]);
-
+    if (!iconsReady || loadedIconStorageKey !== iconStorageKey) return;
+    localStorage.setItem(iconStorageKey, JSON.stringify(icons));
+  }, [icons, iconStorageKey, iconsReady, loadedIconStorageKey]);
   useEffect(() => {
-    localStorage.setItem("nx-icons", JSON.stringify(icons));
-  }, [icons]);
+    if (!iconsReady || loadedIconStorageKey !== iconStorageKey) return;
+    localStorage.setItem("nx-trash", JSON.stringify(trash));
+  }, [iconStorageKey, iconsReady, loadedIconStorageKey, trash]);
   useEffect(() => {
-      localStorage.setItem("nx-trash", JSON.stringify(trash));
-  }, [trash]);
-  useEffect(() => {
+    if (!iconsReady || loadedIconStorageKey !== iconStorageKey) return;
     if (trashPos) {
-      localStorage.setItem("nx-trash-pos", JSON.stringify(trashPos));
+      localStorage.setItem(trashPosStorageKey, JSON.stringify(trashPos));
     } else {
-      localStorage.removeItem("nx-trash-pos");
+      localStorage.removeItem(trashPosStorageKey);
     }
-  }, [trashPos]);
+  }, [iconStorageKey, iconsReady, loadedIconStorageKey, trashPos, trashPosStorageKey]);
   useEffect(() => {
+    if (!iconsReady || loadedIconStorageKey !== iconStorageKey) return;
     if (binPos) {
-      localStorage.setItem("nx-bin-pos", JSON.stringify(binPos));
+      localStorage.setItem(binPosStorageKey, JSON.stringify(binPos));
     } else {
-      localStorage.removeItem("nx-bin-pos");
+      localStorage.removeItem(binPosStorageKey);
     }
-  }, [binPos]);
+  }, [binPos, binPosStorageKey, iconStorageKey, iconsReady, loadedIconStorageKey]);
 
   // Ensure trash icon stays visible on window resize
   useEffect(() => {
@@ -450,8 +538,44 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
     setOpenMenu((m) => (m ? id : m));
   }
 
+  const openCascadeIndexRef = useRef(1);
+  const getCascadedWindowPosition = (index: number) => {
+    const slot = index % WINDOW_CASCADE_SLOTS;
+    const desktopEl = desktopRef.current;
+    const desktopCss = desktopEl ? window.getComputedStyle(desktopEl) : null;
+    const desktopCssWidth = desktopCss ? parseFloat(desktopCss.width || "0") : 0;
+    const desktopCssHeight = desktopCss ? parseFloat(desktopCss.height || "0") : 0;
+    const desktopWidth = desktopCssWidth || (typeof window !== "undefined" ? window.innerWidth : 1280);
+    const desktopHeight = desktopCssHeight || (typeof window !== "undefined" ? window.innerHeight - 28 : 772);
+    const estimatedWindowWidth = isMobile
+      ? Math.min(desktopWidth * (isMobilePortrait ? 0.86 : 0.84), isMobilePortrait ? 420 : 480)
+      : 220;
+    const estimatedWindowHeight = isMobile ? Math.min(400, Math.max(260, desktopHeight - 16)) : 96;
+    const maxX = Math.max(8, desktopWidth - estimatedWindowWidth - 8);
+    const maxY = Math.max(0, desktopHeight - estimatedWindowHeight - 8);
+    const base = isMobile ? mobileWindowCascadeBase : WINDOW_CASCADE_BASE;
+    const step = isMobile ? MOBILE_WINDOW_CASCADE_STEP : WINDOW_CASCADE_STEP;
+    const x = base.x + slot * step.x;
+    const y = base.y + slot * step.y;
+
+    return {
+      x: Math.min(maxX, Math.max(8, x)),
+      y: Math.min(maxY, Math.max(0, y)),
+    };
+  };
+
   const openWin = (id: string) => {
-    setWindows((w) => ({ ...w, [id]: { ...w[id], open: true, z: nextZ + 1 } }));
+    const currentWindow = windows[id];
+    if (!currentWindow) return;
+
+    const shouldCascade = !currentWindow.open;
+    const nextPosition = shouldCascade ? getCascadedWindowPosition(openCascadeIndexRef.current) : null;
+    if (shouldCascade) openCascadeIndexRef.current += 1;
+
+    setWindows((w) => {
+      if (!w[id]) return w;
+      return { ...w, [id]: { ...w[id], ...(nextPosition ?? {}), open: true, z: nextZ + 1 } };
+    });
     setNextZ((z) => z + 1);
   };
   const frontWin = (id: string) => {
@@ -487,10 +611,12 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
     setIcons(initialIcons);
     setTrash([]);
     setSelection(new Set());
-    localStorage.removeItem("nx-icons");
+    ICON_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
     localStorage.removeItem("nx-trash");
     setTrashPos(null);
-    localStorage.removeItem("nx-trash-pos");
+    TRASH_POSITION_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+    setBinPos(null);
+    BIN_POSITION_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
   }
 
   function deleteSelectedIcons() {
@@ -557,12 +683,16 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
     const scaleY = screenRect && cssH ? screenRect.height / cssH : 1;
 
     // Convert the (possibly scaled) desktop rect back into unscaled CSS pixels
-    const width = (deskRect?.width ?? (typeof window !== "undefined" ? window.innerWidth : 1280)) / (scaleX || 1);
+    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
+    const viewportHeight = typeof window !== "undefined" ? window.innerHeight - 28 : 772;
+    const rawWidth = (deskRect?.width ?? viewportWidth) / (scaleX || 1);
+    const width = isMobile ? Math.min(rawWidth, viewportWidth) : rawWidth;
     // Subtract menubar height (28px) from viewport when desktop rect is unavailable
-    const height = (deskRect?.height ?? (typeof window !== "undefined" ? window.innerHeight - 28 : 772)) / (scaleY || 1);
-    // Trash icon is 96px wide, so ensure it fits with padding
-    const maxX = Math.max(8, width - 96 - 8);
-    const maxY = Math.max(0, height - 96 - 8);
+    const rawHeight = (deskRect?.height ?? viewportHeight) / (scaleY || 1);
+    const height = isMobile ? Math.min(rawHeight, viewportHeight) : rawHeight;
+    const iconSize = isMobile ? MOBILE_ICON_SIZE : DESKTOP_ICON_SIZE;
+    const maxX = Math.max(8, width - iconSize - 8);
+    const maxY = Math.max(0, height - iconSize - 8);
     return { x: Math.min(Math.max(8, x), maxX), y: Math.min(Math.max(0, y), maxY) };
   }
 
@@ -620,9 +750,17 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
 
   function arrangeIcons() {
     setIcons((list) => {
-      const colWidth = 120;
-      const rowHeight = 96;
-      const startX = 40;
+      if (isMobile) {
+        const mobileLayout = getMobileTopRowLayout();
+        return list.map((icon) => {
+          const position = mobileLayout[icon.id as keyof typeof mobileLayout];
+          return position ? { ...icon, ...position } : icon;
+        });
+      }
+
+      const colWidth = isMobile ? 150 : 120;
+      const rowHeight = isMobile ? 126 : 96;
+      const startX = isMobile ? 28 : 40;
       const startY = 64;
       const usableHeight = typeof window !== "undefined" ? Math.max(200, window.innerHeight - 160) : 600;
       const perColumn = Math.max(1, Math.floor(usableHeight / rowHeight));
@@ -643,7 +781,9 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
 
   function resetTrashPosition() {
     setTrashPos(null);
-    localStorage.removeItem("nx-trash-pos");
+    setBinPos(null);
+    TRASH_POSITION_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+    BIN_POSITION_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
   }
 
   function onContextMenu(e: React.MouseEvent) {
@@ -769,14 +909,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
   })();
 
   // Compute default bin position if not set; ensure it's inside the desktop container
-  const defaultBinPos = binPos || (() => {
-    const deskRect = desktopRef.current?.getBoundingClientRect();
-    const width = deskRect?.width ?? (typeof window !== "undefined" ? window.innerWidth : 1280);
-    const height = deskRect?.height ?? (typeof window !== "undefined" ? window.innerHeight - 28 : 772);
-    const x = 8;
-    const y = Math.max(36, height - 96 - 8);
-    return clampToDesktop(x, y);
-  })();
+  const defaultBinPos = binPos || getDefaultBinPosition();
 
   return (
     <div className={rootClass || undefined}>
@@ -1112,14 +1245,10 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
         </button>
 
         <Window id="about" title="About Me" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <TiptapEditor initialText={"Hi, I'm Storm Bartlett, a frontend-focused full‑stack engineer. \n I like making fast, pretty apps with TypeScript, React/Next.js and backends like Node.js and PostgreSQL.\n\nAbout This Site:\n• Retro desktop OS interface design (for fun)\n• Built with Next.js, React, and TypeScript\n• Uses Three.js for 3D rendering\n• TipTap for text editing, with a limited feature-set Vim implementation"} />
+          <TiptapEditor initialText={aboutText} />
         </Window>
         <Window id="skills" title="Skills" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <TiptapEditor initialText={"Front-End:\nReact, Next.js, Typescript, HTML5, CSS3/Sass, Tailwind\nAccessible/Responsive UI, Chrome extensions\n\nBack-End:\nNode.js (Express), Python (Django/Flask)\nREST APIs, JWT/OAuth, WebSockets\n\nDatabases:\nPostgreSQL, MongoDB, SQL, Firebase Firestore\n\nCloud & Tools:\nGit/GitHub, GitHub Actions (CI/CD), Docker, Linux, GCP\n"
-            } />
-        </Window>
-        <Window id="experience" title="Experience" windows={windows} frontWin={frontWin} closeWin={closeWin}>
-          <TiptapEditor />
+          <TiptapEditor initialText={skillsText} />
         </Window>
         <Window id="calculator" title="Calculator" windows={windows} frontWin={frontWin} closeWin={closeWin} className="calculator-window">
           <Calculator />
@@ -1323,10 +1452,16 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     // Compute desktop bounds in unscaled CSS pixels for proper clamping
     const desktopEl = ref.current?.closest('.desktop') as HTMLElement | null;
     const deskRect = desktopEl?.getBoundingClientRect();
-    const deskWidth = (deskRect?.width ?? (typeof window !== "undefined" ? window.innerWidth : 1280)) / (sx || 1);
-    const deskHeight = (deskRect?.height ?? (typeof window !== "undefined" ? window.innerHeight - 28 : 772)) / (sy || 1);
-    const maxX = Math.max(8, deskWidth - 96 - 8);
-    const maxY = Math.max(0, deskHeight - 96 - 8);
+    const iconSize = desktopEl?.classList.contains("mobile") ? MOBILE_ICON_SIZE : DESKTOP_ICON_SIZE;
+    const isMobileDesktop = desktopEl?.classList.contains("mobile") ?? false;
+    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
+    const viewportHeight = typeof window !== "undefined" ? window.innerHeight - 28 : 772;
+    const rawDeskWidth = (deskRect?.width ?? viewportWidth) / (sx || 1);
+    const rawDeskHeight = (deskRect?.height ?? viewportHeight) / (sy || 1);
+    const deskWidth = isMobileDesktop ? Math.min(rawDeskWidth, viewportWidth) : rawDeskWidth;
+    const deskHeight = isMobileDesktop ? Math.min(rawDeskHeight, viewportHeight) : rawDeskHeight;
+    const maxX = Math.max(8, deskWidth - iconSize - 8);
+    const maxY = Math.max(0, deskHeight - iconSize - 8);
     const starts = new Map<string, { x: number; y: number }>();
     icons.forEach((it) => {
       if (nextSel.has(it.id)) starts.set(it.id, { x: it.x, y: it.y });
@@ -1368,8 +1503,6 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     ? "icon-file-txt"
     : icon.id === "skills"
     ? "icon-file-txt"
-    : icon.id === "experience"
-    ? "icon-file-txt"
     : icon.id === "calculator"
     ? "icon-file-binary"
     : icon.id === "todo"
@@ -1394,6 +1527,12 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
   const isMaximizedRef = useRef(false);
   const restoreStateRef = useRef<{ left: string; top: string; width: string; height: string } | null>(null);
   const w = windows[id];
+  useEffect(() => {
+    if (!w?.open || w.x === undefined || w.y === undefined || !divRef.current) return;
+    divRef.current.style.left = `${w.x}px`;
+    divRef.current.style.top = `${w.y}px`;
+  }, [w?.open, w?.x, w?.y]);
+
   useEffect(() => {
     // Autofocus any ProseMirror instance inside when window opens or is brought to front
     const pm = divRef.current?.querySelector('.ProseMirror') as HTMLElement | null;
@@ -2836,4 +2975,3 @@ function mergeIconsWithDefaults(saved: Icon[]): Icon[] {
     y: Math.min(Math.max(0, i.y), maxY),
   }));
 }
-

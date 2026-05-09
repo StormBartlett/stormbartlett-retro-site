@@ -54,7 +54,7 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .desktop-icon{appearance:none;background:transparent;border:none;padding:8px 4px;width:96px;text-align:center;color:var(--text);position:absolute;user-select:none;cursor:inherit;z-index:1;-webkit-tap-highlight-color:transparent}
 .desktop-icon.dragging{opacity:0.7 !important; z-index:10000; transform:translateZ(0); will-change:left,top,opacity; -moz-user-select:none; backface-visibility:hidden; -webkit-backface-visibility:hidden}
 .desktop-icon .icon{width:48px;height:48px;display:block;margin:0 auto 6px;pointer-events:none;position:relative}
-.desktop-icon .icon-label{font-size:13px; font-weight:550; line-height: 1.2;color:var(--text);font-family: "Lucida Console",
+.desktop-icon .icon-label{display:block;overflow-wrap:anywhere;font-size:13px; font-weight:550; line-height: 1.2;color:var(--text);font-family: "Lucida Console",
   "Lucida Sans Typewriter",
   "Courier New",
   monospace}
@@ -353,16 +353,47 @@ html,body,#__next{height:100%}
 .mobile-portrait .menubar-right .menu-user{display:none}
 /* .mobile .menubar-right span:last-child{display:none} */
 /* .no-clock .menubar-right span:last-child{display:none} */
-.mobile-portrait .menu-trigger{padding:2px 6px}
-.mobile-portrait .desktop-icon{width:88px;padding:6px 12px;text-align:left}
-.mobile-portrait .desktop-icon .icon{width:48px;height:48px;margin:0 0 8px 6px}
-.mobile-portrait .desktop-icon .icon-label{font-size:11px;text-align:left;margin-left:6px;white-space:normal}
+.mobile-portrait .menu-trigger{padding:2px 8px}
+.mobile .desktop-icon{width:100px;padding:6px 4px;text-align:center}
+.mobile .desktop-icon .icon{width:48px;height:48px;margin:0 auto 6px}
+.mobile .desktop-icon .icon-label{margin-left:0;text-align:center;white-space:normal}
+.mobile-portrait .desktop-icon{width:100px;padding:6px 4px;text-align:center}
+.mobile-portrait .desktop-icon .icon{width:48px;height:48px;margin:0 auto 6px}
+.mobile-portrait .desktop-icon .icon-label{text-align:center;margin-left:0;white-space:normal}
 .mobile-portrait .desktop-icon.trash-icon{text-align:center;padding:6px 4px}
-.mobile-portrait .desktop-icon.trash-icon .icon{margin:0 auto 8px}
+.mobile-portrait .desktop-icon.trash-icon .icon{margin:0 auto 6px}
 .mobile-portrait .desktop-icon.trash-icon .icon-label{text-align:center;margin-left:0}
-.mobile-portrait .window{width:min(94vw,460px);left:3vw}
-.mobile-landscape .window{width:min(92vw,520px);left:4vw}
-.mobile-portrait .blog-window{width:min(94vw,460px)}
-.mobile-landscape .blog-window{width:min(92vw,600px)}
+.mobile .window{max-width:calc(100vw - 48px);max-height:calc(100svh - 52px);min-width:0}
+.mobile-portrait .window{width:min(86vw,420px);left:7vw}
+.mobile-landscape .window{width:min(84vw,480px);left:8vw}
+.mobile-portrait .blog-window{width:min(86vw,420px)}
+.mobile-landscape .blog-window{width:min(84vw,540px)}
+.mobile .falling-sand-window{min-width:0;width:min(86vw,420px)}
+.mobile-landscape .falling-sand-window{width:min(84vw,480px)}
 
-
+/* Mobile typography: keep the retro UI dense, but make text readable on phone screens. */
+.mobile{font-size:18px}
+.mobile .menubar{font-size:14px;line-height:1.2}
+.mobile .menu-trigger,.mobile .menu-entry,.mobile .menu-label,.mobile .menu-user,.mobile .menubar-right span{font-size:14px;line-height:1.2}
+.mobile .menu-dropdown{min-width:min(78vw,260px)}
+.mobile .menu-entry{padding:12px 14px}
+.mobile .titlebar{font-size:16px;line-height:1.2}
+.mobile .window-body{font-size:18px;line-height:1.55}
+.mobile .window-body p,.mobile .window-body li{font-size:18px;line-height:1.6}
+.mobile .desktop-icon .icon-label,.mobile-portrait .desktop-icon .icon-label{font-size:13px;line-height:1.2}
+.mobile .browser-icon .icon-label{font-size:17px;line-height:1.25}
+.mobile .browser-icon.folder .folder-count{font-size:12px}
+.mobile .blog-post-window .window-body{padding:18px}
+.mobile .blog-title{font-size:24px;line-height:1.2;margin-bottom:10px}
+.mobile .blog-meta{font-size:15px;line-height:1.35;margin-bottom:16px}
+.mobile .blog-content{font-size:18px;line-height:1.65}
+.mobile .blog-content p{font-size:18px;line-height:1.65;margin-bottom:16px}
+.mobile .equation{font-size:16px;line-height:1.5}
+.mobile .code-block{font-size:15px;line-height:1.5}
+.mobile .pm-editor .ProseMirror{font-size:18px;line-height:1.6}
+.mobile .calc-display{font-size:16px}
+.mobile .key{font-size:15px}
+.mobile .falling-sand-hud h3{font-size:18px}
+.mobile .hud-label,.mobile .material-btn,.mobile .clear-btn{font-size:15px}
+.mobile .brush-size-display{font-size:16px}
+.mobile .hud-hint{font-size:14px}
