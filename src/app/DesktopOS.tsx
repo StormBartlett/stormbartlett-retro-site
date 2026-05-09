@@ -864,10 +864,6 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
 
   // Removed copyPortfolioLink (unused)
 
-  function toggleCRT() {
-    setCrtOff((v) => !v);
-  }
-
   function resetTrashPosition() {
     setTrashPos(null);
     setBinPos(null);
@@ -1042,7 +1038,6 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
               View
             </button>
             <div className="menu-dropdown" role="menu">
-              <button className="menu-entry" role="menuitem" onClick={() => { toggleCRT(); setOpenMenu(null); }}>Toggle CRT Scanlines</button>
               <button className="menu-entry" role="menuitem" onClick={() => { arrangeIcons(); setOpenMenu(null); }}>Arrange Icons</button>
               <button className="menu-entry" role="menuitem" onClick={() => { resetIcons(); setOpenMenu(null); }}>Reset Desktop Icons</button>
               <button className="menu-entry" role="menuitem" onClick={() => { resetTrashPosition(); setOpenMenu(null); }}>Reset Trash Position</button>
