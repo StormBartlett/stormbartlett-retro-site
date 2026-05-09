@@ -52,7 +52,7 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .menu-user{margin-right:4px}
 .desktop{position:fixed;inset:28px 0 0 0;padding:16px;overflow:hidden; touch-action:none}
 .desktop-icon{appearance:none;background:transparent;border:none;padding:8px 4px;width:96px;text-align:center;color:var(--text);position:absolute;user-select:none;cursor:inherit;z-index:1}
-.desktop-icon.dragging{opacity:0.7 !important; z-index:10000; transform:translateZ(0); will-change:transform,opacity; -moz-user-select:none; backface-visibility:hidden; -webkit-backface-visibility:hidden}
+.desktop-icon.dragging{opacity:0.7 !important; z-index:10000; will-change:left,top,opacity; -moz-user-select:none}
 .desktop-icon .icon{width:48px;height:48px;display:block;margin:0 auto 6px;pointer-events:none;position:relative}
 .desktop-icon .icon-label{font-size:13px; font-weight:550; line-height: 1.2;color:var(--text);font-family: "Lucida Console",
   "Lucida Sans Typewriter",
@@ -161,7 +161,11 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 :root.dark-mode .embedded-screen{cursor:url("/cursor-dark.svg") 1 1, auto}
 .embedded-screen::before{content:""; position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(to bottom, rgba(0,0,0,.12) 0px, rgba(0,0,0,.12) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) var(--crt-line-gap)); mix-blend-mode:multiply;}
 .embedded-screen::after{display:none}
-:root.dark-mode .embedded-screen{background:#0a0a0a}
+:root.dark-mode .embedded-screen{background:#1a1620}
+:root.dark-mode .embedded-screen::before{background:repeating-linear-gradient(to bottom, rgba(255,255,255,.07) 0px, rgba(255,255,255,.07) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) var(--crt-line-gap)); mix-blend-mode:screen}
+:root.dark-mode .desktop-icon .icon,
+:root.dark-mode .browser-icon .icon,
+:root.dark-mode .trash-icon .icon{filter:invert(1)}
 
 /* Curved CRT bulge and gloss - tweak with CSS vars above */
 .crt-curvature-overlay{display:none}
@@ -352,6 +356,9 @@ html,body,#__next{height:100%}
 .mobile-portrait .desktop-icon{width:88px;padding:6px 12px;text-align:left}
 .mobile-portrait .desktop-icon .icon{width:48px;height:48px;margin:0 0 8px 6px}
 .mobile-portrait .desktop-icon .icon-label{font-size:11px;text-align:left;margin-left:6px;white-space:normal}
+.mobile-portrait .desktop-icon.trash-icon{text-align:center;padding:6px 4px}
+.mobile-portrait .desktop-icon.trash-icon .icon{margin:0 auto 8px}
+.mobile-portrait .desktop-icon.trash-icon .icon-label{text-align:center;margin-left:0}
 .mobile-portrait .window{width:min(94vw,460px);left:3vw}
 .mobile-landscape .window{width:min(92vw,520px);left:4vw}
 .mobile-portrait .blog-window{width:min(94vw,460px)}

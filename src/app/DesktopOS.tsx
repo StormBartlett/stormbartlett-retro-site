@@ -6,7 +6,7 @@ import TiptapEditor from "./TiptapEditor";
 import TodoEditor from "./TodoEditor";
 import FallingSand from "./FallingSand";
 
-type Icon = { id: string; label: string; app: string; x: number; y: number };
+type Icon = { id: string; label: string; app: string; x: number; y: number; type?: "file" | "folder" };
 type Win = { id: string; open: boolean; z: number };
 
 const baseIcons: Icon[] = [
@@ -15,6 +15,7 @@ const baseIcons: Icon[] = [
   // { id: "experience", label: "Xp.txt", app: "experience", x: 280, y: 64 },
   { id: "calculator", label: "Calculator", app: "calculator", x: 400, y: 64 },
   { id: "falling-sand", label: "Falling Sand", app: "falling-sand", x: 640, y: 64 },
+  { id: "projects", label: "Projects", app: "projects", x: 520, y: 64, type: "folder" },
 ];
 
 export default function DesktopOS({ embedded = false, mobileVariant }: { embedded?: boolean; mobileVariant?: "portrait" | "landscape" }) {
@@ -24,6 +25,10 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
   const [icons, setIcons] = useState<Icon[]>(initialIcons);
   const [trash, setTrash] = useState<Icon[]>([]);
   const [testFolderItems, setTestFolderItems] = useState<BrowserItem[]>([]);
+  const [projectFolderItems, setProjectFolderItems] = useState<BrowserItem[]>([
+    { id: "project-notetime", label: "NoteTime.txt", type: "file", x: 20, y: 20, windowId: "project-notetime" },
+    { id: "project-fallingsand", label: "FallingSandGame.txt", type: "file", x: 120, y: 20, windowId: "project-fallingsand" },
+  ]);
   const blogBrowserAddItemRef = useRef<((item: BrowserItem) => void) | null>(null);
   const [windows, setWindows] = useState<Record<string, Win>>({
     about: { id: "about", open: true, z: 11 },
@@ -38,13 +43,16 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
     "blog-sorting": { id: "blog-sorting", open: false, z: 10 },
     "blog-graphs": { id: "blog-graphs", open: false, z: 10 },
     "test-folder": { id: "test-folder", open: false, z: 10 },
+    projects: { id: "projects", open: false, z: 10 },
+    "project-notetime": { id: "project-notetime", open: false, z: 10 },
+    "project-fallingsand": { id: "project-fallingsand", open: false, z: 10 },
   });
   const [nextZ, setNextZ] = useState(11);
   const [crtOff, setCrtOff] = useState(false);
   const [clock, setClock] = useState("--:--");
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [iconsReady, setIconsReady] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
   const marqueeRef = useRef<HTMLDivElement | null>(null);
   const desktopRef = useRef<HTMLDivElement | null>(null);
   const marqueeStart = useRef<{ x: number; y: number } | null>(null);
@@ -272,6 +280,25 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
             if (!overBin) dragOverTargetRef.current = null;
           }
         }
+
+        // Check if over any desktop folder icon (e.g., Projects)
+        const folderEls = document.querySelectorAll<HTMLElement>('.desktop-icon[data-folder="true"]');
+        let overAnyFolder: string | null = null;
+        folderEls.forEach((el) => {
+          const id = el.dataset.id || '';
+          if (!id || draggedIds.includes(id)) return;
+          const r = el.getBoundingClientRect();
+          if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+            overAnyFolder = id;
+          }
+        });
+        if (overAnyFolder) {
+          dragOverTargetRef.current = overAnyFolder;
+          setDragOverFolder(overAnyFolder);
+        } else if (dragOverTargetRef.current && !['trash', 'bin'].includes(dragOverTargetRef.current)) {
+          dragOverTargetRef.current = null;
+          setDragOverFolder(null);
+        }
       } else {
         // No dragging happening
         if (!isDraggingRef.current) {
@@ -318,6 +345,23 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
                   setSelection(new Set()); // Clear selection after moving
                 }
               }
+            } else if (targetId === 'projects') {
+              setProjectFolderItems(prev => {
+                const existing = new Set(prev.map(i => i.id));
+                const newItems = iconsToMove
+                  .filter(icon => !existing.has(icon.id))
+                  .map((icon, idx) => ({
+                    id: icon.id,
+                    label: icon.label,
+                    type: icon.type === 'folder' ? 'folder' as const : 'file' as const,
+                    x: 20 + ((prev.length + idx) % 3) * 100,
+                    y: 20 + Math.floor((prev.length + idx) / 3) * 100,
+                    windowId: icon.app,
+                  }));
+                return [...prev, ...newItems];
+              });
+              setIcons(prev => prev.filter(i => !iconIds.includes(i.id)));
+              setSelection(new Set());
             }
           }
         }
@@ -348,6 +392,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
 
   useEffect(() => {
     const savedDark = localStorage.getItem("nx-dark-mode");
+    if (savedDark === "0") setDarkMode(false);
     if (savedDark === "1") setDarkMode(true);
   }, []);
 
@@ -1139,24 +1184,52 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
           <BlogPostContent postId="graphs" />
         </Window>
         <Window id="test-folder" title="Test Folder" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window">
-          <BlogBrowser 
-            windows={windows} 
-            openWin={openWin} 
-            frontWin={frontWin} 
-            closeWin={closeWin} 
-            nextZ={nextZ} 
+          <BlogBrowser
+            windows={windows}
+            openWin={openWin}
+            frontWin={frontWin}
+            closeWin={closeWin}
+            nextZ={nextZ}
             setNextZ={setNextZ}
             desktopIcons={icons}
             setDesktopIcons={setIcons}
             desktopRef={desktopRef}
             darkMode={darkMode}
             folderId="test-folder"
-            initialItems={testFolderItems}
+            items={testFolderItems}
+            setItems={setTestFolderItems}
             testFolderItems={testFolderItems}
             setTestFolderItems={setTestFolderItems}
             draggingFromFolder={draggingFromFolder}
             setDraggingFromFolder={setDraggingFromFolder}
           />
+        </Window>
+        <Window id="projects" title="Projects" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window">
+          <BlogBrowser
+            windows={windows}
+            openWin={openWin}
+            frontWin={frontWin}
+            closeWin={closeWin}
+            nextZ={nextZ}
+            setNextZ={setNextZ}
+            desktopIcons={icons}
+            setDesktopIcons={setIcons}
+            desktopRef={desktopRef}
+            darkMode={darkMode}
+            folderId="projects"
+            items={projectFolderItems}
+            setItems={setProjectFolderItems}
+            testFolderItems={testFolderItems}
+            setTestFolderItems={setTestFolderItems}
+            draggingFromFolder={draggingFromFolder}
+            setDraggingFromFolder={setDraggingFromFolder}
+          />
+        </Window>
+        <Window id="project-notetime" title="NoteTime.txt" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window blog-post-window">
+          <ProjectPostContent postId="notetime" />
+        </Window>
+        <Window id="project-fallingsand" title="FallingSandGame.txt" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window blog-post-window">
+          <ProjectPostContent postId="fallingsand" />
         </Window>
         {ctxMenu && (
           <div
@@ -1289,7 +1362,9 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     window.addEventListener("pointermove", move as (this: Window, ev: PointerEvent) => void);
     window.addEventListener("pointerup", up);
   };
-  const spriteId = icon.id === "about"
+  const spriteId = icon.type === "folder"
+    ? "icon-folder"
+    : icon.id === "about"
     ? "icon-file-txt"
     : icon.id === "skills"
     ? "icon-file-txt"
@@ -1303,7 +1378,7 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     ? "icon-file-binary"
     : "icon-file";
   return (
-    <button ref={ref} className={`desktop-icon ${selection.has(icon.id) ? "is-selected" : ""} ${burst ? "is-burst" : ""}`} data-id={icon.id} style={{ left: icon.x, top: icon.y, position: "absolute" }} onDoubleClick={onDbl} onPointerDown={down} onClick={() => { setBurst(true); window.setTimeout(() => setBurst(false), 500); }}>
+    <button ref={ref} className={`desktop-icon ${selection.has(icon.id) ? "is-selected" : ""} ${burst ? "is-burst" : ""}`} data-id={icon.id} data-folder={icon.type === "folder" ? "true" : undefined} style={{ left: icon.x, top: icon.y, position: "absolute" }} onDoubleClick={onDbl} onPointerDown={down} onClick={() => { setBurst(true); window.setTimeout(() => setBurst(false), 500); }}>
       <div className="icon">
         <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
           <use href={`#${spriteId}`}></use>
@@ -1970,36 +2045,40 @@ function TrashBrowser({
   );
 }
 
-function BlogBrowser({ 
-  windows, 
-  openWin, 
-  frontWin, 
-  closeWin, 
-  nextZ, 
+function BlogBrowser({
+  windows,
+  openWin,
+  frontWin,
+  closeWin,
+  nextZ,
   setNextZ,
   desktopIcons,
   setDesktopIcons,
   desktopRef,
   folderId = "blog",
   initialItems,
+  items: controlledItems,
+  setItems: setControlledItems,
   testFolderItems: externalTestFolderItems,
   setTestFolderItems: setExternalTestFolderItems,
   draggingFromFolder,
   setDraggingFromFolder,
   addItemRef,
   darkMode
-}: { 
-  windows: Record<string, Win>; 
-  openWin: (id: string) => void; 
-  frontWin: (id: string) => void; 
-  closeWin: (id: string) => void; 
-  nextZ: number; 
+}: {
+  windows: Record<string, Win>;
+  openWin: (id: string) => void;
+  frontWin: (id: string) => void;
+  closeWin: (id: string) => void;
+  nextZ: number;
   setNextZ: (fn: (z: number) => number) => void;
   desktopIcons?: Icon[];
   setDesktopIcons?: React.Dispatch<React.SetStateAction<Icon[]>>;
   desktopRef?: React.RefObject<HTMLDivElement | null>;
   folderId?: string;
   initialItems?: BrowserItem[];
+  items?: BrowserItem[];
+  setItems?: React.Dispatch<React.SetStateAction<BrowserItem[]>>;
   testFolderItems?: BrowserItem[];
   setTestFolderItems?: React.Dispatch<React.SetStateAction<BrowserItem[]>>;
   draggingFromFolder?: { item: BrowserItem; x: number; y: number; sourceFolder: string } | null;
@@ -2008,12 +2087,14 @@ function BlogBrowser({
   darkMode: boolean;
 }) {
   const browserRef = useRef<HTMLDivElement | null>(null);
-  const [items, setItems] = useState<BrowserItem[]>(initialItems || [
+  const [localItems, setLocalItems] = useState<BrowserItem[]>(controlledItems || initialItems || [
     { id: "blog-recursion", label: "Recursive Algorithms.txt", type: "file", x: 20, y: 20, windowId: "blog-recursion" },
     { id: "blog-sorting", label: "Mathematics of Sorting.txt", type: "file", x: 120, y: 20, windowId: "blog-sorting" },
     { id: "blog-graphs", label: "Graph Theory.txt", type: "file", x: 220, y: 20, windowId: "blog-graphs" },
     { id: "test-folder", label: "Test Folder", type: "folder", x: 20, y: 120 },
   ]);
+  const items = controlledItems !== undefined ? controlledItems : localItems;
+  const setItems = setControlledItems || setLocalItems;
 
   // Expose function to add items from outside (e.g., when dragging onto folder icon)
   useEffect(() => {
@@ -2661,6 +2742,44 @@ function BlogPostContent({ postId }: { postId: "recursion" | "sorting" | "graphs
   );
 }
 
+function ProjectPostContent({ postId }: { postId: "notetime" | "fallingsand" }) {
+  const posts = {
+    notetime: {
+      title: "NoteTime",
+      meta: "Status: Shipped",
+      content: (
+        <>
+          <p>NoteTime is a notebook that turns raw lecture audio into structured, searchable study material. Upload a recording, get timestamped notes, summaries, and flashcards generated alongside the transcript — all time-linked so you can jump back to the exact moment an idea was spoken.</p>
+          <p>Built for students who take notes on an iPad or laptop and never want to re-listen to a two-hour lecture to find one sentence again.</p>
+          <p>Try it at <a href="https://notetime.ai" target="_blank" rel="noopener noreferrer">notetime.ai</a>.</p>
+        </>
+      ),
+    },
+    fallingsand: {
+      title: "Falling Sand Game (working title)",
+      meta: "Status: In development — not yet announced",
+      content: (
+        <>
+          <p>A falling-sand simulation crossed with a mining game, written in Rust. Every pixel is a cell with real physical behavior — sand piles, water flows, lava ignites wood, steam rises when the two meet — and the world is fully destructible.</p>
+          <p>The simulation runs on the GPU via <strong>compute shaders</strong>, which is what makes it viable at a meaningful scale: millions of cells updated in parallel per frame instead of the thousands a CPU-bound cellular automaton tops out at. The mining layer sits on top of the sim, so tunnels collapse, fluids drain into what you dig, and ore veins react to heat and pressure like everything else.</p>
+          <p>More details coming when it&apos;s ready to announce.</p>
+        </>
+      ),
+    },
+  };
+
+  const post = posts[postId];
+  return (
+    <div className="blog-posts">
+      <article className="blog-post">
+        <h2 className="blog-title">{post.title}</h2>
+        <div className="blog-meta">{post.meta}</div>
+        <div className="blog-content">{post.content}</div>
+      </article>
+    </div>
+  );
+}
+
 function Calculator() {
   const [expr, setExpr] = useState("0");
   const append = (k: string) => setExpr((e) => (e === "0" && /[0-9]/.test(k) ? k : e + k));
@@ -2717,5 +2836,4 @@ function mergeIconsWithDefaults(saved: Icon[]): Icon[] {
     y: Math.min(Math.max(0, i.y), maxY),
   }));
 }
-
 
