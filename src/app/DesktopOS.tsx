@@ -31,7 +31,7 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
   ]);
   const blogBrowserAddItemRef = useRef<((item: BrowserItem) => void) | null>(null);
   const [windows, setWindows] = useState<Record<string, Win>>({
-    about: { id: "about", open: true, z: 11 },
+    about: { id: "about", open: false, z: 11 },
     skills: { id: "skills", open: false, z: 10 },
     experience: { id: "experience", open: false, z: 10 },
     calculator: { id: "calculator", open: false, z: 10 },
