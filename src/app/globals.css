@@ -80,7 +80,7 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .window{position:absolute;top:80px;left:80px;width:420px;height:400px;min-width:200px;min-height:150px;background:var(--bg-window);border:2px solid var(--window-border);box-shadow:0 6px 18px var(--window-shadow);display:flex;flex-direction:column}
 :root.dark-mode .window{box-shadow:0 10px 24px var(--window-shadow),0 0 0 1px rgba(255,255,255,.9)}
 .blog-window{width:420px;height:350px}
-.about-portfolio-window{width:372px;height:392px;min-width:332px;min-height:370px}
+.about-portfolio-window{width:372px;height:350px;min-width:332px;min-height:332px}
 .about-portfolio-window .window-body{background:linear-gradient(180deg,var(--window-paper-hi) 0%,var(--window-paper) 42%,var(--window-paper-lo) 100%);color:var(--window-ink)!important;padding:16px 20px 14px;overflow:auto;font-family:"Silkscreen","VT323",ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;font-size:15px;line-height:1.45;font-weight:400;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -1px 0 rgba(0,0,0,.08)}
 :root.dark-mode .about-portfolio-window .window-body{background:#050505;color:#ffffff!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
 .about-portfolio{min-height:100%;display:flex;flex-direction:column;gap:12px}
@@ -137,7 +137,7 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .pm-editor .ProseMirror{min-height:180px;padding:12px 16px;outline:none;border:none;background:transparent; user-select:text; -webkit-user-select:text; caret-color: auto; line-height:1.6; font-size:14px; font-weight: 500; touch-action:pan-x pan-y; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; zoom:1 !important; font-family:"Menlo","Monaco","Consolas","Courier New",monospace}
 .pm-editor .ProseMirror:focus{outline:none !important;box-shadow:none !important}
 :root.dark-mode .pm-editor .ProseMirror:focus{outline:none !important;box-shadow:none !important}
-.pm-editor{touch-action:pan-x pan-y; zoom:1 !important}
+.pm-editor{height:100%;min-height:0;overflow-y:scroll;overflow-x:hidden;scrollbar-gutter:stable;touch-action:pan-x pan-y; zoom:1 !important}
 .pm-editor .ProseMirror[vim-active="true"][mode="normal"]{caret-color:transparent}
 .pm-editor .ProseMirror[vim-active="true"][mode="normal"] .vim-cursor{background:var(--accent);color:#101010;border-radius:2px;animation:vim-blink 1s steps(1,end) infinite}
 /* Widget-based normal-mode cursor (for empty lines/EOL) */
@@ -373,13 +373,12 @@ html,body,#__next{height:100%}
 .mobile .desktop{padding:8px}
 .mobile-portrait .desktop{padding:6px}
 .mobile-portrait .menubar-right .menu-user{display:none}
-.mobile-portrait .menubar-right span:last-child{display:none}
 /* .mobile .menubar-right span:last-child{display:none} */
 /* .no-clock .menubar-right span:last-child{display:none} */
 .mobile .menubar{padding:0 4px}
 .mobile .menubar-left{flex:1 1 auto;overflow:visible}
-.mobile .menubar-right{flex:0 0 auto;gap:6px}
-.mobile .menu{margin-right:2px;flex:0 0 auto}
+.mobile .menubar-right{flex:0 0 auto;gap:7px}
+.mobile .menu{margin-right:5px;flex:0 0 auto}
 .mobile-portrait .menu-trigger{padding:2px 5px}
 .mobile .desktop-icon{width:100px;padding:6px 4px;text-align:center}
 .mobile .desktop-icon .icon{width:48px;height:48px;margin:0 auto 6px}
@@ -393,7 +392,7 @@ html,body,#__next{height:100%}
 .mobile .window{max-width:calc(100vw - 48px);max-height:calc(100svh - 52px);min-width:0}
 .mobile-portrait .window{width:min(86vw,420px);left:7vw}
 .mobile-landscape .window{width:min(84vw,480px);left:8vw}
-.mobile .about-portfolio-window{width:min(92vw,380px);height:min(470px,calc(100svh - 76px));max-width:calc(100vw - 20px);max-height:calc(100svh - 44px);min-width:min(332px,calc(100vw - 20px));min-height:min(410px,calc(100svh - 76px))}
+.mobile .about-portfolio-window{width:min(92vw,380px);height:min(390px,calc(100svh - 76px));max-width:calc(100vw - 20px);max-height:calc(100svh - 44px);min-width:min(332px,calc(100vw - 20px));min-height:min(350px,calc(100svh - 76px))}
 .mobile .about-portfolio-window .window-body{padding:16px 18px;font-size:15px;line-height:1.45}
 .mobile .about-portfolio{gap:12px}
 .mobile .about-portfolio-header{grid-template-columns:52px minmax(0,1fr);gap:12px;min-height:62px}
