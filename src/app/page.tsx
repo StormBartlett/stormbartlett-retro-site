@@ -60,6 +60,7 @@ function HomeContent() {
     const mobileDesktop = (
       <DesktopOS
         embedded
+        modelScreen={mobileViewMode === "model"}
         mobileVariant={orientation}
         viewMode={mobileViewMode}
         onViewModeChange={setMobileViewModePersisted}
@@ -85,7 +86,7 @@ function HomeContent() {
 
   return (
     <OldMac3D>
-      <DesktopOS embedded viewMode="model" onViewModeChange={setDesktopViewMode} />
+      <DesktopOS embedded modelScreen viewMode="model" onViewModeChange={setDesktopViewMode} />
     </OldMac3D>
   );
 }

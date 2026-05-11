@@ -76,6 +76,10 @@ const ZOOM_MAX_DISTANCE = 14;   // How far you can zoom out
 // Approximate screen plane size in local units (tweak to fit cutout)
 const SCREEN_PLANE_W = 2.6;
 const SCREEN_PLANE_H = 3.0;
+const SCREEN_CSS_WIDTH = 800;
+const SCREEN_CSS_HEIGHT = 600;
+const SCREEN_CSS_SCALE = 0.001795;
+const SCREEN_CSS_POSITION: [number, number, number] = [-0.04, 0.24, 0];
 
 type CameraAnim = {
   startMs: number;
@@ -295,31 +299,8 @@ function useCSS3DScreen(
     // Create CSS3DObject from the div
     const css3dObject = new CSS3DObject(divElement);
 
-       // Device detection
-    const isMobile = typeof window !== "undefined" && (
-      window.innerWidth <= 820 || 
-      matchMedia("(pointer: coarse)").matches
-    ); 
-
-    // Brave detection (checks for Brave-specific API)
-    const nav = (typeof navigator !== 'undefined' ? navigator : undefined) as { brave?: { isBrave?: () => boolean } } | undefined;
-    const isBrave = !!(nav && nav.brave && typeof nav.brave.isBrave === 'function');
-
-    // Position and scale based on device
-    //todo: remove this branching code as mobile now has a default OS and no 3D
-    if (!isMobile) {
-      // Desktop
-      css3dObject.position.set(-.04, .24, 0);
-      css3dObject.scale.set(0.001795, 0.001795, 0.001795);
-    } else if (isBrave) {
-      // Brave Mobile - only too far left
-      css3dObject.position.set(.135, .24, 0); // Adjusted X, kept Y same as desktop
-      css3dObject.scale.set(0.00176, 0.00176, 0.00176);
-    } else {
-      // Safari/Chrome Mobile - too far left AND down
-      css3dObject.position.set(.135, .41, 0); // Adjusted X and Y
-      css3dObject.scale.set(0.00176, 0.00176, 0.00176);
-    }
+    css3dObject.position.set(...SCREEN_CSS_POSITION);
+    css3dObject.scale.set(SCREEN_CSS_SCALE, SCREEN_CSS_SCALE, SCREEN_CSS_SCALE);
     // Add to the screen group
     currentScreenRef.add(css3dObject);
 
@@ -527,6 +508,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
       css3dRenderer.setSize(window.innerWidth, window.innerHeight);
       css3dRenderer.domElement.style.position = "absolute";
       css3dRenderer.domElement.style.top = "0";
+      css3dRenderer.domElement.style.left = "0";
       // Default to pass-through; we'll enable pointer events when hovering the screen
       css3dRenderer.domElement.style.pointerEvents = "none";
       container.appendChild(css3dRenderer.domElement);
@@ -714,13 +696,16 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
           }}
           style={{
             position: "absolute",
-            width: "800px",
-            height: "600px",
+            width: `${SCREEN_CSS_WIDTH}px`,
+            height: `${SCREEN_CSS_HEIGHT}px`,
             // Allow clicks within the embedded screen, but keep it non-blocking outside
             pointerEvents: "auto",
           }}
         >
-          <div className="embedded-screen" style={{ width: "800px", height: "600px", position: 'relative' }}>
+          <div
+            className="embedded-screen model-screen"
+            style={{ width: `${SCREEN_CSS_WIDTH}px`, height: `${SCREEN_CSS_HEIGHT}px`, position: 'relative' }}
+          >
             <CursorUpdateContext.Provider value={{ onCursorUpdate: setCursorPosition }}>
               {children}
             </CursorUpdateContext.Provider>

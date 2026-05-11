@@ -12,6 +12,7 @@ type Win = { id: string; open: boolean; z: number; x?: number; y?: number };
 type ViewMode = "model" | "desktop";
 type DesktopOSProps = {
   embedded?: boolean;
+  modelScreen?: boolean;
   mobileVariant?: "portrait" | "landscape";
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
@@ -275,7 +276,7 @@ const aboutPortfolioRows = [
   { icon: "/about-portfolio-icons/bulb.png", label: "Product Thinker" },
 ];
 
-export default function DesktopOS({ embedded = false, mobileVariant, viewMode, onViewModeChange }: DesktopOSProps) {
+export default function DesktopOS({ embedded = false, modelScreen = false, mobileVariant, viewMode, onViewModeChange }: DesktopOSProps) {
   const { isFullscreen, setFullscreen } = useFullscreen();
   const isMobile = !!mobileVariant;
   const isMobilePortrait = mobileVariant === "portrait";
@@ -342,15 +343,19 @@ export default function DesktopOS({ embedded = false, mobileVariant, viewMode, o
   const dragOverTargetRef = useRef<string | null>(null);
 
   const getDesktopSize = () => {
-    const deskRect = desktopRef.current?.getBoundingClientRect();
+    const desktopEl = desktopRef.current;
+    const desktopCss = desktopEl ? window.getComputedStyle(desktopEl) : null;
+    const cssWidth = desktopCss ? parseFloat(desktopCss.width || "0") : 0;
+    const cssHeight = desktopCss ? parseFloat(desktopCss.height || "0") : 0;
+    const deskRect = desktopEl?.getBoundingClientRect();
     const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
     const viewportHeight = typeof window !== "undefined" ? window.innerHeight - 28 : 772;
-    const width = deskRect?.width ?? viewportWidth;
-    const height = deskRect?.height ?? viewportHeight;
+    const width = cssWidth || desktopEl?.clientWidth || deskRect?.width || viewportWidth;
+    const height = cssHeight || desktopEl?.clientHeight || deskRect?.height || viewportHeight;
 
     return {
-      width: isMobile ? Math.min(width, viewportWidth) : width,
-      height: isMobile ? Math.min(height, viewportHeight) : height,
+      width: isMobile && !modelScreen ? Math.min(width, viewportWidth) : width,
+      height: isMobile && !modelScreen ? Math.min(height, viewportHeight) : height,
     };
   };
 
@@ -869,24 +874,7 @@ export default function DesktopOS({ embedded = false, mobileVariant, viewMode, o
   }
 
   function clampToDesktop(x: number, y: number): { x: number; y: number } {
-    const deskRect = desktopRef.current?.getBoundingClientRect();
-    // Detect current CSS transform scale applied to the embedded screen (if any)
-    const screenEl = desktopRef.current?.closest('.embedded-screen') as HTMLElement | null;
-    const screenRect = screenEl?.getBoundingClientRect();
-    const css = screenEl ? window.getComputedStyle(screenEl) : null;
-    const cssW = css ? parseFloat(css.width || '0') : 0;
-    const cssH = css ? parseFloat(css.height || '0') : 0;
-    const scaleX = screenRect && cssW ? screenRect.width / cssW : 1;
-    const scaleY = screenRect && cssH ? screenRect.height / cssH : 1;
-
-    // Convert the (possibly scaled) desktop rect back into unscaled CSS pixels
-    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
-    const viewportHeight = typeof window !== "undefined" ? window.innerHeight - 28 : 772;
-    const rawWidth = (deskRect?.width ?? viewportWidth) / (scaleX || 1);
-    const width = isMobile ? Math.min(rawWidth, viewportWidth) : rawWidth;
-    // Subtract menubar height (28px) from viewport when desktop rect is unavailable
-    const rawHeight = (deskRect?.height ?? viewportHeight) / (scaleY || 1);
-    const height = isMobile ? Math.min(rawHeight, viewportHeight) : rawHeight;
+    const { width, height } = getDesktopSize();
     const iconSize = isMobile ? MOBILE_ICON_SIZE : DESKTOP_ICON_SIZE;
     const maxX = Math.max(8, width - iconSize - 8);
     const maxY = Math.max(0, height - iconSize - 8);
@@ -930,17 +918,8 @@ export default function DesktopOS({ embedded = false, mobileVariant, viewMode, o
 
   function clientToDesktop(clientX: number, clientY: number): { left: number; top: number } | null {
     if (!desktopRef.current) return null;
-    const screenEl = desktopRef.current.closest('.embedded-screen') as HTMLElement | null;
-    const rect = screenEl?.getBoundingClientRect();
-    const css = screenEl ? window.getComputedStyle(screenEl) : null;
-    const cssW = css ? parseFloat(css.width || '0') : 0;
-    const cssH = css ? parseFloat(css.height || '0') : 0;
-    const scaleX = rect && cssW ? rect.width / cssW : 1;
-    const scaleY = rect && cssH ? rect.height / cssH : 1;
-    const d = desktopRef.current.getBoundingClientRect();
-    const left = (clientX - d.left) / scaleX;
-    const top = (clientY - d.top) / scaleY;
-    return { left, top };
+    const point = createLocalCoordinateMetrics(desktopRef.current).clientToLocal(clientX, clientY);
+    return { left: point.x, top: point.y };
   }
 
   // Drag-to-trash disabled
@@ -993,17 +972,9 @@ export default function DesktopOS({ embedded = false, mobileVariant, viewMode, o
       if (id && !selection.has(id)) setSelection(new Set([id]));
     }
     if (!desktopRef.current) return;
-    const screenEl = desktopRef.current.closest('.embedded-screen') as HTMLElement | null;
-    const rect = screenEl?.getBoundingClientRect();
-    const css = screenEl ? window.getComputedStyle(screenEl) : null;
-    const cssW = css ? parseFloat(css.width || '0') : 0;
-    const cssH = css ? parseFloat(css.height || '0') : 0;
-    const scaleX = rect && cssW ? rect.width / cssW : 1;
-    const scaleY = rect && cssH ? rect.height / cssH : 1;
-    const d = desktopRef.current.getBoundingClientRect();
-    const left = (e.clientX - d.left) / scaleX;
-    const top = (e.clientY - d.top) / scaleY;
-    setCtxMenu({ x: left, y: top, restricted });
+    const point = clientToDesktop(e.clientX, e.clientY);
+    if (!point) return;
+    setCtxMenu({ x: point.left, y: point.top, restricted });
   }
 
   function onDesktopMouseDown(e: React.MouseEvent) {
@@ -1085,7 +1056,8 @@ export default function DesktopOS({ embedded = false, mobileVariant, viewMode, o
   }
 
   const rootClass = [
-    embedded ? "embedded-screen" : "",
+    embedded && !modelScreen ? "embedded-screen" : "",
+    modelScreen ? "model-screen-content" : "",
     isMobile ? "mobile" : "",
     isMobilePortrait ? "mobile-portrait" : isMobile ? "mobile-landscape" : "",
   ].filter(Boolean).join(" ");
@@ -1284,14 +1256,8 @@ export default function DesktopOS({ embedded = false, mobileVariant, viewMode, o
             const startX = e.clientX, startY = e.clientY;
             if (!desktopRef.current) return;
             
-            // Compute current CSS transform scale of the embedded screen (like DesktopIcon does)
-            const screenEl = desktopRef.current.closest('.embedded-screen') as HTMLElement | null;
-            const rect = screenEl?.getBoundingClientRect();
-            const css = screenEl ? window.getComputedStyle(screenEl) : null;
-            const cssW = css ? parseFloat(css.width || '0') : 0;
-            const cssH = css ? parseFloat(css.height || '0') : 0;
-            const scaleX = rect && cssW ? rect.width / cssW : 1;
-            const scaleY = rect && cssH ? rect.height / cssH : 1;
+            const desktopMetrics = createLocalCoordinateMetrics(desktopRef.current);
+            const startLocal = desktopMetrics.clientToLocal(startX, startY);
             
             // Use the stored position as starting point (like DesktopIcon does with icon.x/y)
             const currentPos = trashPos || defaultTrashPos;
@@ -1300,8 +1266,9 @@ export default function DesktopOS({ embedded = false, mobileVariant, viewMode, o
             let dragging = false;
             
             const move = (ev: PointerEvent) => {
-              const dx = (ev.clientX - startX) / scaleX;
-              const dy = (ev.clientY - startY) / scaleY;
+              const currentLocal = desktopMetrics.clientToLocal(ev.clientX, ev.clientY);
+              const dx = currentLocal.x - startLocal.x;
+              const dy = currentLocal.y - startLocal.y;
               const dist = Math.hypot(dx, dy);
               
               if (!dragging) {
@@ -1364,15 +1331,8 @@ export default function DesktopOS({ embedded = false, mobileVariant, viewMode, o
             setSelection(nextSel);
             const startX = e.clientX, startY = e.clientY;
             if (!desktopRef.current) return;
-            
-            // Compute current CSS transform scale of the embedded screen (like DesktopIcon does)
-            const screenEl = desktopRef.current.closest('.embedded-screen') as HTMLElement | null;
-            const rect = screenEl?.getBoundingClientRect();
-            const css = screenEl ? window.getComputedStyle(screenEl) : null;
-            const cssW = css ? parseFloat(css.width || '0') : 0;
-            const cssH = css ? parseFloat(css.height || '0') : 0;
-            const scaleX = rect && cssW ? rect.width / cssW : 1;
-            const scaleY = rect && cssH ? rect.height / cssH : 1;
+            const desktopMetrics = createLocalCoordinateMetrics(desktopRef.current);
+            const startLocal = desktopMetrics.clientToLocal(startX, startY);
             
             // Use the stored position as starting point (like DesktopIcon does with icon.x/y)
             const currentPos = binPos || defaultBinPos;
@@ -1381,8 +1341,9 @@ export default function DesktopOS({ embedded = false, mobileVariant, viewMode, o
             let dragging = false;
             
             const move = (ev: PointerEvent) => {
-              const dx = (ev.clientX - startX) / scaleX;
-              const dy = (ev.clientY - startY) / scaleY;
+              const currentLocal = desktopMetrics.clientToLocal(ev.clientX, ev.clientY);
+              const dx = currentLocal.x - startLocal.x;
+              const dy = currentLocal.y - startLocal.y;
               const dist = Math.hypot(dx, dy);
               
               if (!dragging) {
@@ -1415,17 +1376,9 @@ export default function DesktopOS({ embedded = false, mobileVariant, viewMode, o
             e.preventDefault();
             e.stopPropagation();
             if (!desktopRef.current) return;
-            const screenEl = desktopRef.current.closest('.embedded-screen') as HTMLElement | null;
-            const rect = screenEl?.getBoundingClientRect();
-            const css = screenEl ? window.getComputedStyle(screenEl) : null;
-            const cssW = css ? parseFloat(css.width || '0') : 0;
-            const cssH = css ? parseFloat(css.height || '0') : 0;
-            const scaleX = rect && cssW ? rect.width / cssW : 1;
-            const scaleY = rect && cssH ? rect.height / cssH : 1;
-            const d = desktopRef.current.getBoundingClientRect();
-            const left = (e.clientX - d.left) / scaleX;
-            const top = (e.clientY - d.top) / scaleY;
-            setTrashCtxMenu({ x: left, y: top, id: 'bin' });
+            const point = clientToDesktop(e.clientX, e.clientY);
+            if (!point) return;
+            setTrashCtxMenu({ x: point.left, y: point.top, id: 'bin' });
           }}
           aria-label="Trash"
         >
@@ -1641,25 +1594,17 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     const nextSel = selection.has(icon.id) ? new Set(selection) : new Set([icon.id]);
     setSelection(nextSel);
     const startX = e.clientX, startY = e.clientY;
-    // Compute current CSS transform scale of the embedded screen
-    const screenEl = ref.current?.closest('.embedded-screen') as HTMLElement | null;
-    const rect = screenEl?.getBoundingClientRect();
-    const css = screenEl ? window.getComputedStyle(screenEl) : null;
-    const cssW = css ? parseFloat(css.width || '0') : 0;
-    const cssH = css ? parseFloat(css.height || '0') : 0;
-    const sx = rect && cssW ? rect.width / cssW : 1;
-    const sy = rect && cssH ? rect.height / cssH : 1;
-    // Compute desktop bounds in unscaled CSS pixels for proper clamping
     const desktopEl = ref.current?.closest('.desktop') as HTMLElement | null;
-    const deskRect = desktopEl?.getBoundingClientRect();
+    const desktopMetrics = desktopEl ? createLocalCoordinateMetrics(desktopEl) : null;
+    const startLocal = desktopMetrics?.clientToLocal(startX, startY) ?? { x: startX, y: startY };
+    const desktopCss = desktopEl ? window.getComputedStyle(desktopEl) : null;
+    const desktopCssWidth = desktopCss ? parseFloat(desktopCss.width || "0") : 0;
+    const desktopCssHeight = desktopCss ? parseFloat(desktopCss.height || "0") : 0;
     const iconSize = desktopEl?.classList.contains("mobile") ? MOBILE_ICON_SIZE : DESKTOP_ICON_SIZE;
-    const isMobileDesktop = desktopEl?.classList.contains("mobile") ?? false;
     const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
     const viewportHeight = typeof window !== "undefined" ? window.innerHeight - 28 : 772;
-    const rawDeskWidth = (deskRect?.width ?? viewportWidth) / (sx || 1);
-    const rawDeskHeight = (deskRect?.height ?? viewportHeight) / (sy || 1);
-    const deskWidth = isMobileDesktop ? Math.min(rawDeskWidth, viewportWidth) : rawDeskWidth;
-    const deskHeight = isMobileDesktop ? Math.min(rawDeskHeight, viewportHeight) : rawDeskHeight;
+    const deskWidth = desktopCssWidth || desktopEl?.clientWidth || viewportWidth;
+    const deskHeight = desktopCssHeight || desktopEl?.clientHeight || viewportHeight;
     const maxX = Math.max(8, deskWidth - iconSize - 8);
     const maxY = Math.max(0, deskHeight - iconSize - 8);
     const starts = new Map<string, { x: number; y: number }>();
@@ -1668,7 +1613,9 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     });
     let dragging = false;
     const move = (ev: PointerEvent) => {
-      const dx = (ev.clientX - startX) / sx, dy = (ev.clientY - startY) / sy;
+      const currentLocal = desktopMetrics?.clientToLocal(ev.clientX, ev.clientY) ?? { x: ev.clientX, y: ev.clientY };
+      const dx = currentLocal.x - startLocal.x;
+      const dy = currentLocal.y - startLocal.y;
       if (!dragging) {
         const dist = Math.hypot(dx, dy);
         if (dist < 4) return;
@@ -1795,14 +1742,9 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
   
   const down = (e: React.PointerEvent) => {
     const startX = e.clientX, startY = e.clientY;
-    // Compute current CSS transform scale of the embedded screen (same as DesktopIcon)
-    const screenEl = divRef.current?.closest('.embedded-screen') as HTMLElement | null;
-    const rect = screenEl?.getBoundingClientRect();
-    const css = screenEl ? window.getComputedStyle(screenEl) : null;
-    const cssW = css ? parseFloat(css.width || '0') : 0;
-    const cssH = css ? parseFloat(css.height || '0') : 0;
-    const sx = rect && cssW ? rect.width / cssW : 1;
-    const sy = rect && cssH ? rect.height / cssH : 1;
+    const dragPlane = divRef.current?.closest('.desktop') as HTMLElement | null;
+    const dragMetrics = dragPlane ? createLocalCoordinateMetrics(dragPlane) : null;
+    const startLocal = dragMetrics?.clientToLocal(startX, startY) ?? { x: startX, y: startY };
     
     // Get initial window position - read from computed style, which is already in CSS pixels
     const computedStyle = divRef.current ? window.getComputedStyle(divRef.current) : null;
@@ -1811,7 +1753,9 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
     
     frontWin(id);
     const move = (ev: PointerEvent) => {
-      const dx = (ev.clientX - startX) / sx, dy = (ev.clientY - startY) / sy;
+      const currentLocal = dragMetrics?.clientToLocal(ev.clientX, ev.clientY) ?? { x: ev.clientX, y: ev.clientY };
+      const dx = currentLocal.x - startLocal.x;
+      const dy = currentLocal.y - startLocal.y;
       if (divRef.current && !isMaximizedRef.current) {
         // Allow full-screen movement - windows can move anywhere
         divRef.current.style.left = `${windowStartX + dx}px`;
@@ -1833,16 +1777,11 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
     frontWin(id);
     const startX = e.clientX;
     const startY = e.clientY;
-    // Compute current CSS transform scale of the embedded screen (same as DesktopIcon)
-    const screenEl = divRef.current?.closest('.embedded-screen') as HTMLElement | null;
-    const rect = screenEl?.getBoundingClientRect();
-    const css = screenEl ? window.getComputedStyle(screenEl) : null;
-    const cssW = css ? parseFloat(css.width || '0') : 0;
-    const cssH = css ? parseFloat(css.height || '0') : 0;
-    const scaleX = rect && cssW ? rect.width / cssW : 1;
-    const scaleY = rect && cssH ? rect.height / cssH : 1;
     const el = divRef.current;
     if (!el) return;
+    const resizePlane = el.closest('.desktop') as HTMLElement | null;
+    const resizeMetrics = resizePlane ? createLocalCoordinateMetrics(resizePlane) : null;
+    const startLocal = resizeMetrics?.clientToLocal(startX, startY) ?? { x: startX, y: startY };
     
     const startLeft = parseInt(el.style.left || "80", 10);
     const startTop = parseInt(el.style.top || "80", 10);
@@ -1855,8 +1794,9 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
     const minHeight = Math.max(Number.isFinite(cssMinHeight) ? cssMinHeight : 0, 150);
     
     const move = (ev: PointerEvent) => {
-      const dx = (ev.clientX - startX) / scaleX;
-      const dy = (ev.clientY - startY) / scaleY;
+      const currentLocal = resizeMetrics?.clientToLocal(ev.clientX, ev.clientY) ?? { x: ev.clientX, y: ev.clientY };
+      const dx = currentLocal.x - startLocal.x;
+      const dy = currentLocal.y - startLocal.y;
       
       let newLeft = startLeft;
       let newTop = startTop;
@@ -2039,17 +1979,9 @@ function TrashBrowser({
   // Helper to convert browser coordinates to desktop coordinates
   const browserToDesktopCoords = (browserX: number, browserY: number, clientX: number, clientY: number): { x: number; y: number } | null => {
     if (!browserRef.current || !desktopRef?.current) return null;
-    const desktopRect = desktopRef.current.getBoundingClientRect();
-    const screenEl = browserRef.current.closest('.embedded-screen') as HTMLElement | null;
-    const screenRect = screenEl?.getBoundingClientRect();
-    const css = screenEl ? window.getComputedStyle(screenEl) : null;
-    const cssW = css ? parseFloat(css.width || '0') : 0;
-    const cssH = css ? parseFloat(css.height || '0') : 0;
-    const scaleX = screenRect && cssW ? screenRect.width / cssW : 1;
-    const scaleY = screenRect && cssH ? screenRect.height / cssH : 1;
-    
-    const desktopX = (clientX - desktopRect.left) / scaleX - 48;
-    const desktopY = (clientY - desktopRect.top) / scaleY - 24;
+    const desktopPoint = createLocalCoordinateMetrics(desktopRef.current).clientToLocal(clientX, clientY);
+    const desktopX = desktopPoint.x - 48;
+    const desktopY = desktopPoint.y - 24;
     
     return { x: Math.max(8, desktopX), y: Math.max(0, desktopY) };
   };
@@ -2535,17 +2467,9 @@ function BlogBrowser({
   // Helper to convert the current pointer to a desktop top-left while preserving the original grab point.
   const clientToDesktopItemPosition = (clientX: number, clientY: number, grabOffset: { x: number; y: number }): { x: number; y: number } | null => {
     if (!browserRef.current || !desktopRef?.current) return null;
-    const desktopRect = desktopRef.current.getBoundingClientRect();
-    const screenEl = browserRef.current.closest('.embedded-screen') as HTMLElement | null;
-    const screenRect = screenEl?.getBoundingClientRect();
-    const css = screenEl ? window.getComputedStyle(screenEl) : null;
-    const cssW = css ? parseFloat(css.width || '0') : 0;
-    const cssH = css ? parseFloat(css.height || '0') : 0;
-    const scaleX = screenRect && cssW ? screenRect.width / cssW : 1;
-    const scaleY = screenRect && cssH ? screenRect.height / cssH : 1;
-    
-    const desktopX = (clientX - desktopRect.left) / scaleX - grabOffset.x;
-    const desktopY = (clientY - desktopRect.top) / scaleY - grabOffset.y;
+    const desktopPoint = createLocalCoordinateMetrics(desktopRef.current).clientToLocal(clientX, clientY);
+    const desktopX = desktopPoint.x - grabOffset.x;
+    const desktopY = desktopPoint.y - grabOffset.y;
     
     return { x: Math.max(8, desktopX), y: Math.max(0, desktopY) };
   };
