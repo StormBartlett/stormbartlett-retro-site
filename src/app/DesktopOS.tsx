@@ -16,6 +16,12 @@ const WINDOW_CASCADE_SLOTS = 8;
 const DESKTOP_ICON_SIZE = 96;
 const BROWSER_ICON_SIZE = 96;
 const MOBILE_ICON_SIZE = 100;
+type LocalCoordinateMetrics = {
+  rect: DOMRect;
+  width: number;
+  height: number;
+  clientToLocal: (clientX: number, clientY: number) => { x: number; y: number };
+};
 const DESKTOP_BIN_POSITION = { x: 252, y: 73 };
 const MOBILE_TOP_ROW_ORDER = ["about", "skills", "bin", "calculator", "projects", "falling-sand"] as const;
 const ICON_STORAGE_KEYS = ["nx-icons", "nx-icons-mobile-portrait", "nx-icons-mobile-landscape"];
@@ -28,6 +34,98 @@ function getIconSpriteId(icon: Icon) {
   if (icon.id === "calculator" || icon.id === "falling-sand") return "icon-file-binary";
   if (icon.type === "file" || TEXT_FILE_EXTENSION_RE.test(icon.label)) return "icon-file-txt";
   return "icon-file";
+}
+
+function solveLinearSystem(matrix: number[][], vector: number[]) {
+  const size = vector.length;
+  const rows = matrix.map((row, index) => [...row, vector[index]]);
+
+  for (let col = 0; col < size; col++) {
+    let pivot = col;
+    for (let row = col + 1; row < size; row++) {
+      if (Math.abs(rows[row][col]) > Math.abs(rows[pivot][col])) pivot = row;
+    }
+    if (Math.abs(rows[pivot][col]) < 1e-9) return null;
+    [rows[col], rows[pivot]] = [rows[pivot], rows[col]];
+
+    const divisor = rows[col][col];
+    for (let i = col; i <= size; i++) rows[col][i] /= divisor;
+
+    for (let row = 0; row < size; row++) {
+      if (row === col) continue;
+      const factor = rows[row][col];
+      for (let i = col; i <= size; i++) rows[row][i] -= factor * rows[col][i];
+    }
+  }
+
+  return rows.map((row) => row[size]);
+}
+
+function createLocalCoordinateMetrics(element: HTMLElement): LocalCoordinateMetrics {
+  const rect = element.getBoundingClientRect();
+  const width = element.clientWidth;
+  const height = element.clientHeight;
+
+  const measurePoint = (x: number, y: number) => {
+    const marker = document.createElement("div");
+    marker.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:1px;height:1px;visibility:hidden;pointer-events:none;`;
+    element.appendChild(marker);
+    const markerRect = marker.getBoundingClientRect();
+    marker.remove();
+    return { x: markerRect.left, y: markerRect.top };
+  };
+
+  const screenPoints = [
+    measurePoint(0, 0),
+    measurePoint(width, 0),
+    measurePoint(0, height),
+    measurePoint(width, height),
+  ];
+  const localPoints = [
+    { x: 0, y: 0 },
+    { x: width, y: 0 },
+    { x: 0, y: height },
+    { x: width, y: height },
+  ];
+
+  const matrix: number[][] = [];
+  const vector: number[] = [];
+  screenPoints.forEach((point, index) => {
+    const local = localPoints[index];
+    matrix.push([point.x, point.y, 1, 0, 0, 0, -local.x * point.x, -local.x * point.y]);
+    vector.push(local.x);
+    matrix.push([0, 0, 0, point.x, point.y, 1, -local.y * point.x, -local.y * point.y]);
+    vector.push(local.y);
+  });
+
+  const solution = solveLinearSystem(matrix, vector);
+  if (!solution) {
+    const scaleX = rect.width / (width || 1);
+    const scaleY = rect.height / (height || 1);
+    return {
+      rect,
+      width,
+      height,
+      clientToLocal: (clientX, clientY) => ({
+        x: (clientX - rect.left) / (scaleX || 1),
+        y: (clientY - rect.top) / (scaleY || 1),
+      }),
+    };
+  }
+
+  const [a, b, c, d, e, f, g, h] = solution;
+  return {
+    rect,
+    width,
+    height,
+    clientToLocal: (clientX, clientY) => {
+      const denominator = g * clientX + h * clientY + 1;
+      return {
+        x: (a * clientX + b * clientY + c) / denominator,
+        y: (d * clientX + e * clientY + f) / denominator,
+      };
+    },
+  };
 }
 
 const baseIcons: Icon[] = [
@@ -1902,7 +2000,6 @@ function TrashBrowser({
   // Helper to convert browser coordinates to desktop coordinates
   const browserToDesktopCoords = (browserX: number, browserY: number, clientX: number, clientY: number): { x: number; y: number } | null => {
     if (!browserRef.current || !desktopRef?.current) return null;
-    const browserRect = browserRef.current.getBoundingClientRect();
     const desktopRect = desktopRef.current.getBoundingClientRect();
     const screenEl = browserRef.current.closest('.embedded-screen') as HTMLElement | null;
     const screenRect = screenEl?.getBoundingClientRect();
@@ -2354,31 +2451,16 @@ function BlogBrowser({
 
   const getBrowserMetrics = () => {
     if (!browserRef.current) return null;
-    const rect = browserRef.current.getBoundingClientRect();
-    const screenEl = browserRef.current.closest('.embedded-screen') as HTMLElement | null;
-    const screenRect = screenEl?.getBoundingClientRect();
-    const css = screenEl ? window.getComputedStyle(screenEl) : null;
-    const cssW = css ? parseFloat(css.width || '0') : 0;
-    const cssH = css ? parseFloat(css.height || '0') : 0;
-    const scaleX = screenRect && cssW ? screenRect.width / cssW : 1;
-    const scaleY = screenRect && cssH ? screenRect.height / cssH : 1;
-
-    return {
-      rect,
-      scaleX,
-      scaleY,
-      width: rect.width / (scaleX || 1),
-      height: rect.height / (scaleY || 1),
-    };
+    return createLocalCoordinateMetrics(browserRef.current);
   };
 
-  const clientToBrowserCoords = (clientX: number, clientY: number) => {
-    const metrics = getBrowserMetrics();
+  const clientToBrowserCoords = (clientX: number, clientY: number, metrics = getBrowserMetrics()) => {
     if (!metrics) return null;
+    const point = metrics.clientToLocal(clientX, clientY);
 
     return {
-      x: (clientX - metrics.rect.left) / metrics.scaleX,
-      y: (clientY - metrics.rect.top) / metrics.scaleY,
+      x: point.x,
+      y: point.y,
       width: metrics.width,
       height: metrics.height,
     };
@@ -2397,9 +2479,10 @@ function BlogBrowser({
 
     if (draggedEl) {
       const iconRect = draggedEl.getBoundingClientRect();
+      const topLeft = metrics.clientToLocal(iconRect.left, iconRect.top);
       return clampBrowserItemPosition(
-        (iconRect.left - metrics.rect.left) / metrics.scaleX,
-        (iconRect.top - metrics.rect.top) / metrics.scaleY,
+        topLeft.x,
+        topLeft.y,
         metrics.width,
         metrics.height
       );
@@ -2410,10 +2493,9 @@ function BlogBrowser({
     return clampBrowserItemPosition(browserCoords.x - BROWSER_ICON_SIZE / 2, browserCoords.y - 24, browserCoords.width, browserCoords.height);
   };
 
-  // Helper to convert browser coordinates to desktop coordinates
-  const browserToDesktopCoords = (browserX: number, browserY: number, clientX: number, clientY: number): { x: number; y: number } | null => {
+  // Helper to convert the current pointer to a desktop top-left while preserving the original grab point.
+  const clientToDesktopItemPosition = (clientX: number, clientY: number, grabOffset: { x: number; y: number }): { x: number; y: number } | null => {
     if (!browserRef.current || !desktopRef?.current) return null;
-    const browserRect = browserRef.current.getBoundingClientRect();
     const desktopRect = desktopRef.current.getBoundingClientRect();
     const screenEl = browserRef.current.closest('.embedded-screen') as HTMLElement | null;
     const screenRect = screenEl?.getBoundingClientRect();
@@ -2423,9 +2505,8 @@ function BlogBrowser({
     const scaleX = screenRect && cssW ? screenRect.width / cssW : 1;
     const scaleY = screenRect && cssH ? screenRect.height / cssH : 1;
     
-    // Calculate desktop position from client coordinates
-    const desktopX = (clientX - desktopRect.left) / scaleX - 48;
-    const desktopY = (clientY - desktopRect.top) / scaleY - 24;
+    const desktopX = (clientX - desktopRect.left) / scaleX - grabOffset.x;
+    const desktopY = (clientY - desktopRect.top) / scaleY - grabOffset.y;
     
     return { x: Math.max(8, desktopX), y: Math.max(0, desktopY) };
   };
@@ -2457,16 +2538,19 @@ function BlogBrowser({
     dragStateRef.current.hasDragged = false;
     setDraggedItem(itemId);
     const startX = e.clientX, startY = e.clientY;
+    const dragTarget = e.currentTarget as HTMLElement;
+    const pointerId = e.pointerId;
     
     // Store the starting position of the item
     const startItemX = item.x;
     const startItemY = item.y;
-    const startBrowserCoords = clientToBrowserCoords(e.clientX, e.clientY);
+    const dragMetrics = getBrowserMetrics();
+    const startBrowserCoords = clientToBrowserCoords(e.clientX, e.clientY, dragMetrics);
     if (!startBrowserCoords) return;
-    
-    // Convert initial browser position to desktop coordinates
-    const initialDesktopCoords = browserToDesktopCoords(item.x, item.y, e.clientX, e.clientY);
-    if (!initialDesktopCoords) return;
+    const grabOffset = {
+      x: startBrowserCoords.x - startItemX,
+      y: startBrowserCoords.y - startItemY,
+    };
     
     let dragging = false;
 
@@ -2478,13 +2562,14 @@ function BlogBrowser({
         if (!dragging && dist > 4) {
           dragging = true;
           dragStateRef.current.hasDragged = true;
+          try { dragTarget.setPointerCapture(pointerId); } catch {}
           e.preventDefault();
         }
         
         if (dragging) {
           // Update browser item position during drag so it follows cursor
           if (browserRef.current) {
-            const browserCoords = clientToBrowserCoords(ev.clientX, ev.clientY);
+            const browserCoords = clientToBrowserCoords(ev.clientX, ev.clientY, dragMetrics);
             if (!browserCoords) return;
             const browserX = browserCoords.x;
             const browserY = browserCoords.y;
@@ -2492,16 +2577,13 @@ function BlogBrowser({
             // Check if dragging outside browser bounds
             const isOutsideBrowser = browserX < 0 || browserX > browserCoords.width || browserY < 0 || browserY > browserCoords.height;
             
-            // Calculate new position based on delta from start (maintains grab point)
-            const localDx = browserX - startBrowserCoords.x;
-            const localDy = browserY - startBrowserCoords.y;
-            const newX = startItemX + localDx;
-            const newY = startItemY + localDy;
+            const newX = browserX - grabOffset.x;
+            const newY = browserY - grabOffset.y;
             
             // Only show desktop ghost if dragging outside browser
             if (isOutsideBrowser && setDraggingFromFolder) {
               // Start/update dragging on desktop plane
-              const desktopCoords = browserToDesktopCoords(item.x, item.y, ev.clientX, ev.clientY);
+              const desktopCoords = clientToDesktopItemPosition(ev.clientX, ev.clientY, grabOffset);
               if (desktopCoords) {
                 setDraggingFromFolder(prev => prev ? {
                   ...prev,
@@ -2557,18 +2639,22 @@ function BlogBrowser({
       const up = (ev?: PointerEvent) => {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
+        try { dragTarget.releasePointerCapture(pointerId); } catch {}
         
         if (dragging && ev && setDraggingFromFolder) {
           // Check if dropped within browser bounds first (more reliable than elementFromPoint)
-          const browserRect = browserRef.current?.getBoundingClientRect();
-          const dropBrowserCoords = ev ? clientToBrowserCoords(ev.clientX, ev.clientY) : null;
-          const isWithinBrowser = browserRect && dropBrowserCoords &&
-            ev.clientX >= browserRect.left && 
-            ev.clientX <= browserRect.right && 
-            ev.clientY >= browserRect.top && 
-            ev.clientY <= browserRect.bottom;
+          const dropBrowserCoords = ev ? clientToBrowserCoords(ev.clientX, ev.clientY, dragMetrics) : null;
+          const isWithinBrowser = !!dropBrowserCoords &&
+            dropBrowserCoords.x >= 0 &&
+            dropBrowserCoords.x <= dropBrowserCoords.width &&
+            dropBrowserCoords.y >= 0 &&
+            dropBrowserCoords.y <= dropBrowserCoords.height;
           
-          const desktopCoords = browserToDesktopCoords(item.x, item.y, ev.clientX, ev.clientY);
+          const desktopCoords = clientToDesktopItemPosition(ev.clientX, ev.clientY, grabOffset);
+          const dropPosition = dropBrowserCoords
+            ? clampBrowserItemPosition(dropBrowserCoords.x - grabOffset.x, dropBrowserCoords.y - grabOffset.y, dropBrowserCoords.width, dropBrowserCoords.height)
+            : null;
+          let movedIntoFolder = false;
           
           // Check if dropped within the same folder window
           if (isWithinBrowser) {
@@ -2582,20 +2668,18 @@ function BlogBrowser({
                 // Moving to test-folder from another folder
                 setTestFolderItems(prev => [...prev, { 
                   ...item, 
-                  x: 20 + (prev.length % 3) * 100, 
-                  y: 20 + Math.floor(prev.length / 3) * 100 
+                  x: dropPosition?.x ?? item.x,
+                  y: dropPosition?.y ?? item.y,
                 }]);
                 setItems(list => list.filter(i => i.id !== itemId));
+                movedIntoFolder = true;
               }
               // If dragging to the same folder icon (folderId === targetFolderId), do nothing - just update position below
             }
             
             // Always update position if dropped within same folder window (whether on folder icon or not)
-            if (dropBrowserCoords) {
-              const newX = startItemX + dropBrowserCoords.x - startBrowserCoords.x;
-              const newY = startItemY + dropBrowserCoords.y - startBrowserCoords.y;
-              const clamped = clampBrowserItemPosition(newX, newY, dropBrowserCoords.width, dropBrowserCoords.height);
-              setItems(list => list.map(i => i.id === itemId ? { ...i, x: clamped.x, y: clamped.y } : i));
+            if (dropPosition && !movedIntoFolder) {
+              setItems(list => list.map(i => i.id === itemId ? { ...i, x: dropPosition.x, y: dropPosition.y } : i));
             }
           } else if (desktopCoords && setDesktopIcons) {
             // Dropped on desktop - add to desktop icons
@@ -2670,10 +2754,12 @@ function BlogBrowser({
       if (desktopIcon && browserRef.current) {
         desktopDraggedIconRef.current = desktopIcon.dataset.id || null;
         
-        const rect = browserRef.current.getBoundingClientRect();
         const browserCoords = clientToBrowserCoords(e.clientX, e.clientY);
-        const overBrowser = e.clientX >= rect.left && e.clientX <= rect.right &&
-                           e.clientY >= rect.top && e.clientY <= rect.bottom;
+        const overBrowser = !!browserCoords &&
+          browserCoords.x >= 0 &&
+          browserCoords.x <= browserCoords.width &&
+          browserCoords.y >= 0 &&
+          browserCoords.y <= browserCoords.height;
         
         if (overBrowser && browserCoords) {
           // Check if over any folder
@@ -2718,9 +2804,12 @@ function BlogBrowser({
       const wasOverFolder = dragOverFolderRef.current;
       
       if (draggedIconId && browserRef.current && setDesktopIcons) {
-        const rect = browserRef.current.getBoundingClientRect();
-        const overBrowser = e.clientX >= rect.left && e.clientX <= rect.right &&
-                           e.clientY >= rect.top && e.clientY <= rect.bottom;
+        const browserCoords = clientToBrowserCoords(e.clientX, e.clientY);
+        const overBrowser = !!browserCoords &&
+          browserCoords.x >= 0 &&
+          browserCoords.x <= browserCoords.width &&
+          browserCoords.y >= 0 &&
+          browserCoords.y <= browserCoords.height;
         
         if (overBrowser) {
           const desktopIcon = desktopIcons?.find(i => i.id === draggedIconId);
@@ -2737,8 +2826,8 @@ function BlogBrowser({
                     id: desktopIcon.id,
                     label: desktopIcon.label,
                     type: desktopIcon.type === "folder" ? "folder" as const : "file" as const,
-                    x: 20 + (prev.length % 3) * 100,
-                    y: 20 + Math.floor(prev.length / 3) * 100,
+                    x: dropPosition.x,
+                    y: dropPosition.y,
                     windowId: desktopIcon.app
                   }];
                   return newItems;
