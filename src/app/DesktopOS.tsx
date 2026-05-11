@@ -9,6 +9,13 @@ import { useFullscreen } from "./FullscreenContext";
 
 type Icon = { id: string; label: string; app: string; x: number; y: number; type?: "file" | "folder" };
 type Win = { id: string; open: boolean; z: number; x?: number; y?: number };
+type ViewMode = "model" | "desktop";
+type DesktopOSProps = {
+  embedded?: boolean;
+  mobileVariant?: "portrait" | "landscape";
+  viewMode?: ViewMode;
+  onViewModeChange?: (mode: ViewMode) => void;
+};
 
 const WINDOW_CASCADE_BASE = { x: 80, y: 132 };
 const WINDOW_CASCADE_STEP = { x: 28, y: -18 };
@@ -268,10 +275,11 @@ const aboutPortfolioRows = [
   { icon: "/about-portfolio-icons/bulb.png", label: "Product Thinker" },
 ];
 
-export default function DesktopOS({ embedded = false, mobileVariant }: { embedded?: boolean; mobileVariant?: "portrait" | "landscape" }) {
-  const { isFullscreen, toggleFullscreen } = useFullscreen();
+export default function DesktopOS({ embedded = false, mobileVariant, viewMode, onViewModeChange }: DesktopOSProps) {
+  const { isFullscreen, setFullscreen } = useFullscreen();
   const isMobile = !!mobileVariant;
   const isMobilePortrait = mobileVariant === "portrait";
+  const currentViewMode = viewMode ?? (isFullscreen ? "desktop" : "model");
   const initialIcons: Icon[] = baseIcons;
   const variantStorageSuffix = mobileVariant ?? "landscape";
   const iconStorageKey = isMobile ? `nx-icons-mobile-${variantStorageSuffix}` : "nx-icons";
@@ -1095,6 +1103,15 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
 
   // Compute default bin position if not set; ensure it's inside the desktop container
   const defaultBinPos = binPos || getDefaultBinPosition();
+  const toggleViewMode = () => {
+    const nextMode: ViewMode = currentViewMode === "desktop" ? "model" : "desktop";
+    if (onViewModeChange) {
+      onViewModeChange(nextMode);
+    } else {
+      setFullscreen(nextMode === "desktop");
+    }
+    setOpenMenu(null);
+  };
 
   return (
     <div className={rootClass || undefined}>
@@ -1150,11 +1167,9 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
               View
             </button>
             <div className="menu-dropdown" role="menu">
-              {!isMobile && (
-                <button className="menu-entry" role="menuitem" onClick={() => { toggleFullscreen(); setOpenMenu(null); }}>
-                  {isFullscreen ? "View Model" : "View Desktop"}
-                </button>
-              )}
+              <button className="menu-entry" role="menuitem" onClick={toggleViewMode}>
+                {currentViewMode === "desktop" ? "View Model" : "View Desktop"}
+              </button>
               <button className="menu-entry" role="menuitem" onClick={() => { arrangeIcons(); setOpenMenu(null); }}>Arrange Icons</button>
               {!isMobile && (
                 <button className="menu-entry" role="menuitem" onClick={() => { resetIcons(); setOpenMenu(null); }}>Reset Desktop Icons</button>

@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 
 type FullscreenContextType = {
   isFullscreen: boolean;
+  setFullscreen: (value: boolean) => void;
   toggleFullscreen: () => void;
 };
 
@@ -22,18 +23,19 @@ export function FullscreenProvider({ children }: { children: React.ReactNode }) 
     }
   }, []);
 
-  const toggleFullscreen = () => {
-    setIsFullscreen((prev) => {
-      const newValue = !prev;
+  const setFullscreen = (value: boolean) => {
+    setIsFullscreen(() => {
       if (typeof window !== "undefined") {
-        localStorage.setItem("nx-fullscreen", newValue ? "1" : "0");
+        localStorage.setItem("nx-fullscreen", value ? "1" : "0");
       }
-      return newValue;
+      return value;
     });
   };
 
+  const toggleFullscreen = () => setFullscreen(!isFullscreen);
+
   return (
-    <FullscreenContext.Provider value={{ isFullscreen, toggleFullscreen }}>
+    <FullscreenContext.Provider value={{ isFullscreen, setFullscreen, toggleFullscreen }}>
       {children}
     </FullscreenContext.Provider>
   );
@@ -43,8 +45,7 @@ export function useFullscreen() {
   const context = useContext(FullscreenContext);
   if (context === undefined) {
     // Return default values if used outside provider (for backwards compatibility)
-    return { isFullscreen: false, toggleFullscreen: () => {} };
+    return { isFullscreen: false, setFullscreen: () => {}, toggleFullscreen: () => {} };
   }
   return context;
 }
-

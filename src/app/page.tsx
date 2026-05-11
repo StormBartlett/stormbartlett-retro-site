@@ -5,10 +5,29 @@ import OldMac3D from "./OldMac3D";
 import DesktopOS from "./DesktopOS";
 import { FullscreenProvider, useFullscreen } from "./FullscreenContext";
 
+type ViewMode = "model" | "desktop";
+
 function HomeContent() {
   const [isMobile, setIsMobile] = useState(false);
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("landscape");
-  const { isFullscreen } = useFullscreen();
+  const [mobileViewMode, setMobileViewMode] = useState<ViewMode>("desktop");
+  const { isFullscreen, setFullscreen } = useFullscreen();
+
+  useEffect(() => {
+    const saved = localStorage.getItem("nx-mobile-view-mode");
+    if (saved === "model" || saved === "desktop") {
+      setMobileViewMode(saved);
+    }
+  }, []);
+
+  const setDesktopViewMode = (mode: ViewMode) => {
+    setFullscreen(mode === "desktop");
+  };
+
+  const setMobileViewModePersisted = (mode: ViewMode) => {
+    setMobileViewMode(mode);
+    localStorage.setItem("nx-mobile-view-mode", mode);
+  };
 
   useEffect(() => {
     const update = () => {
@@ -38,26 +57,35 @@ function HomeContent() {
   }, []);
 
   if (isMobile) {
-    // Fill entire viewport with the embedded CRT screen on portrait/landscape
-    return (
-      <div style={{ width: "100svw", height: "100svh" }}>
-        <DesktopOS embedded mobileVariant={orientation} />
-      </div>
+    const mobileDesktop = (
+      <DesktopOS
+        embedded
+        mobileVariant={orientation}
+        viewMode={mobileViewMode}
+        onViewModeChange={setMobileViewModePersisted}
+      />
     );
+
+    if (mobileViewMode === "model") {
+      return <OldMac3D>{mobileDesktop}</OldMac3D>;
+    }
+
+    // Fill entire viewport with the embedded CRT screen on portrait/landscape
+    return <div style={{ width: "100svw", height: "100svh" }}>{mobileDesktop}</div>;
   }
 
-  // Fullscreen mode: render DesktopOS directly without 3D component
+  // Render the actual desktop as the main screen.
   if (isFullscreen) {
     return (
       <div style={{ width: "100vw", height: "100vh" }}>
-        <DesktopOS embedded />
+        <DesktopOS embedded viewMode="desktop" onViewModeChange={setDesktopViewMode} />
       </div>
     );
   }
 
   return (
     <OldMac3D>
-      <DesktopOS embedded />
+      <DesktopOS embedded viewMode="model" onViewModeChange={setDesktopViewMode} />
     </OldMac3D>
   );
 }
@@ -69,6 +97,3 @@ export default function Home() {
     </FullscreenProvider>
   );
 }
-
-
-
