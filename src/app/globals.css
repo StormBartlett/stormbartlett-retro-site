@@ -121,16 +121,19 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .window-resize-handle.w{top:12px;left:0;width:4px;bottom:12px;cursor:w-resize}
 .window-resize-handle.e{top:12px;right:0;width:4px;bottom:12px;cursor:e-resize}
 .window[hidden]{display:none!important}
-.titlebar{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:32px;padding:5px 7px;background:linear-gradient(180deg,var(--titlebar-a),var(--titlebar-c));border-bottom:2px solid var(--window-border);cursor:inherit;user-select:none;flex-shrink:0;overflow:hidden}
+.titlebar{position:relative;display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:32px;padding:5px 7px;background:linear-gradient(180deg,var(--titlebar-a),var(--titlebar-c));border-bottom:2px solid var(--window-border);cursor:inherit;user-select:none;flex-shrink:0;overflow:hidden;font-size:13px;line-height:1}
 .titlebar::before{content:"";position:absolute;inset:5px 34px 5px 8px;background:repeating-linear-gradient(to bottom,var(--titlebar-b) 0 1px,transparent 1px 4px);opacity:.8;pointer-events:none}
 :root.dark-mode .titlebar{background:linear-gradient(180deg,#fffaf0,#cec2ad 54%,#151518 55%,#08080a)}
 :root.dark-mode .titlebar::before{opacity:.72}
-.titlebar .title{position:relative;z-index:1;max-width:calc(100% - 38px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--bg-window);border:2px solid var(--window-border);box-shadow:inset 1px 1px 0 var(--window-highlight),inset -1px -1px 0 var(--window-low);color:var(--window-ink);padding:2px 8px;line-height:1.1}
+.titlebar .title{position:relative;z-index:1;flex:1 1 auto;min-width:0;max-width:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--bg-window);border:2px solid var(--window-border);box-shadow:inset 1px 1px 0 var(--window-highlight),inset -1px -1px 0 var(--window-low);color:var(--window-ink);padding:3px 7px 2px;line-height:1.1}
 :root.dark-mode .titlebar .title{background:#0b0b0e;color:#fff}
 .window-controls{position:relative;z-index:1;display:flex;align-items:center;gap:5px;flex:0 0 auto}
 .btn-close{appearance:none;background:var(--scrollbar-button);color:#101010;border:2px solid var(--window-border);width:22px;height:22px;line-height:18px;padding:0;text-align:center;cursor:inherit;box-shadow:inset 2px 2px 0 rgba(255,255,255,.9),inset -2px -2px 0 rgba(0,0,0,.22)}
 .btn-close:hover{background:#f2eadc}
 .btn-close:active{box-shadow:inset -2px -2px 0 rgba(255,255,255,.75),inset 2px 2px 0 rgba(0,0,0,.28)}
+.calculator-window .titlebar{gap:4px;padding-left:5px;padding-right:5px;font-size:10px}
+.calculator-window .titlebar .title{padding-left:4px;padding-right:4px;text-overflow:clip}
+.calculator-window .btn-close{width:20px;height:20px;line-height:16px}
 .window-body{padding:10px;overflow:auto;flex:1;min-height:0;box-sizing:border-box;touch-action:pan-y pan-x;-webkit-overflow-scrolling:touch;user-select:text;-webkit-user-select:text;-webkit-tap-highlight-color:transparent;zoom:1 !important}
 .window-body textarea:focus,.window-body input[type="text"]:focus,.window-body input[type="textarea"]:focus{outline:none !important;box-shadow:none !important}
 :root.dark-mode .window-body textarea:focus,:root.dark-mode .window-body input[type="text"]:focus,:root.dark-mode .window-body input[type="textarea"]:focus{outline:none !important;box-shadow:none !important}
