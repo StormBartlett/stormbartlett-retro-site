@@ -1,28 +1,21 @@
 <svg
   xmlns="http://www.w3.org/2000/svg"
-  width="18"
+  width="16"
   height="24"
-  viewBox="0 0 18 24"
+  viewBox="0 0 16 24"
   shape-rendering="crispEdges"
 >
   <polygon
-    points="0,0 0,17 4,13 7,20 11,19 8,12 16,12"
-    fill="#ffffff"
+    points="0,0 0,15 3,12 6,18 9,17 6,11 14,11"
+    fill="#000000"
     stroke="#ffffff"
-    stroke-width="2"
-  />
-  <polygon
-    points="1,1 1,15 4,12 7,18 9,17 6,11 14,11"
-    fill="#020202"
-    stroke="#020202"
     stroke-width="1"
   />
   <polyline
-    points="6,11 14,11 9,17"
+    points="6,11 13,11 9,17"
     fill="none"
-    stroke="#020202"
+    stroke="#ffffff"
     stroke-width="1"
   />
 </svg>
-
 
