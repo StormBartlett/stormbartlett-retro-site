@@ -91,7 +91,7 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .desktop-icon.is-selected::before,.browser-icon.is-selected::before{content:"";position:absolute;inset:0;border:2px dashed var(--border);pointer-events:none;z-index:2}
 .marquee{position:absolute;border:2px dashed var(--border);background:rgba(0,0,0,.08);pointer-events:none;z-index:9998}
 .window{position:absolute;top:80px;left:80px;width:420px;height:400px;min-width:200px;min-height:150px;background:linear-gradient(180deg,var(--window-paper-hi),var(--window-paper));border:2px solid var(--window-border);box-shadow:inset 2px 2px 0 var(--window-highlight),inset -2px -2px 0 var(--window-low),6px 6px 0 rgba(0,0,0,.18),0 12px 24px var(--window-shadow);display:flex;flex-direction:column;isolation:isolate}
-.window::after{content:"";position:absolute;right:5px;bottom:5px;width:14px;height:14px;pointer-events:none;background:repeating-linear-gradient(135deg,transparent 0 3px,var(--window-border) 3px 5px,transparent 5px 8px);opacity:.55}
+.window::after{content:"";position:absolute;right:6px;bottom:6px;width:10px;height:10px;pointer-events:none;background:linear-gradient(135deg,transparent 0 58%,color-mix(in srgb,var(--window-border) 45%,transparent) 58% 65%,transparent 65% 72%,color-mix(in srgb,var(--window-border) 35%,transparent) 72% 79%,transparent 79%);opacity:.42}
 :root.dark-mode .window{background:linear-gradient(180deg,var(--window-paper-hi),var(--window-paper-lo));box-shadow:inset 2px 2px 0 rgba(255,255,255,.18),inset -2px -2px 0 rgba(0,0,0,.9),6px 6px 0 rgba(255,255,255,.08),0 16px 26px var(--window-shadow),0 0 0 1px rgba(255,255,255,.72)}
 .blog-window{width:420px;height:350px}
 .about-portfolio-window{width:320px;height:350px;min-width:286px;min-height:332px}
