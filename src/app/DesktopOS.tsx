@@ -5,6 +5,7 @@ import Image from "next/image";
 import TiptapEditor from "./TiptapEditor";
 import TodoEditor from "./TodoEditor";
 import FallingSand from "./FallingSand";
+import { useFullscreen } from "./FullscreenContext";
 
 type Icon = { id: string; label: string; app: string; x: number; y: number; type?: "file" | "folder" };
 type Win = { id: string; open: boolean; z: number; x?: number; y?: number };
@@ -268,6 +269,7 @@ const aboutPortfolioRows = [
 ];
 
 export default function DesktopOS({ embedded = false, mobileVariant }: { embedded?: boolean; mobileVariant?: "portrait" | "landscape" }) {
+  const { isFullscreen, toggleFullscreen } = useFullscreen();
   const isMobile = !!mobileVariant;
   const isMobilePortrait = mobileVariant === "portrait";
   const initialIcons: Icon[] = baseIcons;
@@ -1148,6 +1150,11 @@ export default function DesktopOS({ embedded = false, mobileVariant }: { embedde
               View
             </button>
             <div className="menu-dropdown" role="menu">
+              {!isMobile && (
+                <button className="menu-entry" role="menuitem" onClick={() => { toggleFullscreen(); setOpenMenu(null); }}>
+                  {isFullscreen ? "View Model" : "View Desktop"}
+                </button>
+              )}
               <button className="menu-entry" role="menuitem" onClick={() => { arrangeIcons(); setOpenMenu(null); }}>Arrange Icons</button>
               {!isMobile && (
                 <button className="menu-entry" role="menuitem" onClick={() => { resetIcons(); setOpenMenu(null); }}>Reset Desktop Icons</button>
@@ -1691,6 +1698,7 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
 function Window({ id, title, windows, frontWin, closeWin, children, className }: { id: string; title: string; windows: Record<string, Win>; frontWin: (id: string) => void; closeWin: (id: string) => void; children: React.ReactNode; className?: string; }) {
   const divRef = useRef<HTMLDivElement | null>(null);
   const isMaximizedRef = useRef(false);
+  const [closeHover, setCloseHover] = useState(false);
   const restoreStateRef = useRef<{ left: string; top: string; width: string; height: string } | null>(null);
   const w = windows[id];
   useEffect(() => {
@@ -1877,7 +1885,23 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
     <section className={`window ${className || ''}`} ref={divRef} style={{ zIndex: w.z as number, position: "absolute" }} data-app={id}>
       <header className="titlebar" onPointerDown={(e)=>{ e.preventDefault(); down(e); }} onDoubleClick={toggleMaximize}>
         <div className="title">{title}</div>
-        <div className="window-controls"><button className="btn-close" onClick={() => closeWin(id)}>✕</button></div>
+        <div className="window-controls">
+          <button
+            className={`btn-close ${closeHover ? "is-hovered" : ""}`}
+            type="button"
+            aria-label={`Close ${title}`}
+            title="Close"
+            onPointerEnter={() => setCloseHover(true)}
+            onPointerMove={() => setCloseHover(true)}
+            onPointerLeave={() => setCloseHover(false)}
+            onMouseEnter={() => setCloseHover(true)}
+            onMouseLeave={() => setCloseHover(false)}
+            onBlur={() => setCloseHover(false)}
+            onClick={() => closeWin(id)}
+          >
+            Close
+          </button>
+        </div>
       </header>
       <div className="window-body">{children}</div>
       {/* Resize handles */}
