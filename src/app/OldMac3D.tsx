@@ -77,6 +77,7 @@ const SCREEN_CSS_WIDTH = 800;
 const SCREEN_CSS_HEIGHT = 600;
 const SCREEN_HTML_SCALE = 0.0763;
 const SCREEN_CSS_POSITION: [number, number, number] = [-0.04, 0.24, 0];
+const SCREEN_CSS_POSITION_MOBILE: [number, number, number] = [-0.04, 0.4, 0];
 
 type CameraAnim = {
   startMs: number;
@@ -287,6 +288,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
   // Dragging pad state
   const draggingPadRef = React.useRef(false);
   const isMobileRef = React.useRef(false);
+  const [isMobileScene, setIsMobileScene] = React.useState(false);
   const canvasContainerRef = React.useRef<HTMLDivElement>(null);
   const clickDataRef = React.useRef<{ down: boolean; x: number; y: number; t: number }>({ down: false, x: 0, y: 0, t: 0 });
 
@@ -347,13 +349,27 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
     };
   }, [SCREEN_W, SCREEN_H]);
   React.useEffect(() => {
-    // Detect mobile
-    isMobileRef.current = typeof window !== "undefined" && (
-      window.innerWidth <= 820 || 
-      matchMedia("(pointer: coarse)").matches || 
-      (window.devicePixelRatio || 1) >= 2
-    );
+    const updateMobileScene = () => {
+      const mobile = typeof window !== "undefined" && (
+        window.innerWidth <= 820 ||
+        matchMedia("(pointer: coarse)").matches ||
+        (window.devicePixelRatio || 1) >= 2
+      );
+      isMobileRef.current = mobile;
+      setIsMobileScene(mobile);
+    };
+
+    updateMobileScene();
+    window.addEventListener("resize", updateMobileScene);
+    window.addEventListener("orientationchange", updateMobileScene);
+
+    return () => {
+      window.removeEventListener("resize", updateMobileScene);
+      window.removeEventListener("orientationchange", updateMobileScene);
+    };
   }, []);
+
+  const screenPosition = isMobileScene ? SCREEN_CSS_POSITION_MOBILE : SCREEN_CSS_POSITION;
   return (
     <div className="r3f-wrap" ref={canvasContainerRef} onPointerMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}>
       <Canvas
@@ -426,7 +442,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
             <Html
               transform
               center
-              position={SCREEN_CSS_POSITION}
+              position={screenPosition}
               scale={SCREEN_HTML_SCALE}
               zIndexRange={[100, 0]}
             >
