@@ -82,9 +82,15 @@ const SCREEN_CSS_POSITION: [number, number, number] = [-0.04, 0.24, 0];
 
 function getRendererSize(container: HTMLDivElement) {
   const rect = container.getBoundingClientRect();
+  const canvas = container.querySelector("canvas");
+  const canvasRect = canvas?.getBoundingClientRect();
+  const targetRect = canvasRect && canvasRect.width > 0 && canvasRect.height > 0 ? canvasRect : rect;
+
   return {
-    width: Math.max(1, Math.round(rect.width || container.clientWidth || window.innerWidth)),
-    height: Math.max(1, Math.round(rect.height || container.clientHeight || window.innerHeight)),
+    left: targetRect.left - rect.left,
+    top: targetRect.top - rect.top,
+    width: Math.max(1, targetRect.width || container.clientWidth || window.innerWidth),
+    height: Math.max(1, targetRect.height || container.clientHeight || window.innerHeight),
   };
 }
 
@@ -426,28 +432,44 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
     if (canvasContainerRef.current) {
       const container = canvasContainerRef.current;
       const css3dRenderer = new CSS3DRenderer();
-      const syncRendererSize = () => {
-        const { width, height } = getRendererSize(container);
-        css3dRenderer.setSize(width, height);
-      };
       let resizeFrame = 0;
-      const scheduleRendererSizeSync = () => {
+      let observedCanvas: HTMLCanvasElement | null = null;
+      let canvasResizeObserver: ResizeObserver | null = null;
+
+      function syncRendererSize() {
+        const canvas = container.querySelector("canvas");
+        if (canvas instanceof HTMLCanvasElement && canvas !== observedCanvas) {
+          canvasResizeObserver?.disconnect();
+          observedCanvas = canvas;
+          canvasResizeObserver = new ResizeObserver(scheduleRendererSizeSync);
+          canvasResizeObserver.observe(canvas);
+        }
+
+        const { left, top, width, height } = getRendererSize(container);
+        css3dRenderer.setSize(width, height);
+        css3dRenderer.domElement.style.left = `${left}px`;
+        css3dRenderer.domElement.style.top = `${top}px`;
+      }
+
+      function scheduleRendererSizeSync() {
         if (resizeFrame) cancelAnimationFrame(resizeFrame);
         resizeFrame = requestAnimationFrame(() => {
           resizeFrame = 0;
           syncRendererSize();
         });
-      };
+      }
 
       syncRendererSize();
       css3dRenderer.domElement.style.position = "absolute";
-      css3dRenderer.domElement.style.top = "0";
-      css3dRenderer.domElement.style.left = "0";
-      css3dRenderer.domElement.style.inset = "0";
+      css3dRenderer.domElement.style.right = "auto";
+      css3dRenderer.domElement.style.bottom = "auto";
       // Default to pass-through; we'll enable pointer events when hovering the screen
       css3dRenderer.domElement.style.pointerEvents = "none";
       container.appendChild(css3dRenderer.domElement);
       css3dRendererRef.current = css3dRenderer;
+      scheduleRendererSizeSync();
+      window.setTimeout(scheduleRendererSizeSync, 50);
+      window.setTimeout(scheduleRendererSizeSync, 250);
 
       const resizeObserver = new ResizeObserver(scheduleRendererSizeSync);
       resizeObserver.observe(container);
@@ -458,6 +480,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
 
       return () => {
         if (resizeFrame) cancelAnimationFrame(resizeFrame);
+        canvasResizeObserver?.disconnect();
         resizeObserver.disconnect();
         window.removeEventListener("resize", scheduleRendererSizeSync);
         window.removeEventListener("orientationchange", scheduleRendererSizeSync);
