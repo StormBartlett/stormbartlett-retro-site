@@ -7,7 +7,6 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as React from "react";
 import * as THREE from "three";
 import { CSS3DRenderer, CSS3DObject } from "three/examples/jsm/renderers/CSS3DRenderer.js";
-import { CursorUpdateContext } from "./CursorContext";
 
 // Tweak points
 // const MODEL_ROT_Y = 0; // rotate around Y (radians). e.g. Math.PI * 0.5 = 90°
@@ -80,6 +79,14 @@ const SCREEN_CSS_WIDTH = 800;
 const SCREEN_CSS_HEIGHT = 600;
 const SCREEN_CSS_SCALE = 0.001795;
 const SCREEN_CSS_POSITION: [number, number, number] = [-0.04, 0.24, 0];
+
+function getRendererSize(container: HTMLDivElement) {
+  const rect = container.getBoundingClientRect();
+  return {
+    width: Math.max(1, Math.round(rect.width || container.clientWidth || window.innerWidth)),
+    height: Math.max(1, Math.round(rect.height || container.clientHeight || window.innerHeight)),
+  };
+}
 
 type CameraAnim = {
   startMs: number;
@@ -323,90 +330,6 @@ function CSS3DScreenBridge({
   return null;
 }
 
-// Hook to attach CSS3D cursor object to Three.js scene
-function useCSS3DCursor(
-  screenRef: React.MutableRefObject<THREE.Group | null>,
-  cursorDiv: HTMLDivElement | null,
-  cursorPosition: { x: number; y: number; width: number; height: number; visible: boolean } | null
-) {
-  const { scene } = useThree();
-  const cursorObjRef = React.useRef<CSS3DObject | null>(null);
-
-  React.useEffect(() => {
-    if (!cursorDiv || !screenRef.current) return;
-
-    const currentScreenRef = screenRef.current;
-
-    // Create CSS3DObject from the cursor div
-    const css3dCursor = new CSS3DObject(cursorDiv);
-    cursorObjRef.current = css3dCursor;
-
-    // Device detection
-    const isMobile = typeof window !== "undefined" && (
-      window.innerWidth <= 820 ||
-      matchMedia("(pointer: coarse)").matches
-    );
-
-    const nav = (typeof navigator !== 'undefined' ? navigator : undefined) as { brave?: { isBrave?: () => boolean } } | undefined;
-    const isBrave = !!(nav && nav.brave && typeof nav.brave.isBrave === 'function');
-
-    // Use same base positioning and scale as screen
-    const baseScale = !isMobile ? 0.001795 : 0.00176;
-    const baseX = !isMobile ? -0.04 : 0.135;
-    const baseY = !isMobile ? 0.24 : (isBrave ? 0.24 : 0.41);
-
-    css3dCursor.scale.set(baseScale, baseScale, baseScale);
-    css3dCursor.position.set(baseX, baseY, 0);
-
-    // Add to the screen group so it inherits all transforms
-    currentScreenRef.add(css3dCursor);
-
-    return () => {
-      if (currentScreenRef && cursorObjRef.current) {
-        currentScreenRef.remove(cursorObjRef.current);
-      }
-    };
-  }, [screenRef, scene, cursorDiv]);
-
-  // Update cursor position when it changes
-  React.useEffect(() => {
-    if (!cursorObjRef.current || !cursorPosition) return;
-
-    const isMobile = typeof window !== "undefined" && (
-      window.innerWidth <= 820 ||
-      matchMedia("(pointer: coarse)").matches
-    );
-
-    const nav = (typeof navigator !== 'undefined' ? navigator : undefined) as { brave?: { isBrave?: () => boolean } } | undefined;
-    const isBrave = !!(nav && nav.brave && typeof nav.brave.isBrave === 'function');
-
-    const baseScale = !isMobile ? 0.001795 : 0.00176;
-    const baseX = !isMobile ? -0.04 : 0.135;
-    const baseY = !isMobile ? 0.24 : (isBrave ? 0.24 : 0.41);
-
-    // Convert pixel coordinates (top-left origin) to local screen space anchored at top-left
-    const posX = baseX + cursorPosition.x * baseScale;
-    const posY = baseY - cursorPosition.y * baseScale; // Flip Y since CSS Y grows downward
-    const posZ = 0.001; // Slightly in front to avoid z-fighting
-
-    cursorObjRef.current.position.set(posX, posY, posZ);
-    cursorObjRef.current.visible = cursorPosition.visible;
-  }, [cursorPosition]);
-}
-
-function CSS3DCursorBridge({
-  screenRef,
-  cursorDivElement,
-  cursorPosition,
-}: {
-  screenRef: React.MutableRefObject<THREE.Group | null>;
-  cursorDivElement: HTMLDivElement | null;
-  cursorPosition: { x: number; y: number; width: number; height: number; visible: boolean } | null;
-}) {
-  useCSS3DCursor(screenRef, cursorDivElement, cursorPosition);
-  return null;
-}
-
 // ScreenTexturePlane reverted
 
 export default function OldMac3D({ children }: { children?: React.ReactNode }) {
@@ -432,8 +355,6 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
   const css3dRendererRef = React.useRef<CSS3DRenderer | null>(null);
   const canvasContainerRef = React.useRef<HTMLDivElement>(null);
   const [screenDivElement, setScreenDivElement] = React.useState<HTMLDivElement | null>(null);
-  const [cursorDivElement, setCursorDivElement] = React.useState<HTMLDivElement | null>(null);
-  const [cursorPosition, setCursorPosition] = React.useState<{ x: number; y: number; width: number; height: number; visible: boolean } | null>(null);
   const clickDataRef = React.useRef<{ down: boolean; x: number; y: number; t: number }>({ down: false, x: 0, y: 0, t: 0 });
 
   // Cursor texture (SVG)
@@ -505,22 +426,43 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
     if (canvasContainerRef.current) {
       const container = canvasContainerRef.current;
       const css3dRenderer = new CSS3DRenderer();
-      css3dRenderer.setSize(window.innerWidth, window.innerHeight);
+      const syncRendererSize = () => {
+        const { width, height } = getRendererSize(container);
+        css3dRenderer.setSize(width, height);
+      };
+      let resizeFrame = 0;
+      const scheduleRendererSizeSync = () => {
+        if (resizeFrame) cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(() => {
+          resizeFrame = 0;
+          syncRendererSize();
+        });
+      };
+
+      syncRendererSize();
       css3dRenderer.domElement.style.position = "absolute";
       css3dRenderer.domElement.style.top = "0";
       css3dRenderer.domElement.style.left = "0";
+      css3dRenderer.domElement.style.inset = "0";
       // Default to pass-through; we'll enable pointer events when hovering the screen
       css3dRenderer.domElement.style.pointerEvents = "none";
       container.appendChild(css3dRenderer.domElement);
       css3dRendererRef.current = css3dRenderer;
 
-      const handleResize = () => {
-        css3dRenderer.setSize(window.innerWidth, window.innerHeight);
-      };
-      window.addEventListener("resize", handleResize);
+      const resizeObserver = new ResizeObserver(scheduleRendererSizeSync);
+      resizeObserver.observe(container);
+      window.addEventListener("resize", scheduleRendererSizeSync);
+      window.addEventListener("orientationchange", scheduleRendererSizeSync);
+      window.visualViewport?.addEventListener("resize", scheduleRendererSizeSync);
+      window.visualViewport?.addEventListener("scroll", scheduleRendererSizeSync);
 
       return () => {
-        window.removeEventListener("resize", handleResize);
+        if (resizeFrame) cancelAnimationFrame(resizeFrame);
+        resizeObserver.disconnect();
+        window.removeEventListener("resize", scheduleRendererSizeSync);
+        window.removeEventListener("orientationchange", scheduleRendererSizeSync);
+        window.visualViewport?.removeEventListener("resize", scheduleRendererSizeSync);
+        window.visualViewport?.removeEventListener("scroll", scheduleRendererSizeSync);
         if (container && css3dRenderer.domElement.parentNode) {
           container.removeChild(css3dRenderer.domElement);
         }
@@ -676,14 +618,6 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
           <CSS3DScreenBridge screenRef={screenRef} screenDivElement={screenDivElement} />
         )}
 
-        {/* Bridge for CSS3D cursor */}
-        {uiMounted && cursorDivElement && cursorPosition && (
-          <CSS3DCursorBridge
-            screenRef={screenRef}
-            cursorDivElement={cursorDivElement}
-            cursorPosition={cursorPosition}
-          />
-        )}
       </Canvas>
 
       {/* CSS3D UI rendered outside Canvas */}
@@ -706,33 +640,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
             className="embedded-screen model-screen"
             style={{ width: `${SCREEN_CSS_WIDTH}px`, height: `${SCREEN_CSS_HEIGHT}px`, position: 'relative' }}
           >
-            <CursorUpdateContext.Provider value={{ onCursorUpdate: setCursorPosition }}>
-              {children}
-            </CursorUpdateContext.Provider>
-          </div>
-        </div>
-      )}
-
-      {/* CSS3D Cursor element - make it bright red for debugging */}
-      {uiMounted && (
-        <div
-          ref={(el) => {
-            if (el && !cursorDivElement) {
-              setCursorDivElement(el);
-            }
-          }}
-          style={{
-            position: "absolute",
-            width: `${cursorPosition?.width || 10}px`,
-            height: `${cursorPosition?.height || 20}px`,
-            background: "red", // Bright red for debugging
-            pointerEvents: "none",
-            opacity: 1, // Always visible for debugging
-            zIndex: 999999,
-          }}
-        >
-          <div style={{ color: 'white', fontSize: '10px' }}>
-            CURSOR {cursorPosition ? `${Math.round(cursorPosition.x)},${Math.round(cursorPosition.y)}` : 'NULL'}
+            {children}
           </div>
         </div>
       )}
