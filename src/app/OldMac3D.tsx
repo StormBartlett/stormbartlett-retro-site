@@ -76,8 +76,32 @@ const SCREEN_PLANE_H = 3.0;
 const SCREEN_CSS_WIDTH = 800;
 const SCREEN_CSS_HEIGHT = 600;
 const SCREEN_HTML_SCALE = 0.0763;
+const SCREEN_HTML_SCALE_MOBILE = 0.0685;
 const SCREEN_CSS_POSITION: [number, number, number] = [-0.04, 0.24, 0];
-const SCREEN_CSS_POSITION_MOBILE: [number, number, number] = [-0.04, 0.4, 0];
+const SCREEN_CSS_POSITION_MOBILE: [number, number, number] = [-0.035, 0.26, 0];
+
+type ScreenTuning = {
+  x: number;
+  y: number;
+  z: number;
+  scale: number;
+};
+
+const DEFAULT_MOBILE_SCREEN_TUNING: ScreenTuning = {
+  x: SCREEN_CSS_POSITION_MOBILE[0],
+  y: SCREEN_CSS_POSITION_MOBILE[1],
+  z: SCREEN_CSS_POSITION_MOBILE[2],
+  scale: SCREEN_HTML_SCALE_MOBILE,
+};
+
+function isScreenTuning(value: unknown): value is ScreenTuning {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ScreenTuning>;
+  return ["x", "y", "z", "scale"].every((key) => {
+    const numericValue = candidate[key as keyof ScreenTuning];
+    return typeof numericValue === "number" && Number.isFinite(numericValue);
+  });
+}
 
 type CameraAnim = {
   startMs: number;
@@ -289,6 +313,8 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
   const draggingPadRef = React.useRef(false);
   const isMobileRef = React.useRef(false);
   const [isMobileScene, setIsMobileScene] = React.useState(false);
+  const [isCalibratingScreen, setIsCalibratingScreen] = React.useState(false);
+  const [screenTuning, setScreenTuning] = React.useState<ScreenTuning>(DEFAULT_MOBILE_SCREEN_TUNING);
   const canvasContainerRef = React.useRef<HTMLDivElement>(null);
   const clickDataRef = React.useRef<{ down: boolean; x: number; y: number; t: number }>({ down: false, x: 0, y: 0, t: 0 });
 
@@ -349,6 +375,29 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
     };
   }, [SCREEN_W, SCREEN_H]);
   React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const calibrationEnabled = params.get("calibrateScreen") === "1";
+    setIsCalibratingScreen(calibrationEnabled);
+    if (!calibrationEnabled) return;
+
+    const stored = window.localStorage.getItem("oldmac-screen-mobile-tuning");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (isScreenTuning(parsed)) setScreenTuning(parsed);
+      } catch {
+        // Ignore malformed calibration values.
+      }
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!isCalibratingScreen) return;
+    window.localStorage.setItem("oldmac-screen-mobile-tuning", JSON.stringify(screenTuning));
+    (window as typeof window & { __oldMacScreenTuning?: ScreenTuning }).__oldMacScreenTuning = screenTuning;
+  }, [isCalibratingScreen, screenTuning]);
+
+  React.useEffect(() => {
     const updateMobileScene = () => {
       const mobile = typeof window !== "undefined" && (
         window.innerWidth <= 820 ||
@@ -369,7 +418,9 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
     };
   }, []);
 
-  const screenPosition = isMobileScene ? SCREEN_CSS_POSITION_MOBILE : SCREEN_CSS_POSITION;
+  const useScreenTuning = isMobileScene || isCalibratingScreen;
+  const screenPosition = useScreenTuning ? [screenTuning.x, screenTuning.y, screenTuning.z] as [number, number, number] : SCREEN_CSS_POSITION;
+  const screenScale = useScreenTuning ? screenTuning.scale : SCREEN_HTML_SCALE;
   return (
     <div className="r3f-wrap" ref={canvasContainerRef} onPointerMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}>
       <Canvas
@@ -443,7 +494,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
               transform
               center
               position={screenPosition}
-              scale={SCREEN_HTML_SCALE}
+              scale={screenScale}
               zIndexRange={[100, 0]}
             >
               <div
@@ -557,6 +608,78 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
        */}
 
       {/* CRT cursor overlay removed */}
+
+      {isCalibratingScreen && (
+        <div
+          style={{
+            position: "fixed",
+            left: 12,
+            bottom: 12,
+            zIndex: 10000,
+            width: "min(360px, calc(100vw - 24px))",
+            padding: 12,
+            background: "rgba(8, 8, 10, 0.92)",
+            color: "#fff",
+            border: "1px solid rgba(255,255,255,.35)",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: 12,
+            pointerEvents: "auto",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+            <strong>Screen calibration</strong>
+            <button
+              type="button"
+              onClick={() => setScreenTuning(DEFAULT_MOBILE_SCREEN_TUNING)}
+              style={{ font: "inherit", color: "#fff", background: "transparent", border: "1px solid #777" }}
+            >
+              reset
+            </button>
+          </div>
+          {([
+            ["x", -0.16, 0.08, 0.005],
+            ["y", 0.24, 0.56, 0.005],
+            ["scale", 0.064, 0.078, 0.0005],
+          ] as const).map(([key, min, max, step]) => (
+            <label key={key} style={{ display: "grid", gridTemplateColumns: "52px 1fr 64px", gap: 8, alignItems: "center", marginTop: 8 }}>
+              <span>{key}</span>
+              <input
+                type="range"
+                min={min}
+                max={max}
+                step={step}
+                value={screenTuning[key]}
+                onInput={(event) => {
+                  const value = Number(event.currentTarget.value);
+                  setScreenTuning((current) => ({ ...current, [key]: value }));
+                }}
+                onChange={(event) => {
+                  const value = Number(event.currentTarget.value);
+                  setScreenTuning((current) => ({ ...current, [key]: value }));
+                }}
+              />
+              <input
+                type="number"
+                min={min}
+                max={max}
+                step={step}
+                value={screenTuning[key]}
+                onChange={(event) => {
+                  const value = Number(event.currentTarget.value);
+                  if (Number.isFinite(value)) setScreenTuning((current) => ({ ...current, [key]: value }));
+                }}
+                style={{ width: "100%", font: "inherit" }}
+              />
+            </label>
+          ))}
+          <div style={{ marginTop: 10, opacity: 0.8 }}>
+            {`position=[${screenTuning.x.toFixed(3)}, ${screenTuning.y.toFixed(3)}, ${screenTuning.z.toFixed(3)}] scale=${screenTuning.scale.toFixed(4)}`}
+          </div>
+          <div style={{ marginTop: 6, opacity: 0.65 }}>
+            Mobile values only. Desktop uses its separate constants outside calibration mode.
+          </div>
+        </div>
+      )}
 
       {/* Tooltip overlay */}
       {(hoveringMac || tooltipHover) && mouse && (
