@@ -1,12 +1,10 @@
 "use client";
 
-import { Canvas, useFrame, useThree, useLoader, type ThreeElements } from "@react-three/fiber";
-import { TextureLoader } from 'three';
-import { OrbitControls, ContactShadows, useGLTF } from "@react-three/drei";
+import { Canvas, useFrame, useThree, type ThreeElements } from "@react-three/fiber";
+import { OrbitControls, ContactShadows, useGLTF, Html } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as React from "react";
 import * as THREE from "three";
-import { CSS3DRenderer, CSS3DObject } from "three/examples/jsm/renderers/CSS3DRenderer.js";
 
 // Tweak points
 // const MODEL_ROT_Y = 0; // rotate around Y (radians). e.g. Math.PI * 0.5 = 90°
@@ -77,22 +75,8 @@ const SCREEN_PLANE_W = 2.6;
 const SCREEN_PLANE_H = 3.0;
 const SCREEN_CSS_WIDTH = 800;
 const SCREEN_CSS_HEIGHT = 600;
-const SCREEN_CSS_SCALE = 0.001795;
+const SCREEN_HTML_SCALE = 0.0763;
 const SCREEN_CSS_POSITION: [number, number, number] = [-0.04, 0.24, 0];
-
-function getRendererSize(container: HTMLDivElement) {
-  const rect = container.getBoundingClientRect();
-  const canvas = container.querySelector("canvas");
-  const canvasRect = canvas?.getBoundingClientRect();
-  const targetRect = canvasRect && canvasRect.width > 0 && canvasRect.height > 0 ? canvasRect : rect;
-
-  return {
-    left: targetRect.left - rect.left,
-    top: targetRect.top - rect.top,
-    width: Math.max(1, targetRect.width || container.clientWidth || window.innerWidth),
-    height: Math.max(1, targetRect.height || container.clientHeight || window.innerHeight),
-  };
-}
 
 type CameraAnim = {
   startMs: number;
@@ -282,60 +266,6 @@ function CameraStateCapture({
   return null;
 }
 
-// Render CSS3D each frame
-function CSS3DRenderLoop({ 
-  css3dRendererRef,
-}: {
-  css3dRendererRef: React.MutableRefObject<CSS3DRenderer | null>;
-}) {
-  const { camera, scene } = useThree();
-  useFrame(() => {
-    if (css3dRendererRef.current) {
-      css3dRendererRef.current.render(scene, camera);
-    }
-  });
-  return null;
-}
-
-// Hook to attach CSS3D object to Three.js scene
-function useCSS3DScreen(
-  screenRef: React.MutableRefObject<THREE.Group | null>,
-  divElement: HTMLDivElement | null
-) {
-  const { scene } = useThree();
-
-  React.useEffect(() => {
-    if (!divElement || !screenRef.current) return;
-    
-    const currentScreenRef = screenRef.current;
-
-    // Create CSS3DObject from the div
-    const css3dObject = new CSS3DObject(divElement);
-
-    css3dObject.position.set(...SCREEN_CSS_POSITION);
-    css3dObject.scale.set(SCREEN_CSS_SCALE, SCREEN_CSS_SCALE, SCREEN_CSS_SCALE);
-    // Add to the screen group
-    currentScreenRef.add(css3dObject);
-
-    return () => {
-      if (currentScreenRef) {
-        currentScreenRef.remove(css3dObject);
-      }
-    };
-  }, [screenRef, scene, divElement]);
-}
-
-function CSS3DScreenBridge({
-  screenRef,
-  screenDivElement,
-}: {
-  screenRef: React.MutableRefObject<THREE.Group | null>;
-  screenDivElement: HTMLDivElement | null;
-}) {
-  useCSS3DScreen(screenRef, screenDivElement);
-  return null;
-}
-
 // ScreenTexturePlane reverted
 
 export default function OldMac3D({ children }: { children?: React.ReactNode }) {
@@ -352,15 +282,12 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
   const [hoveringMac, setHoveringMac] = React.useState(false);
   const [tooltipHover, setTooltipHover] = React.useState(false);
   const [mouse, setMouse] = React.useState<{ x: number; y: number } | null>(null);
-  const [uiMounted, setUiMounted] = React.useState(false);
   // Cursor state in UV (0..1, 0..1) on the screen
   const [cursorUV, setCursorUV] = React.useState<{u:number; v:number}>({ u: 0.5, v: 0.5 });
   // Dragging pad state
   const draggingPadRef = React.useRef(false);
   const isMobileRef = React.useRef(false);
-  const css3dRendererRef = React.useRef<CSS3DRenderer | null>(null);
   const canvasContainerRef = React.useRef<HTMLDivElement>(null);
-  const [screenDivElement, setScreenDivElement] = React.useState<HTMLDivElement | null>(null);
   const clickDataRef = React.useRef<{ down: boolean; x: number; y: number; t: number }>({ down: false, x: 0, y: 0, t: 0 });
 
   // Cursor texture (SVG)
@@ -420,101 +347,13 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
     };
   }, [SCREEN_W, SCREEN_H]);
   React.useEffect(() => {
-    setUiMounted(true);
     // Detect mobile
     isMobileRef.current = typeof window !== "undefined" && (
       window.innerWidth <= 820 || 
       matchMedia("(pointer: coarse)").matches || 
       (window.devicePixelRatio || 1) >= 2
     );
-
-    // Setup CSS3DRenderer
-    if (canvasContainerRef.current) {
-      const container = canvasContainerRef.current;
-      const css3dRenderer = new CSS3DRenderer();
-      let resizeFrame = 0;
-      let observedCanvas: HTMLCanvasElement | null = null;
-      let canvasResizeObserver: ResizeObserver | null = null;
-
-      function syncRendererSize() {
-        const canvas = container.querySelector("canvas");
-        if (canvas instanceof HTMLCanvasElement && canvas !== observedCanvas) {
-          canvasResizeObserver?.disconnect();
-          observedCanvas = canvas;
-          canvasResizeObserver = new ResizeObserver(scheduleRendererSizeSync);
-          canvasResizeObserver.observe(canvas);
-        }
-
-        const { left, top, width, height } = getRendererSize(container);
-        css3dRenderer.setSize(width, height);
-        css3dRenderer.domElement.style.left = `${left}px`;
-        css3dRenderer.domElement.style.top = `${top}px`;
-      }
-
-      function scheduleRendererSizeSync() {
-        if (resizeFrame) cancelAnimationFrame(resizeFrame);
-        resizeFrame = requestAnimationFrame(() => {
-          resizeFrame = 0;
-          syncRendererSize();
-        });
-      }
-
-      syncRendererSize();
-      css3dRenderer.domElement.style.position = "absolute";
-      css3dRenderer.domElement.style.right = "auto";
-      css3dRenderer.domElement.style.bottom = "auto";
-      // Default to pass-through; we'll enable pointer events when hovering the screen
-      css3dRenderer.domElement.style.pointerEvents = "none";
-      container.appendChild(css3dRenderer.domElement);
-      css3dRendererRef.current = css3dRenderer;
-      scheduleRendererSizeSync();
-      window.setTimeout(scheduleRendererSizeSync, 50);
-      window.setTimeout(scheduleRendererSizeSync, 250);
-
-      const resizeObserver = new ResizeObserver(scheduleRendererSizeSync);
-      resizeObserver.observe(container);
-      window.addEventListener("resize", scheduleRendererSizeSync);
-      window.addEventListener("orientationchange", scheduleRendererSizeSync);
-      window.visualViewport?.addEventListener("resize", scheduleRendererSizeSync);
-      window.visualViewport?.addEventListener("scroll", scheduleRendererSizeSync);
-
-      return () => {
-        if (resizeFrame) cancelAnimationFrame(resizeFrame);
-        canvasResizeObserver?.disconnect();
-        resizeObserver.disconnect();
-        window.removeEventListener("resize", scheduleRendererSizeSync);
-        window.removeEventListener("orientationchange", scheduleRendererSizeSync);
-        window.visualViewport?.removeEventListener("resize", scheduleRendererSizeSync);
-        window.visualViewport?.removeEventListener("scroll", scheduleRendererSizeSync);
-        if (container && css3dRenderer.domElement.parentNode) {
-          container.removeChild(css3dRenderer.domElement);
-        }
-      };
-    }
   }, []);
-
-  // Enable clicks only when the pointer is over the embedded screen
-  React.useEffect(() => {
-    const rendererEl = css3dRendererRef.current?.domElement;
-    if (!rendererEl || !screenDivElement) return;
-    const onMove = (e: PointerEvent) => {
-      const rect = screenDivElement.getBoundingClientRect();
-      const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
-      rendererEl.style.pointerEvents = inside ? "auto" : "none";
-      if (inside) {
-        setHoveringMac(false);
-      }
-    };
-    const onLeave = () => { rendererEl.style.pointerEvents = "none"; };
-    window.addEventListener('pointermove', onMove, { passive: true });
-    window.addEventListener('scroll', onLeave, { passive: true });
-    window.addEventListener('resize', onLeave);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('scroll', onLeave);
-      window.removeEventListener('resize', onLeave);
-    };
-  }, [screenDivElement]);
   return (
     <div className="r3f-wrap" ref={canvasContainerRef} onPointerMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}>
       <Canvas
@@ -584,7 +423,29 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
               <boxGeometry args={[0.01, 0.01, 0.01]} />
             </mesh>
 
-            {/* 3D cursor plane removed in favor of DOM overlay */}
+            <Html
+              transform
+              center
+              position={SCREEN_CSS_POSITION}
+              scale={SCREEN_HTML_SCALE}
+              zIndexRange={[100, 0]}
+            >
+              <div
+                className="model-screen-html"
+                style={{
+                  width: `${SCREEN_CSS_WIDTH}px`,
+                  height: `${SCREEN_CSS_HEIGHT}px`,
+                  pointerEvents: "auto",
+                }}
+              >
+                <div
+                  className="embedded-screen model-screen"
+                  style={{ width: `${SCREEN_CSS_WIDTH}px`, height: `${SCREEN_CSS_HEIGHT}px`, position: "relative" }}
+                >
+                  {children}
+                </div>
+              </div>
+            </Html>
           </group>
         </group>
 
@@ -633,40 +494,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
           camTargetRef={camTargetRef} 
         />
         
-        {/* CSS3D Renderer Loop */}
-        <CSS3DRenderLoop css3dRendererRef={css3dRendererRef} />
-        
-        {/* Bridge to attach external div to Three.js scene */}
-        {uiMounted && screenDivElement && (
-          <CSS3DScreenBridge screenRef={screenRef} screenDivElement={screenDivElement} />
-        )}
-
       </Canvas>
-
-      {/* CSS3D UI rendered outside Canvas */}
-      {uiMounted && (
-        <div
-          ref={(el) => {
-            if (el && !screenDivElement) {
-              setScreenDivElement(el);
-            }
-          }}
-          style={{
-            position: "absolute",
-            width: `${SCREEN_CSS_WIDTH}px`,
-            height: `${SCREEN_CSS_HEIGHT}px`,
-            // Allow clicks within the embedded screen, but keep it non-blocking outside
-            pointerEvents: "auto",
-          }}
-        >
-          <div
-            className="embedded-screen model-screen"
-            style={{ width: `${SCREEN_CSS_WIDTH}px`, height: `${SCREEN_CSS_HEIGHT}px`, position: 'relative' }}
-          >
-            {children}
-          </div>
-        </div>
-      )}
 
       {/* Retro mouse controller - disabled */}
       {/**
