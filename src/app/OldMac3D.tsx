@@ -351,7 +351,13 @@ function CameraStateCapture({
 
 // ScreenTexturePlane reverted
 
-export default function OldMac3D({ children }: { children?: React.ReactNode }) {
+export default function OldMac3D({
+  children,
+  onScreenPointerDown,
+}: {
+  children?: React.ReactNode;
+  onScreenPointerDown?: () => void;
+}) {
   const SCREEN_W = .86 * 67;
   const SCREEN_H = 0.5 * 67;
   
@@ -584,7 +590,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
               return [offset.x, offset.y, offset.z] as [number, number, number];
             })()}
             rotation={[0, -Math.PI/2, 0]}
-            onPointerOver={(e) => { e.stopPropagation(); setHoveringMac(true); }}
+            onPointerOver={(e) => { e.stopPropagation(); if (!isMobileRef.current) setHoveringMac(true); }}
             onPointerOut={() => { setHoveringMac(false); }}
             onPointerMove={(e) => { setMouse({ x: e.clientX, y: e.clientY }); }}
             onPointerDown={(e) => {
@@ -629,6 +635,9 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
             >
               <div
                 className="model-screen-html"
+                onPointerDown={() => {
+                  if (isMobileRef.current && !isCalibratingScreen) onScreenPointerDown?.();
+                }}
                 style={{
                   width: `${SCREEN_CSS_WIDTH}px`,
                   height: `${SCREEN_CSS_HEIGHT}px`,
@@ -830,7 +839,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
       )}
 
       {/* Tooltip overlay */}
-      {(hoveringMac || tooltipHover) && mouse && (
+      {!isMobileScene && (hoveringMac || tooltipHover) && mouse && (
         <button
           type="button"
           className="view-tooltip"

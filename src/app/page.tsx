@@ -22,6 +22,13 @@ function HomeContent() {
       return;
     }
 
+    const likelyMobile = window.innerWidth <= 900 || matchMedia("(pointer: coarse)").matches;
+    if (likelyMobile) {
+      setMobileViewMode("desktop");
+      localStorage.setItem("nx-mobile-view-mode", "desktop");
+      return;
+    }
+
     const saved = localStorage.getItem("nx-mobile-view-mode");
     if (saved === "model" || saved === "desktop") {
       setMobileViewMode(saved);
@@ -76,7 +83,15 @@ function HomeContent() {
     );
 
     if (mobileViewMode === "model" || isScreenCalibration) {
-      return <OldMac3D>{mobileDesktop}</OldMac3D>;
+      return (
+        <OldMac3D
+          onScreenPointerDown={() => {
+            if (!isScreenCalibration) setMobileViewModePersisted("desktop");
+          }}
+        >
+          {mobileDesktop}
+        </OldMac3D>
+      );
     }
 
     // Fill entire viewport with the embedded CRT screen on portrait/landscape
