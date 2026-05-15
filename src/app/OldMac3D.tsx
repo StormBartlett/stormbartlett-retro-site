@@ -79,6 +79,7 @@ const SCREEN_HTML_SCALE = 0.0763;
 const SCREEN_HTML_SCALE_MOBILE = 0.0685;
 const SCREEN_CSS_POSITION: [number, number, number] = [-0.04, 0.24, 0];
 const SCREEN_CSS_POSITION_MOBILE: [number, number, number] = [-0.035, 0.26, 0];
+const SCREEN_CSS_POSITION_MOBILE_CHROME_WEBVIEW: [number, number, number] = [-0.035, 0.59, 0];
 
 type ScreenTuning = {
   x: number;
@@ -126,8 +127,25 @@ const DEFAULT_MOBILE_SCREEN_TUNING: ScreenTuning = {
   scale: SCREEN_HTML_SCALE_MOBILE,
 };
 
+const CHROME_WEBVIEW_MOBILE_SCREEN_TUNING: ScreenTuning = {
+  x: SCREEN_CSS_POSITION_MOBILE_CHROME_WEBVIEW[0],
+  y: SCREEN_CSS_POSITION_MOBILE_CHROME_WEBVIEW[1],
+  z: SCREEN_CSS_POSITION_MOBILE_CHROME_WEBVIEW[2],
+  scale: SCREEN_HTML_SCALE_MOBILE,
+};
+
+function getMobileBrowserScreenTuning() {
+  if (typeof navigator === "undefined") return DEFAULT_MOBILE_SCREEN_TUNING;
+  const userAgent = navigator.userAgent;
+  const isChromeIOS = /CriOS/i.test(userAgent);
+  const isInstagramWebView = /Instagram/i.test(userAgent);
+  return isChromeIOS || isInstagramWebView
+    ? CHROME_WEBVIEW_MOBILE_SCREEN_TUNING
+    : DEFAULT_MOBILE_SCREEN_TUNING;
+}
+
 function getDefaultScreenTuning(target: CalibrationTarget) {
-  return target === "desktop" ? DEFAULT_DESKTOP_SCREEN_TUNING : DEFAULT_MOBILE_SCREEN_TUNING;
+  return target === "desktop" ? DEFAULT_DESKTOP_SCREEN_TUNING : getMobileBrowserScreenTuning();
 }
 
 function getScreenTuningStorageKey(target: CalibrationTarget) {
@@ -355,6 +373,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
   const [isMobileScene, setIsMobileScene] = React.useState(false);
   const [isCalibratingScreen, setIsCalibratingScreen] = React.useState(false);
   const [calibrationTarget, setCalibrationTarget] = React.useState<CalibrationTarget>("desktop");
+  const [mobileBrowserScreenTuning, setMobileBrowserScreenTuning] = React.useState<ScreenTuning>(DEFAULT_MOBILE_SCREEN_TUNING);
   const [screenTuning, setScreenTuning] = React.useState<ScreenTuning>(DEFAULT_DESKTOP_SCREEN_TUNING);
   const [screenDiagnostics, setScreenDiagnostics] = React.useState<ScreenDiagnostics | null>(null);
   const canvasContainerRef = React.useRef<HTMLDivElement>(null);
@@ -515,6 +534,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
       );
       isMobileRef.current = mobile;
       setIsMobileScene(mobile);
+      setMobileBrowserScreenTuning(getMobileBrowserScreenTuning());
     };
 
     updateMobileScene();
@@ -527,7 +547,7 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
     };
   }, []);
 
-  const normalScreenTuning = isMobileScene ? DEFAULT_MOBILE_SCREEN_TUNING : DEFAULT_DESKTOP_SCREEN_TUNING;
+  const normalScreenTuning = isMobileScene ? mobileBrowserScreenTuning : DEFAULT_DESKTOP_SCREEN_TUNING;
   const activeScreenTuning = isCalibratingScreen ? screenTuning : normalScreenTuning;
   const screenPosition = [activeScreenTuning.x, activeScreenTuning.y, activeScreenTuning.z] as [number, number, number];
   const screenScale = activeScreenTuning.scale;
@@ -748,7 +768,8 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
           </div>
           {([
             ["x", -0.16, 0.08, 0.005],
-            ["y", 0.24, 0.56, 0.005],
+            ["y", 0.16, 0.65, 0.005],
+            ["z", -0.2, 0.2, 0.005],
             ["scale", 0.064, 0.078, 0.0005],
           ] as const).map(([key, min, max, step]) => (
             <label key={key} style={{ display: "grid", gridTemplateColumns: "52px 1fr 64px", gap: 8, alignItems: "center", marginTop: 8 }}>
