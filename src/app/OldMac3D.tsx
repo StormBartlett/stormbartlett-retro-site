@@ -87,12 +87,52 @@ type ScreenTuning = {
   scale: number;
 };
 
+type CalibrationTarget = "desktop" | "mobile";
+
+type ScreenDiagnostics = {
+  screen?: { left: number; top: number; width: number; height: number; right: number; bottom: number };
+  canvas?: { left: number; top: number; width: number; height: number; right: number; bottom: number };
+  viewport: {
+    innerWidth: number;
+    innerHeight: number;
+    visualWidth?: number;
+    visualHeight?: number;
+    visualOffsetTop?: number;
+    visualOffsetLeft?: number;
+    dpr: number;
+  };
+  browser: {
+    isInstagram: boolean;
+    isCriOS: boolean;
+    isFxiOS: boolean;
+    isBrave: boolean;
+    userAgent: string;
+  };
+  target: CalibrationTarget;
+  tuning: ScreenTuning;
+};
+
+const DEFAULT_DESKTOP_SCREEN_TUNING: ScreenTuning = {
+  x: SCREEN_CSS_POSITION[0],
+  y: SCREEN_CSS_POSITION[1],
+  z: SCREEN_CSS_POSITION[2],
+  scale: SCREEN_HTML_SCALE,
+};
+
 const DEFAULT_MOBILE_SCREEN_TUNING: ScreenTuning = {
   x: SCREEN_CSS_POSITION_MOBILE[0],
   y: SCREEN_CSS_POSITION_MOBILE[1],
   z: SCREEN_CSS_POSITION_MOBILE[2],
   scale: SCREEN_HTML_SCALE_MOBILE,
 };
+
+function getDefaultScreenTuning(target: CalibrationTarget) {
+  return target === "desktop" ? DEFAULT_DESKTOP_SCREEN_TUNING : DEFAULT_MOBILE_SCREEN_TUNING;
+}
+
+function getScreenTuningStorageKey(target: CalibrationTarget) {
+  return `oldmac-screen-${target}-tuning`;
+}
 
 function isScreenTuning(value: unknown): value is ScreenTuning {
   if (!value || typeof value !== "object") return false;
@@ -314,7 +354,9 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
   const isMobileRef = React.useRef(false);
   const [isMobileScene, setIsMobileScene] = React.useState(false);
   const [isCalibratingScreen, setIsCalibratingScreen] = React.useState(false);
-  const [screenTuning, setScreenTuning] = React.useState<ScreenTuning>(DEFAULT_MOBILE_SCREEN_TUNING);
+  const [calibrationTarget, setCalibrationTarget] = React.useState<CalibrationTarget>("desktop");
+  const [screenTuning, setScreenTuning] = React.useState<ScreenTuning>(DEFAULT_DESKTOP_SCREEN_TUNING);
+  const [screenDiagnostics, setScreenDiagnostics] = React.useState<ScreenDiagnostics | null>(null);
   const canvasContainerRef = React.useRef<HTMLDivElement>(null);
   const clickDataRef = React.useRef<{ down: boolean; x: number; y: number; t: number }>({ down: false, x: 0, y: 0, t: 0 });
 
@@ -376,26 +418,93 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
   }, [SCREEN_W, SCREEN_H]);
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const calibrationEnabled = params.get("calibrateScreen") === "1";
+    const calibrationParam = params.get("calibrateScreen");
+    const calibrationEnabled = calibrationParam === "1" || calibrationParam === "desktop" || calibrationParam === "mobile";
     setIsCalibratingScreen(calibrationEnabled);
     if (!calibrationEnabled) return;
 
-    const stored = window.localStorage.getItem("oldmac-screen-mobile-tuning");
+    const target: CalibrationTarget =
+      calibrationParam === "desktop" || calibrationParam === "mobile"
+        ? calibrationParam
+        : window.innerWidth <= 820 || matchMedia("(pointer: coarse)").matches
+          ? "mobile"
+          : "desktop";
+    setCalibrationTarget(target);
+
+    const stored = window.localStorage.getItem(getScreenTuningStorageKey(target));
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        if (isScreenTuning(parsed)) setScreenTuning(parsed);
+        setScreenTuning(isScreenTuning(parsed) ? parsed : getDefaultScreenTuning(target));
       } catch {
-        // Ignore malformed calibration values.
+        setScreenTuning(getDefaultScreenTuning(target));
       }
+    } else {
+      setScreenTuning(getDefaultScreenTuning(target));
     }
   }, []);
 
   React.useEffect(() => {
     if (!isCalibratingScreen) return;
-    window.localStorage.setItem("oldmac-screen-mobile-tuning", JSON.stringify(screenTuning));
+    window.localStorage.setItem(getScreenTuningStorageKey(calibrationTarget), JSON.stringify(screenTuning));
     (window as typeof window & { __oldMacScreenTuning?: ScreenTuning }).__oldMacScreenTuning = screenTuning;
-  }, [isCalibratingScreen, screenTuning]);
+  }, [calibrationTarget, isCalibratingScreen, screenTuning]);
+
+  React.useEffect(() => {
+    if (!isCalibratingScreen) return;
+
+    const toRect = (element: Element | null) => {
+      if (!element) return undefined;
+      const rect = element.getBoundingClientRect();
+      return {
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        right: Math.round(rect.right),
+        bottom: Math.round(rect.bottom),
+      };
+    };
+
+    const collectDiagnostics = () => {
+      const userAgent = navigator.userAgent;
+      setScreenDiagnostics({
+        screen: toRect(document.querySelector(".model-screen-html")),
+        canvas: toRect(document.querySelector("canvas")),
+        viewport: {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          visualWidth: window.visualViewport?.width,
+          visualHeight: window.visualViewport?.height,
+          visualOffsetTop: window.visualViewport?.offsetTop,
+          visualOffsetLeft: window.visualViewport?.offsetLeft,
+          dpr: window.devicePixelRatio || 1,
+        },
+        browser: {
+          isInstagram: /Instagram/i.test(userAgent),
+          isCriOS: /CriOS/i.test(userAgent),
+          isFxiOS: /FxiOS/i.test(userAgent),
+          isBrave: (navigator as Navigator & { brave?: unknown }).brave !== undefined || /Brave/i.test(userAgent),
+          userAgent,
+        },
+        target: calibrationTarget,
+        tuning: screenTuning,
+      });
+    };
+
+    collectDiagnostics();
+    const frame = window.setInterval(collectDiagnostics, 500);
+    window.addEventListener("resize", collectDiagnostics);
+    window.visualViewport?.addEventListener("resize", collectDiagnostics);
+    window.visualViewport?.addEventListener("scroll", collectDiagnostics);
+
+    return () => {
+      window.clearInterval(frame);
+      window.removeEventListener("resize", collectDiagnostics);
+      window.visualViewport?.removeEventListener("resize", collectDiagnostics);
+      window.visualViewport?.removeEventListener("scroll", collectDiagnostics);
+    };
+  }, [calibrationTarget, isCalibratingScreen, screenTuning]);
 
   React.useEffect(() => {
     const updateMobileScene = () => {
@@ -418,9 +527,10 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
     };
   }, []);
 
-  const useScreenTuning = isMobileScene || isCalibratingScreen;
-  const screenPosition = useScreenTuning ? [screenTuning.x, screenTuning.y, screenTuning.z] as [number, number, number] : SCREEN_CSS_POSITION;
-  const screenScale = useScreenTuning ? screenTuning.scale : SCREEN_HTML_SCALE;
+  const normalScreenTuning = isMobileScene ? DEFAULT_MOBILE_SCREEN_TUNING : DEFAULT_DESKTOP_SCREEN_TUNING;
+  const activeScreenTuning = isCalibratingScreen ? screenTuning : normalScreenTuning;
+  const screenPosition = [activeScreenTuning.x, activeScreenTuning.y, activeScreenTuning.z] as [number, number, number];
+  const screenScale = activeScreenTuning.scale;
   return (
     <div className="r3f-wrap" ref={canvasContainerRef} onPointerMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}>
       <Canvas
@@ -678,6 +788,23 @@ export default function OldMac3D({ children }: { children?: React.ReactNode }) {
           <div style={{ marginTop: 6, opacity: 0.65 }}>
             Mobile values only. Desktop uses its separate constants outside calibration mode.
           </div>
+          {screenDiagnostics && (
+            <textarea
+              readOnly
+              value={JSON.stringify(screenDiagnostics, null, 2)}
+              style={{
+                width: "100%",
+                height: 92,
+                marginTop: 8,
+                padding: 6,
+                resize: "vertical",
+                font: "inherit",
+                color: "#fff",
+                background: "rgba(255,255,255,.08)",
+                border: "1px solid rgba(255,255,255,.28)",
+              }}
+            />
+          )}
         </div>
       )}
 
