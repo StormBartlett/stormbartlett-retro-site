@@ -11,9 +11,17 @@ function HomeContent() {
   const [isMobile, setIsMobile] = useState(false);
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("landscape");
   const [mobileViewMode, setMobileViewMode] = useState<ViewMode>("desktop");
+  const [isScreenCalibration, setIsScreenCalibration] = useState(false);
   const { isFullscreen, setFullscreen } = useFullscreen();
 
   useEffect(() => {
+    const calibratingScreen = new URLSearchParams(window.location.search).has("calibrateScreen");
+    setIsScreenCalibration(calibratingScreen);
+    if (calibratingScreen) {
+      setMobileViewMode("model");
+      return;
+    }
+
     const saved = localStorage.getItem("nx-mobile-view-mode");
     if (saved === "model" || saved === "desktop") {
       setMobileViewMode(saved);
@@ -67,7 +75,7 @@ function HomeContent() {
       />
     );
 
-    if (mobileViewMode === "model") {
+    if (mobileViewMode === "model" || isScreenCalibration) {
       return <OldMac3D>{mobileDesktop}</OldMac3D>;
     }
 
