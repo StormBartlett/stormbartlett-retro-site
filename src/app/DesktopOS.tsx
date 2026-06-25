@@ -1838,7 +1838,7 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
   
   return (
     <section className={`window ${className || ''}`} ref={divRef} style={{ zIndex: w.z as number, position: "absolute" }} data-app={id}>
-      <header className="titlebar" onPointerDown={(e)=>{ e.preventDefault(); down(e); }} onDoubleClick={toggleMaximize}>
+      <header className="titlebar" onPointerDown={(e)=>{ e.preventDefault(); e.stopPropagation(); down(e); }} onDoubleClick={toggleMaximize}>
         <div className="title">{title}</div>
         <div className="window-controls">
           <button

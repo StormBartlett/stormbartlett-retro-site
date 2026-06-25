@@ -384,6 +384,7 @@ export default function OldMac3D({
   const [screenDiagnostics, setScreenDiagnostics] = React.useState<ScreenDiagnostics | null>(null);
   const canvasContainerRef = React.useRef<HTMLDivElement>(null);
   const clickDataRef = React.useRef<{ down: boolean; x: number; y: number; t: number }>({ down: false, x: 0, y: 0, t: 0 });
+  const screenInteractionCleanupRef = React.useRef<(() => void) | null>(null);
 
   // Cursor texture (SVG)
   // const cursorTexture = useLoader(TextureLoader, '/cursor-light.svg');
@@ -441,6 +442,55 @@ export default function OldMac3D({
       toTarget,
     };
   }, [SCREEN_W, SCREEN_H]);
+
+  const stopScreenInteraction = React.useCallback(() => {
+    screenInteractionCleanupRef.current?.();
+    screenInteractionCleanupRef.current = null;
+
+    if (controlsRef.current) {
+      controlsRef.current.enabled = true;
+      controlsRef.current.enableRotate = true;
+    }
+  }, []);
+
+  const startScreenInteraction = React.useCallback(() => {
+    if (controlsRef.current) {
+      controlsRef.current.enabled = false;
+      controlsRef.current.enableRotate = false;
+    }
+
+    if (screenInteractionCleanupRef.current || typeof window === "undefined") return;
+
+    const stop = () => stopScreenInteraction();
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    window.addEventListener("mouseup", stop);
+    window.addEventListener("touchend", stop);
+    window.addEventListener("touchcancel", stop);
+    window.addEventListener("blur", stop);
+
+    screenInteractionCleanupRef.current = () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      window.removeEventListener("mouseup", stop);
+      window.removeEventListener("touchend", stop);
+      window.removeEventListener("touchcancel", stop);
+      window.removeEventListener("blur", stop);
+    };
+  }, [stopScreenInteraction]);
+
+  React.useEffect(() => stopScreenInteraction, [stopScreenInteraction]);
+
+  const stopScreenEvent = (
+    event:
+      | React.PointerEvent<HTMLDivElement>
+      | React.MouseEvent<HTMLDivElement>
+      | React.TouchEvent<HTMLDivElement>
+      | React.WheelEvent<HTMLDivElement>
+  ) => {
+    event.stopPropagation();
+  };
+
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const calibrationParam = params.get("calibrateScreen");
@@ -635,9 +685,16 @@ export default function OldMac3D({
             >
               <div
                 className="model-screen-html"
-                onPointerDown={() => {
+                onPointerDownCapture={startScreenInteraction}
+                onMouseDownCapture={startScreenInteraction}
+                onTouchStartCapture={startScreenInteraction}
+                onPointerDown={(event) => {
+                  stopScreenEvent(event);
                   if (isMobileRef.current && !isCalibratingScreen) onScreenPointerDown?.();
                 }}
+                onMouseDown={stopScreenEvent}
+                onTouchStart={stopScreenEvent}
+                onWheel={stopScreenEvent}
                 style={{
                   width: `${SCREEN_CSS_WIDTH}px`,
                   height: `${SCREEN_CSS_HEIGHT}px`,
