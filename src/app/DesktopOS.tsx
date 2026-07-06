@@ -32,7 +32,7 @@ type LocalCoordinateMetrics = {
   clientToLocal: (clientX: number, clientY: number) => { x: number; y: number };
 };
 const DESKTOP_BIN_POSITION = { x: 252, y: 73 };
-const MOBILE_TOP_ROW_ORDER = ["about", "skills", "bin", "calculator", "projects", "falling-sand"] as const;
+const MOBILE_TOP_ROW_ORDER = ["about", "skills", "bin", "calculator", "projects", "falling-sand", "activity"] as const;
 const ICON_STORAGE_KEYS = ["nx-icons", "nx-icons-mobile-portrait", "nx-icons-mobile-landscape"];
 const TRASH_POSITION_STORAGE_KEYS = ["nx-trash-pos", "nx-trash-pos-mobile-portrait", "nx-trash-pos-mobile-landscape"];
 const BIN_POSITION_STORAGE_KEYS = ["nx-bin-pos", "nx-bin-pos-mobile-portrait", "nx-bin-pos-mobile-landscape"];
@@ -151,6 +151,7 @@ const baseIcons: Icon[] = [
   { id: "calculator", label: "Calculator", app: "calculator", x: 400, y: 64 },
   { id: "projects", label: "Projects", app: "projects", x: 520, y: 64, type: "folder" },
   { id: "falling-sand", label: "Falling Sand", app: "falling-sand", x: 640, y: 64 },
+  { id: "activity", label: "Activity Monitor", app: "activity", x: 760, y: 64 },
 ];
 
 function buildMobileTopRowLayout(width: number, isPortrait: boolean) {
@@ -309,6 +310,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     "about-portfolio": { id: "about-portfolio", open: false, z: 10 },
     skills: { id: "skills", open: false, z: 10 },
     calculator: { id: "calculator", open: false, z: 10 },
+    activity: { id: "activity", open: false, z: 10 },
     todo: { id: "todo", open: false, z: 10 },
     "falling-sand": { id: "falling-sand", open: false, z: 10 },
     trash: { id: "trash", open: false, z: 10 },
@@ -1413,6 +1415,9 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
         </Window>
         <Window id="calculator" title="Calculator" windows={windows} frontWin={frontWin} closeWin={closeWin} className="calculator-window">
           <Calculator />
+        </Window>
+        <Window id="activity" title="Activity Monitor" windows={windows} frontWin={frontWin} closeWin={closeWin} className="activity-window">
+          <ActivityMonitor openWin={openWin} />
         </Window>
         <Window id="todo" title="TODO.txt" windows={windows} frontWin={frontWin} closeWin={closeWin}>
           <TodoEditor initialText={`[ ] Ship something delightful
@@ -3038,6 +3043,114 @@ function AboutPortfolioContent() {
       </ul>
       <div className="about-portfolio-rule" aria-hidden="true" />
       <div className="about-portfolio-location">New South Wales, Australia</div>
+    </div>
+  );
+}
+
+type ActivityProcess = {
+  pid: number;
+  name: string;
+  status: string;
+  base: number;   // typical %CPU
+  jitter: number; // random-walk range around base
+  href?: string;  // external link
+  opens?: string; // window id to open on double-click
+};
+
+const ACTIVITY_PROCESSES: ActivityProcess[] = [
+  { pid: 404, name: "noteception.com", status: "running", base: 58, jitter: 14, href: "https://noteception.com" },
+  { pid: 1024, name: "Xenostratum", status: "compiling", base: 76, jitter: 16, opens: "falling-sand" },
+  { pid: 7, name: "learning_rust", status: "fighting borrowck", base: 38, jitter: 20 },
+  { pid: 68, name: "vibe_coding", status: "vibing", base: 3, jitter: 2 },
+];
+
+function ActivityMonitor({ openWin }: { openWin: (id: string) => void }) {
+  const [tick, setTick] = useState(0);
+  const [cpus, setCpus] = useState<number[]>(() => ACTIVITY_PROCESSES.map((p) => p.base));
+  const historyRef = useRef<number[]>([]);
+  const graphRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setTick((k) => k + 1);
+      setCpus((prev) =>
+        prev.map((v, i) => {
+          const p = ACTIVITY_PROCESSES[i];
+          const next = v + (Math.random() - 0.5) * p.jitter;
+          const min = Math.max(1, p.base - p.jitter);
+          const max = Math.min(99, p.base + p.jitter);
+          return Math.round(Math.min(max, Math.max(min, next)));
+        })
+      );
+    }, 900);
+    return () => clearInterval(t);
+  }, []);
+
+  const total = Math.min(100, Math.round(cpus.reduce((a, b) => a + b, 0) / cpus.length));
+
+  // Blocky scrolling load graph, quantised into 4px cells
+  useEffect(() => {
+    const hist = historyRef.current;
+    hist.push(total);
+    if (hist.length > 96) hist.shift();
+    const canvas = graphRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    const { width, height } = canvas;
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = getComputedStyle(canvas).color;
+    const colW = 4;
+    const gap = 2;
+    const cols = Math.floor(width / (colW + gap));
+    const recent = hist.slice(-cols);
+    recent.forEach((v, i) => {
+      const steps = Math.max(1, Math.round((v / 100) * (height / 4)));
+      for (let s = 0; s < steps; s++) {
+        ctx.fillRect(i * (colW + gap), height - (s + 1) * 4 + 1, colW, 3);
+      }
+    });
+  }, [total]);
+
+  return (
+    <div className="activity">
+      <div className="activity-summary">
+        <span>CPU LOAD</span>
+        <span>{total}%</span>
+      </div>
+      <canvas ref={graphRef} className="activity-graph" width={396} height={64} aria-label="CPU load history" />
+      <div className="proc-row proc-header" aria-hidden="true">
+        <span>PID</span>
+        <span>Process</span>
+        <span>Status</span>
+        <span className="proc-cpu">%CPU</span>
+        <span />
+      </div>
+      {ACTIVITY_PROCESSES.map((p, i) => (
+        <div
+          key={p.pid}
+          className="proc-row"
+          onDoubleClick={p.opens ? () => openWin(p.opens!) : undefined}
+          title={p.opens ? "Double-click to open" : undefined}
+        >
+          <span>{p.pid}</span>
+          <span className="proc-name">
+            {p.href ? (
+              <a href={p.href} target="_blank" rel="noopener noreferrer">{p.name}</a>
+            ) : (
+              p.name
+            )}
+          </span>
+          <span className="proc-status">
+            {p.status}
+            {p.status === "compiling" ? ".".repeat((tick % 3) + 1) : ""}
+          </span>
+          <span className="proc-cpu">{cpus[i]}</span>
+          <div className="proc-bar" role="progressbar" aria-valuenow={cpus[i]} aria-valuemin={0} aria-valuemax={100}>
+            <div className="proc-bar-fill" style={{ width: `${cpus[i]}%` }} />
+          </div>
+        </div>
+      ))}
+      <div className="activity-footer">{ACTIVITY_PROCESSES.length} processes &middot; 1 vibing &middot; mem 128K ok</div>
     </div>
   );
 }
