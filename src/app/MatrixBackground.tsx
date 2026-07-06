@@ -2,219 +2,250 @@
 
 import { useEffect, useMemo, useRef } from "react";
 
+/**
+ * Full-bleed vertical "matrix rain" background.
+ * Designed to sit BEHIND the 3D Mac in model view (z-index < 0, transparent
+ * R3F canvas on top). Performant: single fillRect trail fade, capped DPR,
+ * pauses when the tab is hidden.
+ *
+ * Defaults below are the settings tuned in the standalone studio:
+ *   rainbow · mixed charset · speed 0.15 · font 14 · density 1 · trail 0.025
+ *   opacity 0.8 · variance 0.5 · flicker 0.02 · glow 8 · vertical gradient on
+ */
+
+export type MatrixColorMode = "green" | "rainbow" | "custom";
+
 export type MatrixBackgroundProps = {
   enabled?: boolean;
-  /** overall opacity of the effect */
-  opacity?: number; // 0..1
-  /** canvas background color behind the green text */
-  backgroundColor?: string; // CSS color
-  /** pixel size of each glyph */
-  fontSize?: number; // px
-  /** spacing between columns as a multiple of fontSize */
-  columnSpacing?: number; // e.g., 1 = contiguous, 1.25 = gaps
-  /** base speed in px/frame for the rain */
-  speed?: number;
-  /** random speed variance (0..1) */
-  speedVariance?: number;
-  /** probability (0..1) a glyph swaps to a new char per frame */
-  morphChance?: number;
-  /** chance (0..1) a column resets to a new start position per frame */
-  resetChance?: number;
-  /** shadow blur for glow */
-  glow?: number; // px
-  /** color of glyphs */
-  color?: string;
-  /** color of trail fade (usually darker green/black) */
-  backgroundFade?: string;
-  /** length of trailing characters rendered per column */
-  maxTrail?: number;
-  /** optional override word lists */
-  words?: string[];
-  /** optional override glyphs */
+  /** "green" | "rainbow" | "custom" */
+  colorMode?: MatrixColorMode;
+  /** base hue (0..360) when colorMode === "custom" */
+  hue?: number;
+  /** named glyph set, or pass `glyphs` for a custom pool */
+  charset?: "katakana" | "katakanaDigits" | "binary" | "digits" | "latin" | "mixed";
+  /** override glyph pool entirely */
   glyphs?: string[];
-  /** render density multiplier for high-DPI clarity */
-  devicePixelRatio?: number;
+  /** rows advanced per frame (global multiplier) */
+  speed?: number;
+  /** glyph size in px (also sets column width) */
+  fontSize?: number;
+  /** fraction of columns that are active (0..1) */
+  density?: number;
+  /** fade alpha per frame — lower = longer trails */
+  trail?: number;
+  /** overall canvas opacity (subtlety dial) */
+  opacity?: number;
+  /** per-column speed variance (0 = uniform, 1 = very varied) */
+  speedVariance?: number;
+  /** chance per frame of an extra bright sparkle cell */
+  flicker?: number;
+  /** soft glow on the bright head glyph */
+  glow?: boolean;
+  /** glow blur radius in px */
+  glowAmount?: number;
+  /** rainbow/custom: shift hue down each column's trail */
+  rainbowVert?: boolean;
+  /** hue spread across screen width (rainbow) */
+  rainbowSpread?: number;
+  /** hue cycle speed over time (rainbow) */
+  rainbowCycle?: number;
+  /** color saturation % */
+  saturation?: number;
+  /** canvas backdrop color */
+  background?: string;
+  /** stacking order — defaults to -1 so it sits behind page content */
+  zIndex?: number;
 };
 
-// Default glyph sets
-const defaultKana = [
-  "ｱ","ｲ","ｳ","ｴ","ｵ","ｶ","ｷ","ｸ","ｹ","ｺ","ｻ","ｼ","ｽ","ｾ","ｿ",
-  "ﾀ","ﾁ","ﾂ","ﾃ","ﾄ","ﾅ","ﾆ","ﾇ","ﾈ","ﾉ","ﾊ","ﾋ","ﾌ","ﾍ","ﾎ",
-  "ﾏ","ﾐ","ﾑ","ﾒ","ﾓ","ﾔ","ﾕ","ﾖ","ﾗ","ﾘ","ﾙ","ﾚ","ﾛ","ﾜ","ｦ","ﾝ",
-];
+export const MATRIX_DEFAULTS: Required<Omit<MatrixBackgroundProps, "glyphs" | "zIndex">> = {
+  enabled: true,
+  colorMode: "rainbow",
+  hue: 120,
+  charset: "mixed",
+  speed: 0.15,
+  fontSize: 14,
+  density: 1,
+  trail: 0.025,
+  opacity: 0.8,
+  speedVariance: 0.5,
+  flicker: 0.02,
+  glow: true,
+  glowAmount: 8,
+  rainbowVert: true,
+  rainbowSpread: 0.6,
+  rainbowCycle: 6,
+  saturation: 100,
+  background: "#000000",
+};
 
-const defaultProgrammerGlyphs = [
-  "{","}","<","/","/>","=>",";","$","#","&","*","+","-","=",
-  ":","::","|","||","&&","()","[]","{}","<>","~","^","%",
-];
+const CHARSETS: Record<NonNullable<MatrixBackgroundProps["charset"]>, string> = {
+  katakana: "ｦｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ",
+  katakanaDigits: "ｦｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789",
+  binary: "01",
+  digits: "0123456789",
+  latin: "ABCDEFGHIJKLMNOPQRSTUVWXYZ@#$%&*+=<>?/\\|",
+  mixed: "ｦｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾆﾇﾈﾉﾊﾋ0123456789ABCDEF@#$%<>=*+:.",
+};
 
-const defaultWords = [
-  // frameworks & libs
-  "react","next","typescript","three","node","vercel","vite","webpack",
-  // // concepts
-  // "hooks","state","props","jsx","ts","async","await","promise","fn",
-  // // patterns / terms
-  // "memo","context","reducer","event","render","commit","diff","fiber",
-  // // easter eggs
-  // "console.log","useEffect","useMemo","useRef","eslint","prettier",
-];
+function hexToRgb(hex: string) {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
 
 export default function MatrixBackground(props: MatrixBackgroundProps) {
+  const cfg = { ...MATRIX_DEFAULTS, ...props };
   const {
-    enabled = true,
-    opacity = 0.08,
-    backgroundColor = "var(--matrix-bg-color, #0b0c0d)",
-    fontSize = 16,
-    columnSpacing = 1.15,
-    speed = 1.25,
-    speedVariance = 0.15,
-    morphChance = 0.015,
-    resetChance = 0.002,
-    glow = 1,
-    color = "#000000",
-    backgroundFade = "rgba(0,0,0,0.12)",
-    maxTrail = 12,
-    words = defaultWords,
-    glyphs = [...defaultKana, ...defaultProgrammerGlyphs],
-    devicePixelRatio,
-  } = props;
+    enabled, colorMode, hue, charset, glyphs, speed, fontSize, density, trail,
+    opacity, speedVariance, flicker, glow, glowAmount, rainbowVert,
+    rainbowSpread, rainbowCycle, saturation, background,
+  } = cfg;
+  const zIndex = props.zIndex ?? -1;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  // Build a mixed character pool with some full words inserted sparsely
-  const characterPool = useMemo(() => {
-    // Create a pool where words appear occasionally as multi-char bursts
-    const pool: (string | string[])[] = [];
-    const wordEvery = 18; // every N entries, inject a word
-    let wordIndex = 0;
-    for (let i = 0; i < glyphs.length * 5; i++) {
-      if (i % wordEvery === 0 && words.length > 0) {
-        pool.push(words[wordIndex % words.length]);
-        wordIndex++;
-      } else {
-        pool.push(glyphs[i % glyphs.length]);
-      }
-    }
-    return pool;
-  }, [glyphs, words]);
+  const chars = useMemo(
+    () => (glyphs && glyphs.length ? glyphs : Array.from(CHARSETS[charset] || CHARSETS.mixed)),
+    [glyphs, charset]
+  );
 
   useEffect(() => {
     if (!enabled) return;
-    const canvasEl = canvasRef.current;
-    if (!canvasEl) return;
-
-    const ctx = canvasEl.getContext("2d", { alpha: true });
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
 
-    const dpr = devicePixelRatio || Math.min(2, globalThis.devicePixelRatio || 1);
+    let W = 0, H = 0, cols = 0, dpr = 1;
+    type Col = { y: number; acc: number; speed: number; active: boolean };
+    let columns: Col[] = [];
 
-    const doResize = (c: HTMLCanvasElement, context: CanvasRenderingContext2D) => {
-      const { innerWidth, innerHeight } = window;
-      const cssW = innerWidth;
-      const cssH = innerHeight;
-      c.style.width = cssW + "px";
-      c.style.height = cssH + "px";
-      c.width = Math.floor(cssW * dpr);
-      c.height = Math.floor(cssH * dpr);
-      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const buildColumns = () => {
+      cols = Math.ceil(W / fontSize);
+      const next: Col[] = [];
+      for (let i = 0; i < cols; i++) {
+        const p = columns[i];
+        next[i] = {
+          y: p ? p.y : Math.floor((Math.random() * -H) / fontSize),
+          acc: p ? p.acc : Math.random(),
+          speed: 1 - speedVariance / 2 + Math.random() * speedVariance,
+          active: Math.random() < density,
+        };
+      }
+      columns = next;
     };
 
-    const fillBase = () => {
-      ctx.save();
-      ctx.globalCompositeOperation = "source-over";
-      ctx.fillStyle = backgroundColor;
-      ctx.fillRect(0, 0, canvasEl.width / dpr, canvasEl.height / dpr);
-      ctx.restore();
+    const resize = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = window.innerWidth;
+      H = window.innerHeight;
+      canvas.width = Math.floor(W * dpr);
+      canvas.height = Math.floor(H * dpr);
+      canvas.style.width = W + "px";
+      canvas.style.height = H + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.textBaseline = "top";
+      buildColumns();
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, W, H);
     };
 
-    const onResize = () => { doResize(canvasEl, ctx); fillBase(); };
-    onResize();
-    window.addEventListener("resize", onResize);
-
-    // Column setup
-    const columnWidth = fontSize * columnSpacing;
-    const numColumns = Math.ceil(window.innerWidth / columnWidth);
-
-    type Column = {
-      x: number; // in px
-      y: number; // current head y
-      speed: number; // px per frame
-      glyphs: (string | string[])[]; // buffer of characters/words for this column
+    const hueFor = (i: number, depth: number, t: number) => {
+      let h: number;
+      if (colorMode === "rainbow") {
+        h = (i / cols) * 360 * rainbowSpread + t * rainbowCycle + (rainbowVert ? depth * 6 : 0);
+      } else {
+        h = hue + (rainbowVert ? depth * 4 : 0);
+      }
+      return ((h % 360) + 360) % 360;
     };
 
-    const columns: Column[] = Array.from({ length: numColumns }, (_, i) => {
-      const x = Math.floor(i * columnWidth);
-      return {
-        x,
-        y: Math.random() * window.innerHeight * -1, // start above view
-        speed: speed * (1 + (Math.random() - 0.5) * 2 * speedVariance),
-        glyphs: characterPool,
-      };
-    });
+    const bg = hexToRgb(background);
+    const start = performance.now();
 
-    ctx.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
-    ctx.textBaseline = "top";
-    ctx.shadowColor = color;
-    ctx.shadowBlur = glow;
+    const draw = (now: number) => {
+      const t = (now - start) / 1000;
+      ctx.fillStyle = `rgba(${bg.r},${bg.g},${bg.b},${trail})`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.font = `${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
 
-    const lineHeight = fontSize * 1.05;
+      for (let i = 0; i < cols; i++) {
+        const c = columns[i];
+        if (!c.active) continue;
+        c.acc += speed * c.speed;
+        if (c.acc < 1) continue;
+        const steps = c.acc | 0;
+        c.acc -= steps;
 
-    const drawFrame = (c: HTMLCanvasElement, context: CanvasRenderingContext2D) => {
-      // trail fade
-      context.fillStyle = backgroundFade;
-      context.fillRect(0, 0, c.width / dpr, c.height / dpr);
+        for (let s = 0; s < steps; s++) {
+          c.y++;
+          const x = i * fontSize;
+          const y = c.y * fontSize;
+          const ch = chars[(Math.random() * chars.length) | 0];
 
-      for (let i = 0; i < columns.length; i++) {
-        const col = columns[i];
+          if (colorMode === "green") ctx.fillStyle = "#cfffe0";
+          else ctx.fillStyle = `hsl(${hueFor(i, c.y, t)}, ${saturation}%, 75%)`;
 
-        // Randomly morph characters to keep things alive
-        if (Math.random() < morphChance) {
-          // no-op: we rely on drawing a different random glyph each time
-        }
+          if (glow && glowAmount > 0) {
+            ctx.shadowColor =
+              colorMode === "green" ? "#3dff88" : `hsl(${hueFor(i, c.y, t)}, ${saturation}%, 55%)`;
+            ctx.shadowBlur = glowAmount;
+          }
+          ctx.fillText(ch, x, y);
+          ctx.shadowBlur = 0;
 
-        // Draw head and trailing glyphs
-        let y = col.y;
-        let steps = 0;
-        // limit trailing depth to keep subtle
-        while (y > -lineHeight * maxTrail && steps < maxTrail) {
-          const pick = col.glyphs[(Math.random() * col.glyphs.length) | 0];
-          const isWord = typeof pick === "string" && (pick as string).length > 2 && /[a-z]/i.test(pick as string);
-          const text = Array.isArray(pick) ? (pick as string[]).join("") : (pick as string);
+          // dimmer second glyph so the head reads as a comet
+          if (colorMode === "green") ctx.fillStyle = "#37d978";
+          else ctx.fillStyle = `hsl(${hueFor(i, c.y, t)}, ${saturation}%, 50%)`;
+          ctx.fillText(chars[(Math.random() * chars.length) | 0], x, y - fontSize);
 
-          const brightness = Math.max(0, 1 - steps / maxTrail);
-          // leading brighter, trailing dimmer
-          const channel = Math.floor(80 + 175 * brightness);
-          context.fillStyle = `rgba(0, ${channel}, 90, ${opacity * (0.4 + 0.6 * brightness)})`;
-
-          context.fillText(text, col.x, y);
-
-          // advance to next trail step
-          y -= lineHeight * (isWord ? 1.2 : 1);
-          steps++;
-        }
-
-        // move column
-        col.y += col.speed;
-
-        // reset if off screen
-        if (col.y - lineHeight * maxTrail > window.innerHeight) {
-          if (Math.random() < 0.6 || Math.random() < resetChance) {
-            col.y = -Math.random() * 200 - lineHeight * (Math.random() * maxTrail);
+          if (y > H && Math.random() > 0.975) {
+            c.y = Math.floor(Math.random() * -20);
+            c.active = Math.random() < density;
           }
         }
       }
 
-      rafRef.current = requestAnimationFrame(() => drawFrame(c, context));
+      if (flicker > 0) {
+        const n = ((W * H * flicker) / 90000) | 0;
+        for (let k = 0; k < n; k++) {
+          const i = (Math.random() * cols) | 0;
+          const x = i * fontSize;
+          const y = ((Math.random() * (H / fontSize)) | 0) * fontSize;
+          ctx.fillStyle =
+            colorMode === "green"
+              ? "#eafff2"
+              : `hsl(${hueFor(i, (y / fontSize) | 0, t)}, ${saturation}%, 85%)`;
+          ctx.fillText(chars[(Math.random() * chars.length) | 0], x, y);
+        }
+      }
+
+      rafRef.current = requestAnimationFrame(draw);
     };
 
-    rafRef.current = requestAnimationFrame(() => drawFrame(canvasEl, ctx));
+    const onVisibility = () => {
+      if (document.hidden) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      } else if (rafRef.current == null) {
+        rafRef.current = requestAnimationFrame(draw);
+      }
+    };
+
+    resize();
+    window.addEventListener("resize", resize);
+    document.addEventListener("visibilitychange", onVisibility);
+    rafRef.current = requestAnimationFrame(draw);
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", resize);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [enabled, opacity, backgroundColor, fontSize, columnSpacing, speed, speedVariance, morphChance, resetChance, glow, color, backgroundFade, maxTrail, characterPool, devicePixelRatio]);
+  }, [
+    enabled, colorMode, hue, chars, speed, fontSize, density, trail, speedVariance,
+    flicker, glow, glowAmount, rainbowVert, rainbowSpread, rainbowCycle, saturation, background,
+  ]);
 
   return (
     <canvas
@@ -224,57 +255,11 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 0,
+        zIndex,
         pointerEvents: "none",
-        background: backgroundColor,
+        opacity,
+        background,
       }}
     />
   );
 }
-
-export const defaultMatrixConfig: Required<Pick<MatrixBackgroundProps,
-  | "opacity"
-  | "backgroundColor"
-  | "fontSize"
-  | "columnSpacing"
-  | "speed"
-  | "speedVariance"
-  | "morphChance"
-  | "resetChance"
-  | "glow"
-  | "color"
-  | "backgroundFade"
->> & {
-  words: string[];
-  glyphs: string[];
-} = {
-  opacity: 0.1,
-  backgroundColor: "var(--matrix-bg-color, #0b0c0d)",
-  fontSize: 14,
-  columnSpacing: 1.15,
-  speed: 1.25,
-  speedVariance: 0.35,
-  morphChance: 0.035,
-  resetChance: 0.002,
-  glow: 8,
-  color: "#1aff6b",
-  backgroundFade: "rgba(0,0,0,0.08)",
-  words: defaultWords,
-  glyphs: [...defaultKana, ...defaultProgrammerGlyphs],
-};
-
-export const curatedWordSets = {
-  minimal: ["react","next","hooks","state","ts","async","await"],
-  concepts: ["closure","prototype","immutable","pure","side-effect","compose"],
-  runtime: ["render","reconcile","commit","hydrate","suspense","transition"],
-  easter: ["hello, world","useEffect","console.log","npx","pnpm","yarn"],
-};
-
-export const curatedGlyphSets = {
-  kana: defaultKana,
-  symbols: defaultProgrammerGlyphs,
-  binary: ["0","1"],
-  sparseSymbols: ["<","/",">","{","}","(",")","=","=>"],
-};
-
-

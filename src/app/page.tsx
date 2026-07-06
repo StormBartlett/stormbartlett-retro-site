@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import OldMac3D from "./OldMac3D";
 import DesktopOS from "./DesktopOS";
+import MatrixBackground from "./MatrixBackground";
 import { FullscreenProvider, useFullscreen } from "./FullscreenContext";
 
 type ViewMode = "model" | "desktop";
@@ -84,13 +85,16 @@ function HomeContent() {
 
     if (mobileViewMode === "model" || isScreenCalibration) {
       return (
-        <OldMac3D
-          onScreenPointerDown={() => {
-            if (!isScreenCalibration) setMobileViewModePersisted("desktop");
-          }}
-        >
-          {mobileDesktop}
-        </OldMac3D>
+        <>
+          <MatrixBackground />
+          <OldMac3D
+            onScreenPointerDown={() => {
+              if (!isScreenCalibration) setMobileViewModePersisted("desktop");
+            }}
+          >
+            {mobileDesktop}
+          </OldMac3D>
+        </>
       );
     }
 
@@ -108,9 +112,12 @@ function HomeContent() {
   }
 
   return (
-    <OldMac3D>
-      <DesktopOS embedded modelScreen viewMode="model" onViewModeChange={setDesktopViewMode} />
-    </OldMac3D>
+    <>
+      <MatrixBackground />
+      <OldMac3D>
+        <DesktopOS embedded modelScreen viewMode="model" onViewModeChange={setDesktopViewMode} />
+      </OldMac3D>
+    </>
   );
 }
 
