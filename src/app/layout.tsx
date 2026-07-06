@@ -201,6 +201,52 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                     <rect x="17" y="18" width="2" height="2"/>
                   </g>
                 </symbol>
+                <symbol id="icon-file-about" viewBox="0 0 32 32">
+                  <use href="#icon-file"/>
+                  <g fill="#000">
+                    {/* pixel portrait: head + shoulders */}
+                    <rect x="13" y="11" width="6" height="6"/>
+                    <path d="M10 25v-2h2v-2h8v2h2v2z"/>
+                  </g>
+                </symbol>
+                <symbol id="icon-file-skills" viewBox="0 0 32 32">
+                  <use href="#icon-file"/>
+                  {/* lightning bolt to match the site logo */}
+                  <path fill="#000" d="M18 9l-7 9h4l-2 8 8-11h-4l3-6z"/>
+                </symbol>
+                <symbol id="icon-calculator" viewBox="0 0 32 32">
+                  <rect x="6" y="3" width="20" height="26" fill="#fff" stroke="#000" strokeWidth="1"/>
+                  <rect x="9" y="6" width="14" height="5" fill="#fff" stroke="#000" strokeWidth="1"/>
+                  <g fill="#000">
+                    <rect x="9" y="14" width="4" height="3"/>
+                    <rect x="14" y="14" width="4" height="3"/>
+                    <rect x="19" y="14" width="4" height="3"/>
+                    <rect x="9" y="19" width="4" height="3"/>
+                    <rect x="14" y="19" width="4" height="3"/>
+                    <rect x="19" y="19" width="4" height="3"/>
+                    <rect x="9" y="24" width="9" height="3"/>
+                    <rect x="19" y="24" width="4" height="3"/>
+                  </g>
+                </symbol>
+                <symbol id="icon-hourglass" viewBox="0 0 32 32">
+                  <path d="M10 5h12v4l-4 5v4l4 5v4H10v-4l4-5v-4l-4-5z" fill="#fff" stroke="#000" strokeWidth="1"/>
+                  <g fill="#000">
+                    <rect x="8" y="3" width="16" height="2"/>
+                    <rect x="8" y="27" width="16" height="2"/>
+                    <path d="M13 8h6l-3 4z"/>
+                    <path d="M12 25h8l-4-6z"/>
+                    <rect x="15.5" y="16" width="1" height="7"/>
+                  </g>
+                </symbol>
+                <symbol id="icon-activity" viewBox="0 0 32 32">
+                  <rect x="4" y="5" width="24" height="18" fill="#fff" stroke="#000" strokeWidth="1"/>
+                  <rect x="7" y="8" width="18" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+                  <path d="M8 15h3l2-4 3 8 2-6h7" fill="none" stroke="#000" strokeWidth="1.5"/>
+                  <g fill="#000">
+                    <rect x="13" y="23" width="6" height="2"/>
+                    <rect x="10" y="25" width="12" height="2"/>
+                  </g>
+                </symbol>
                 <symbol id="icon-folder" viewBox="0 0 32 32">
                   <path d="M3 9.5h9l2 3h15v15H3z" fill="#fff" stroke="#000" strokeWidth="1"/>
                   <path d="M3 9.5h9l2 3h15" fill="none" stroke="#000" strokeWidth="1"/>

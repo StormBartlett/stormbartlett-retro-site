@@ -38,11 +38,19 @@ const TRASH_POSITION_STORAGE_KEYS = ["nx-trash-pos", "nx-trash-pos-mobile-portra
 const BIN_POSITION_STORAGE_KEYS = ["nx-bin-pos", "nx-bin-pos-mobile-portrait", "nx-bin-pos-mobile-landscape"];
 const TEXT_FILE_EXTENSION_RE = /\.(txt|md|markdown|rtf)$/i;
 
-function getIconSpriteId(icon: Icon) {
-  if (icon.type === "folder") return "icon-folder";
-  if (icon.id === "calculator" || icon.id === "falling-sand") return "icon-file-binary";
-  if (icon.type === "file" || TEXT_FILE_EXTENSION_RE.test(icon.label)) return "icon-file-txt";
+function getSpriteId({ id, label, type }: { id: string; label: string; type?: "file" | "folder" }) {
+  if (type === "folder") return "icon-folder";
+  if (id === "about") return "icon-file-about";
+  if (id === "skills") return "icon-file-skills";
+  if (id === "calculator") return "icon-calculator";
+  if (id === "falling-sand") return "icon-hourglass";
+  if (id === "activity") return "icon-activity";
+  if (type === "file" || TEXT_FILE_EXTENSION_RE.test(label)) return "icon-file-txt";
   return "icon-file";
+}
+
+function getIconSpriteId(icon: Icon) {
+  return getSpriteId(icon);
 }
 
 function solveLinearSystem(matrix: number[][], vector: number[]) {
@@ -1842,6 +1850,16 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
         <div className="title">{title}</div>
         <div className="window-controls">
           <button
+            className="btn-zoom"
+            type="button"
+            aria-label={`Zoom ${title}`}
+            title="Zoom"
+            onDoubleClick={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); toggleMaximize(); }}
+          >
+            Zoom
+          </button>
+          <button
             className={`btn-close ${closeHover ? "is-hovered" : ""}`}
             type="button"
             aria-label={`Close ${title}`}
@@ -2275,7 +2293,7 @@ function TrashBrowser({
             >
               <div className="icon">
                 <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
-                  <use href={item.type === "folder" ? "#icon-folder" : "#icon-file-txt"}></use>
+                  <use href={`#${getSpriteId(item)}`}></use>
                 </svg>
               </div>
               <span className="icon-label">{item.label}</span>
@@ -2935,7 +2953,7 @@ function BlogBrowser({
         >
           <div className="icon">
             <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
-              <use href={item.type === "folder" ? "#icon-folder" : "#icon-file-txt"}></use>
+              <use href={`#${getSpriteId(item)}`}></use>
             </svg>
           </div>
           <span className="icon-label">{item.label}</span>

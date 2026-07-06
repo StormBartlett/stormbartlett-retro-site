@@ -126,13 +126,13 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .window-resize-handle.w{top:12px;left:0;width:4px;bottom:12px;cursor:w-resize}
 .window-resize-handle.e{top:12px;right:0;width:4px;bottom:12px;cursor:e-resize}
 .window[hidden]{display:none!important}
-.titlebar{position:relative;z-index:20;display:flex;align-items:center;justify-content:center;gap:6px;min-height:24px;padding:3px 7px;background:#fff;border-bottom:2px solid var(--window-border);cursor:inherit;user-select:none;flex-shrink:0;overflow:hidden;font-size:13px;line-height:1;color:#101010}
-.titlebar::before{content:"";position:absolute;inset:4px 8px 4px 34px;background:repeating-linear-gradient(to bottom,#101010 0 1px,transparent 1px 4px);opacity:.9;pointer-events:none}
+.titlebar{position:relative;z-index:20;display:flex;align-items:center;justify-content:flex-start;gap:6px;min-height:24px;padding:3px 54px 3px 8px;background:#fff;border-bottom:2px solid var(--window-border);cursor:inherit;user-select:none;flex-shrink:0;overflow:hidden;font-size:13px;line-height:1;color:#101010}
+.titlebar::before{content:"";position:absolute;inset:5px 52px 5px 8px;background-image:repeating-conic-gradient(#101010 0% 25%,transparent 0% 50%);background-size:4px 4px;opacity:.5;pointer-events:none;image-rendering:pixelated}
 :root.dark-mode .titlebar{background:#fff;color:#101010;box-shadow:none}
-:root.dark-mode .titlebar::before{background:repeating-linear-gradient(to bottom,#101010 0 1px,transparent 1px 4px);opacity:.9}
-.titlebar .title{position:relative;z-index:1;flex:0 1 auto;min-width:0;max-width:72%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#fff;border:0;box-shadow:8px 0 0 #fff,-8px 0 0 #fff;color:#101010;padding:2px 7px 1px;line-height:1.1;text-align:center}
-:root.dark-mode .titlebar .title{background:#fff;color:#101010;box-shadow:8px 0 0 #fff,-8px 0 0 #fff;border-color:#101010}
-.window-controls{position:absolute;left:6px;top:50%;z-index:30;display:flex;align-items:center;gap:5px;flex:0 0 auto;transform:translateY(-50%)}
+:root.dark-mode .titlebar::before{background-image:repeating-conic-gradient(#101010 0% 25%,transparent 0% 50%);opacity:.5}
+.titlebar .title{position:relative;z-index:1;flex:0 1 auto;min-width:0;max-width:calc(100% - 6px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#fff;border:1px solid #101010;box-shadow:5px 0 0 #fff,-5px 0 0 #fff;color:#101010;padding:3px 9px 2px;line-height:1.1;text-align:center}
+:root.dark-mode .titlebar .title{background:#fff;color:#101010;box-shadow:5px 0 0 #fff,-5px 0 0 #fff;border-color:#101010}
+.window-controls{position:absolute;right:6px;top:50%;z-index:30;display:flex;align-items:center;gap:5px;flex:0 0 auto;transform:translateY(-50%)}
 .btn-close{appearance:none;position:relative;display:grid;place-items:center;width:18px;height:18px;padding:0;overflow:hidden;background:#fffdf6;color:transparent;border:2px solid #101010;border-radius:0;cursor:inherit;font-size:0;line-height:1;text-align:center;image-rendering:pixelated;box-shadow:inset 2px 2px 0 #ffffff,inset -2px -2px 0 #a89c8c,1px 1px 0 rgba(0,0,0,.22)}
 .btn-close::before{content:"";width:12px;height:12px;margin:0;border:0;background:#101010;clip-path:polygon(0 0,3px 0,3px 3px,5px 3px,5px 5px,7px 5px,7px 3px,9px 3px,9px 0,12px 0,12px 3px,9px 3px,9px 5px,7px 5px,7px 7px,9px 7px,9px 9px,12px 9px,12px 12px,9px 12px,9px 9px,7px 9px,7px 7px,5px 7px,5px 9px,3px 9px,3px 12px,0 12px,0 9px,3px 9px,3px 7px,5px 7px,5px 5px,3px 5px,3px 3px,0 3px);transform:translateZ(0)}
 .btn-close::after{content:"";position:absolute;inset:2px;border-top:1px solid rgba(255,255,255,.85);border-left:1px solid rgba(255,255,255,.85);pointer-events:none}
@@ -146,9 +146,25 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 :root.dark-mode .btn-close::before{background:#101010}
 :root.dark-mode .btn-close:hover,:root.dark-mode .btn-close.is-hovered{background:#101010;border-color:#101010;box-shadow:inset 2px 2px 0 #4c4740,inset -2px -2px 0 #000000,1px 1px 0 rgba(255,255,255,.16)}
 :root.dark-mode .btn-close:hover::before,:root.dark-mode .btn-close.is-hovered::before{background:#fffdf6}
-.calculator-window .titlebar{gap:4px;padding-left:5px;padding-right:5px;font-size:10px}
+/* Zoom (maximize) gadget — pixel frame with centre dot */
+.btn-zoom{appearance:none;position:relative;display:grid;place-items:center;width:18px;height:18px;padding:0;overflow:hidden;background:#fffdf6;color:transparent;border:2px solid #101010;border-radius:0;cursor:inherit;font-size:0;line-height:1;text-align:center;image-rendering:pixelated;box-shadow:inset 2px 2px 0 #ffffff,inset -2px -2px 0 #a89c8c,1px 1px 0 rgba(0,0,0,.22)}
+.btn-zoom::before{content:"";width:12px;height:12px;box-sizing:border-box;border:2px solid #101010}
+.btn-zoom::after{content:"";position:absolute;left:50%;top:50%;width:4px;height:4px;transform:translate(-50%,-50%);background:#101010}
+.btn-zoom:hover{background:#101010;border-color:#101010;box-shadow:inset 2px 2px 0 #4c4740,inset -2px -2px 0 #000000,1px 1px 0 rgba(0,0,0,.28)}
+.btn-zoom:hover::before{border-color:#fffdf6}
+.btn-zoom:hover::after{background:#fffdf6}
+.btn-zoom:focus-visible{outline:2px solid #101010;outline-offset:2px}
+.btn-zoom:active{background:#d8cdb8;transform:translate(1px,1px);box-shadow:inset -2px -2px 0 rgba(255,255,255,.75),inset 2px 2px 0 rgba(0,0,0,.3)}
+:root.dark-mode .btn-zoom{background:#fffdf6;border-color:#101010;box-shadow:inset 2px 2px 0 #ffffff,inset -2px -2px 0 #a89c8c,1px 1px 0 rgba(255,255,255,.12)}
+:root.dark-mode .btn-zoom:hover{background:#101010;box-shadow:inset 2px 2px 0 #4c4740,inset -2px -2px 0 #000000,1px 1px 0 rgba(255,255,255,.16)}
+:root.dark-mode .btn-zoom:hover::before{border-color:#fffdf6}
+:root.dark-mode .btn-zoom:hover::after{background:#fffdf6}
+.calculator-window .titlebar{gap:4px;padding-left:5px;padding-right:28px;font-size:10px}
+.calculator-window .titlebar::before{inset:5px 27px 5px 5px}
 .calculator-window .titlebar .title{padding-left:4px;padding-right:4px;text-overflow:clip}
 .calculator-window .btn-close{width:18px;height:18px;line-height:1}
+/* Calculator is fixed-size — no zoom gadget */
+.calculator-window .btn-zoom{display:none}
 .window-body{padding:10px;overflow:auto;flex:1;min-height:0;box-sizing:border-box;touch-action:pan-y pan-x;-webkit-overflow-scrolling:touch;user-select:text;-webkit-user-select:text;-webkit-tap-highlight-color:transparent;zoom:1 !important}
 .window-body textarea:focus,.window-body input[type="text"]:focus,.window-body input[type="textarea"]:focus{outline:none !important;box-shadow:none !important}
 :root.dark-mode .window-body textarea:focus,:root.dark-mode .window-body input[type="text"]:focus,:root.dark-mode .window-body input[type="textarea"]:focus{outline:none !important;box-shadow:none !important}
