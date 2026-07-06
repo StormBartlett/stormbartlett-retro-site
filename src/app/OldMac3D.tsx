@@ -79,7 +79,6 @@ const SCREEN_HTML_SCALE = 0.0763;
 const SCREEN_HTML_SCALE_MOBILE = 0.0685;
 const SCREEN_CSS_POSITION: [number, number, number] = [-0.04, 0.24, 0];
 const SCREEN_CSS_POSITION_MOBILE: [number, number, number] = [-0.035, 0.26, 0];
-const SCREEN_CSS_POSITION_MOBILE_CHROME_WEBVIEW: [number, number, number] = [-0.035, 0.59, 0];
 
 type ScreenTuning = {
   x: number;
@@ -127,25 +126,8 @@ const DEFAULT_MOBILE_SCREEN_TUNING: ScreenTuning = {
   scale: SCREEN_HTML_SCALE_MOBILE,
 };
 
-const CHROME_WEBVIEW_MOBILE_SCREEN_TUNING: ScreenTuning = {
-  x: SCREEN_CSS_POSITION_MOBILE_CHROME_WEBVIEW[0],
-  y: SCREEN_CSS_POSITION_MOBILE_CHROME_WEBVIEW[1],
-  z: SCREEN_CSS_POSITION_MOBILE_CHROME_WEBVIEW[2],
-  scale: SCREEN_HTML_SCALE_MOBILE,
-};
-
-function getMobileBrowserScreenTuning() {
-  if (typeof navigator === "undefined") return DEFAULT_MOBILE_SCREEN_TUNING;
-  const userAgent = navigator.userAgent;
-  const isChromeIOS = /CriOS/i.test(userAgent);
-  const isInstagramWebView = /Instagram/i.test(userAgent);
-  return isChromeIOS || isInstagramWebView
-    ? CHROME_WEBVIEW_MOBILE_SCREEN_TUNING
-    : DEFAULT_MOBILE_SCREEN_TUNING;
-}
-
 function getDefaultScreenTuning(target: CalibrationTarget) {
-  return target === "desktop" ? DEFAULT_DESKTOP_SCREEN_TUNING : getMobileBrowserScreenTuning();
+  return target === "desktop" ? DEFAULT_DESKTOP_SCREEN_TUNING : DEFAULT_MOBILE_SCREEN_TUNING;
 }
 
 function getScreenTuningStorageKey(target: CalibrationTarget) {
@@ -349,7 +331,123 @@ function CameraStateCapture({
   return null;
 }
 
-// ScreenTexturePlane reverted
+/**
+ * Closed-loop alignment between the 3D screen and its DOM overlay.
+ *
+ * drei's <Html transform> can land offset from the WebGL canvas on some
+ * mobile browsers (URL-bar/visualViewport quirks in Chrome iOS, in-app
+ * webviews, etc.). Rather than sniffing user agents, this projects where
+ * the screen centre SHOULD be in client px, measures where the DOM probe
+ * actually is, and nudges the overlay by the difference. Converges in a
+ * few frames and is a no-op (<1px) on well-behaved browsers.
+ */
+function ScreenDomAlignment({
+  enabled,
+  screenRef,
+  screenPosition,
+  htmlRef,
+  probeRef,
+}: {
+  enabled: boolean;
+  screenRef: React.MutableRefObject<THREE.Group | null>;
+  screenPosition: [number, number, number];
+  htmlRef: React.MutableRefObject<HTMLDivElement | null>;
+  probeRef: React.MutableRefObject<HTMLDivElement | null>;
+}) {
+  const { camera, gl } = useThree();
+  const compRef = React.useRef({ x: 0, y: 0 });
+  const lastCamPos = React.useRef(new THREE.Vector3(Infinity, Infinity, Infinity));
+
+  React.useEffect(() => {
+    if (!enabled) return;
+    let stepTimer = 0;
+    let disposed = false;
+
+    const measure = () => {
+      const screenGroup = screenRef.current;
+      const html = htmlRef.current;
+      const probe = probeRef.current;
+      if (!screenGroup || !html || !probe) return false;
+      const canvasRect = gl.domElement.getBoundingClientRect();
+      if (canvasRect.width < 2 || canvasRect.height < 2) return false;
+
+      // Bail until drei has positioned the overlay (its wrapper gets a
+      // matrix3d transform in useFrame). Measuring the untransformed div
+      // would bake in a wildly wrong correction.
+      let dreiPositioned = false;
+      for (let el = html.parentElement, i = 0; el && i < 4; el = el.parentElement, i++) {
+        const t = getComputedStyle(el).transform;
+        if (t && t.startsWith("matrix3d")) { dreiPositioned = true; break; }
+      }
+      if (!dreiPositioned) return false;
+
+      // Expected: the screen anchor projected into client px
+      const v = new THREE.Vector3(...screenPosition);
+      screenGroup.updateWorldMatrix(true, false);
+      screenGroup.localToWorld(v);
+      v.project(camera);
+      if (v.z >= 1) return false; // behind camera
+      const expectedX = canvasRect.left + (v.x * 0.5 + 0.5) * canvasRect.width;
+      const expectedY = canvasRect.top + (0.5 - v.y * 0.5) * canvasRect.height;
+
+      // Actual: where the browser rendered the probe at the overlay centre
+      const probeRect = probe.getBoundingClientRect();
+      const dx = expectedX - (probeRect.left + probeRect.width / 2);
+      const dy = expectedY - (probeRect.top + probeRect.height / 2);
+      if (Math.hypot(dx, dy) < 0.75) return false;
+
+      // Convert client px into the overlay's local (pre-transform) px
+      const htmlRect = html.getBoundingClientRect();
+      const pxScale = htmlRect.width / SCREEN_CSS_WIDTH;
+      if (!Number.isFinite(pxScale) || pxScale <= 0.001) return false;
+      compRef.current.x += dx / pxScale;
+      compRef.current.y += dy / pxScale;
+      // Safety valve: a runaway correction means we measured garbage — reset.
+      if (Math.abs(compRef.current.x) > 800 || Math.abs(compRef.current.y) > 800) {
+        compRef.current.x = 0;
+        compRef.current.y = 0;
+      }
+      html.style.transform = `translate3d(${compRef.current.x.toFixed(2)}px, ${compRef.current.y.toFixed(2)}px, 0)`;
+      return true;
+    };
+
+    // Skip while the camera is moving (orbit / reset animation) so we only
+    // correct static DOM offset, then iterate until the delta converges.
+    // Timer-driven (not rAF) so it keeps working in throttled tabs.
+    const settle = () => {
+      window.clearTimeout(stepTimer);
+      let retries = 0;
+      lastCamPos.current.copy(camera.position);
+      const step = () => {
+        if (disposed) return;
+        const moved = lastCamPos.current.distanceToSquared(camera.position) > 1e-8;
+        lastCamPos.current.copy(camera.position);
+        if (moved) return;
+        if (measure() && retries++ < 4) stepTimer = window.setTimeout(step, 80);
+      };
+      stepTimer = window.setTimeout(step, 80);
+    };
+
+    const timers = [150, 500, 1400].map((ms) => window.setTimeout(settle, ms));
+    const interval = window.setInterval(settle, 2000);
+    window.addEventListener("resize", settle);
+    window.addEventListener("orientationchange", settle);
+    window.visualViewport?.addEventListener("resize", settle);
+    window.visualViewport?.addEventListener("scroll", settle);
+    return () => {
+      disposed = true;
+      timers.forEach((t) => window.clearTimeout(t));
+      window.clearInterval(interval);
+      window.clearTimeout(stepTimer);
+      window.removeEventListener("resize", settle);
+      window.removeEventListener("orientationchange", settle);
+      window.visualViewport?.removeEventListener("resize", settle);
+      window.visualViewport?.removeEventListener("scroll", settle);
+    };
+  }, [enabled, camera, gl, screenRef, htmlRef, probeRef, screenPosition]);
+
+  return null;
+}
 
 export default function OldMac3D({
   children,
@@ -379,8 +477,9 @@ export default function OldMac3D({
   const [isMobileScene, setIsMobileScene] = React.useState(false);
   const [isCalibratingScreen, setIsCalibratingScreen] = React.useState(false);
   const [calibrationTarget, setCalibrationTarget] = React.useState<CalibrationTarget>("desktop");
-  const [mobileBrowserScreenTuning, setMobileBrowserScreenTuning] = React.useState<ScreenTuning>(DEFAULT_MOBILE_SCREEN_TUNING);
   const [screenTuning, setScreenTuning] = React.useState<ScreenTuning>(DEFAULT_DESKTOP_SCREEN_TUNING);
+  const screenHtmlRef = React.useRef<HTMLDivElement | null>(null);
+  const screenProbeRef = React.useRef<HTMLDivElement | null>(null);
   const [screenDiagnostics, setScreenDiagnostics] = React.useState<ScreenDiagnostics | null>(null);
   const canvasContainerRef = React.useRef<HTMLDivElement>(null);
   const clickDataRef = React.useRef<{ down: boolean; x: number; y: number; t: number }>({ down: false, x: 0, y: 0, t: 0 });
@@ -590,7 +689,6 @@ export default function OldMac3D({
       );
       isMobileRef.current = mobile;
       setIsMobileScene(mobile);
-      setMobileBrowserScreenTuning(getMobileBrowserScreenTuning());
     };
 
     updateMobileScene();
@@ -603,9 +701,12 @@ export default function OldMac3D({
     };
   }, []);
 
-  const normalScreenTuning = isMobileScene ? mobileBrowserScreenTuning : DEFAULT_DESKTOP_SCREEN_TUNING;
+  const normalScreenTuning = isMobileScene ? DEFAULT_MOBILE_SCREEN_TUNING : DEFAULT_DESKTOP_SCREEN_TUNING;
   const activeScreenTuning = isCalibratingScreen ? screenTuning : normalScreenTuning;
-  const screenPosition = [activeScreenTuning.x, activeScreenTuning.y, activeScreenTuning.z] as [number, number, number];
+  const screenPosition = React.useMemo(
+    () => [activeScreenTuning.x, activeScreenTuning.y, activeScreenTuning.z] as [number, number, number],
+    [activeScreenTuning.x, activeScreenTuning.y, activeScreenTuning.z]
+  );
   const screenScale = activeScreenTuning.scale;
   return (
     <div className="r3f-wrap" ref={canvasContainerRef} onPointerMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}>
@@ -684,6 +785,7 @@ export default function OldMac3D({
               zIndexRange={[100, 0]}
             >
               <div
+                ref={screenHtmlRef}
                 className="model-screen-html"
                 onPointerDownCapture={startScreenInteraction}
                 onMouseDownCapture={startScreenInteraction}
@@ -698,6 +800,7 @@ export default function OldMac3D({
                 style={{
                   width: `${SCREEN_CSS_WIDTH}px`,
                   height: `${SCREEN_CSS_HEIGHT}px`,
+                  position: "relative",
                   pointerEvents: "auto",
                 }}
               >
@@ -707,6 +810,20 @@ export default function OldMac3D({
                 >
                   {children}
                 </div>
+                {/* 1px probe at the overlay centre for ScreenDomAlignment */}
+                <div
+                  ref={screenProbeRef}
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: "50%",
+                    width: 1,
+                    height: 1,
+                    pointerEvents: "none",
+                    visibility: "hidden",
+                  }}
+                />
               </div>
             </Html>
           </group>
@@ -751,12 +868,19 @@ export default function OldMac3D({
 
         {/* Camera animation driver */}
         <CameraAnimator controlsRef={controlsRef} animRef={animRef} />
-        <CameraStateCapture 
-          controlsRef={controlsRef} 
-          camPosRef={camPosRef} 
-          camTargetRef={camTargetRef} 
+        <CameraStateCapture
+          controlsRef={controlsRef}
+          camPosRef={camPosRef}
+          camTargetRef={camTargetRef}
         />
-        
+        <ScreenDomAlignment
+          enabled={!isCalibratingScreen}
+          screenRef={screenRef}
+          screenPosition={screenPosition}
+          htmlRef={screenHtmlRef}
+          probeRef={screenProbeRef}
+        />
+
       </Canvas>
 
       {/* Retro mouse controller - disabled */}
