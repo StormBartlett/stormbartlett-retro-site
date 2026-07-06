@@ -9,6 +9,8 @@ import { useFullscreen } from "./FullscreenContext";
 
 type Icon = { id: string; label: string; app: string; x: number; y: number; type?: "file" | "folder" };
 type Win = { id: string; open: boolean; z: number; x?: number; y?: number };
+type DragSource = { kind: "desktop" } | { kind: "folder"; folderId: string } | { kind: "trash" };
+type DragItem = { id: string; label: string; app: string; type?: "file" | "folder" };
 type ViewMode = "model" | "desktop";
 type DesktopOSProps = {
   embedded?: boolean;
@@ -304,7 +306,12 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     { id: "project-notetime", label: "NoteTime.txt", type: "file", x: 20, y: 20, windowId: "project-notetime" },
     { id: "project-fallingsand", label: "FallingSandGame.txt", type: "file", x: 120, y: 20, windowId: "project-fallingsand" },
   ]);
-  const blogBrowserAddItemRef = useRef<((item: BrowserItem) => void) | null>(null);
+  const [blogFolderItems, setBlogFolderItems] = useState<BrowserItem[]>([
+    { id: "blog-recursion", label: "Recursive Algorithms.txt", type: "file", x: 20, y: 20, windowId: "blog-recursion" },
+    { id: "blog-sorting", label: "Mathematics of Sorting.txt", type: "file", x: 120, y: 20, windowId: "blog-sorting" },
+    { id: "blog-graphs", label: "Graph Theory.txt", type: "file", x: 220, y: 20, windowId: "blog-graphs" },
+    { id: "test-folder", label: "Test Folder", type: "folder", x: 20, y: 120 },
+  ]);
   const [windows, setWindows] = useState<Record<string, Win>>({
     about: { id: "about", open: false, z: 11, ...initialWindowCascadeBase },
     "about-portfolio": { id: "about-portfolio", open: false, z: 10 },
@@ -333,24 +340,24 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   const marqueeRef = useRef<HTMLDivElement | null>(null);
   const desktopRef = useRef<HTMLDivElement | null>(null);
   const marqueeStart = useRef<{ x: number; y: number } | null>(null);
-  // Shared draggable plane: items being dragged from folders appear here
-  const [draggingFromFolder, setDraggingFromFolder] = useState<{ item: BrowserItem; x: number; y: number; sourceFolder: string } | null>(null);
+  // Central drag-and-drop controller state (see beginItemDrag/finishDrag)
+  const dragStateRef = useRef<{
+    source: DragSource;
+    items: DragItem[];
+    startPositions?: Map<string, { x: number; y: number }>;
+  } | null>(null);
+  const [dragGhost, setDragGhost] = useState<{ item: DragItem; x: number; y: number } | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<null | "apple" | "file" | "edit" | "view" | "go" | "window" | "help">(null);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; restricted?: boolean } | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement | null>(null);
   const menubarRef = useRef<HTMLElement | null>(null);
-  const trashRef = useRef<HTMLButtonElement | null>(null);
   const binRef = useRef<HTMLButtonElement | null>(null);
-  const [dragOverTrash, setDragOverTrash] = useState(false);
-  const [dragOverBin, setDragOverBin] = useState(false);
-  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
   const [trashCtxMenu, setTrashCtxMenu] = useState<{ x: number; y: number; id: string } | null>(null);
   const trashCtxRef = useRef<HTMLDivElement | null>(null);
   const [trashPos, setTrashPos] = useState<{ x: number; y: number } | null>(null);
   const [binPos, setBinPos] = useState<{ x: number; y: number } | null>(null);
-  const trashDragStateRef = useRef<{ hasDragged: boolean }>({ hasDragged: false });
   const binDragStateRef = useRef<{ hasDragged: boolean }>({ hasDragged: false });
-  const dragOverTargetRef = useRef<string | null>(null);
 
   const getDesktopSize = () => {
     const desktopEl = desktopRef.current;
@@ -522,166 +529,232 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     };
   }, [binPos]);
 
-  // Track which icons are currently being dragged
-  const isDraggingRef = useRef(false);
-  const draggedIconIdsRef = useRef<Set<string>>(new Set());
+  // ============================================================
+  // Central drag-and-drop controller
+  //
+  // Every drag (desktop icons, folder items, trash items) reports to this
+  // one place. Targets are resolved with elementsFromPoint so the topmost
+  // window under the cursor wins, exactly like a native desktop.
+  // ============================================================
 
-  // Capture selection when dragging starts
-  useEffect(() => {
-    const draggedIcons = document.querySelectorAll('.desktop-icon.dragging');
-    if (draggedIcons.length > 0 && selection.size > 0) {
-      // Capture the current selection when dragging starts
-      draggedIconIdsRef.current = new Set(selection);
-      isDraggingRef.current = true;
-    } else if (draggedIcons.length === 0 && isDraggingRef.current) {
-      // Dragging ended, but keep the IDs for the drop handler
+  const folderRegistry: Record<string, { items: BrowserItem[]; setItems: React.Dispatch<React.SetStateAction<BrowserItem[]>> }> = {
+    blog: { items: blogFolderItems, setItems: setBlogFolderItems },
+    "test-folder": { items: testFolderItems, setItems: setTestFolderItems },
+    projects: { items: projectFolderItems, setItems: setProjectFolderItems },
+  };
+  const folderCounts: Record<string, number> = {
+    blog: blogFolderItems.length,
+    "test-folder": testFolderItems.length,
+    projects: projectFolderItems.length,
+  };
+
+  function resolveDrop(clientX: number, clientY: number): { key: string; el: HTMLElement } | null {
+    const st = dragStateRef.current;
+    if (!st) return null;
+    const draggedIds = new Set(st.items.map((i) => i.id));
+    for (const raw of document.elementsFromPoint(clientX, clientY)) {
+      if (!(raw instanceof HTMLElement)) continue;
+      const icon = raw.closest<HTMLElement>(".desktop-icon");
+      // Skip whatever is being dragged — it sits right under the cursor
+      if (icon && (icon.classList.contains("dragging") || draggedIds.has(icon.dataset.id || ""))) continue;
+      const zoneEl = raw.closest<HTMLElement>("[data-dropzone]");
+      const winEl = raw.closest<HTMLElement>(".window");
+      if (zoneEl && (!winEl || winEl.contains(zoneEl))) {
+        const kind = zoneEl.dataset.dropzone;
+        if (kind === "ifolder") {
+          const id = zoneEl.dataset.id || "";
+          if (id && !draggedIds.has(id) && folderRegistry[id]) return { key: `folder:${id}`, el: zoneEl };
+          continue;
+        }
+        if (kind === "bfolder") {
+          const id = zoneEl.dataset.folderId || "";
+          const sameSource = st.source.kind === "folder" && st.source.folderId === id;
+          if (id && !draggedIds.has(id) && !sameSource && folderRegistry[id]) return { key: `folder:${id}`, el: zoneEl };
+          continue;
+        }
+        if (kind === "window") {
+          const id = zoneEl.dataset.folderId || "";
+          if (draggedIds.has(id)) return null; // folder into its own window
+          return { key: `window:${id}`, el: zoneEl };
+        }
+        if (kind === "trashwin") return { key: "trashwin", el: zoneEl };
+        if (kind === "bin") {
+          if (st.source.kind !== "trash") return { key: "bin", el: zoneEl };
+          continue;
+        }
+        if (kind === "desktop") return { key: "desktop", el: zoneEl };
+        continue;
+      }
+      if (winEl) return null;      // over a plain window: not a target
+      if (icon) continue;          // over a loose icon: what's underneath decides
     }
-  }, [selection]);
+    return null;
+  }
 
-  // Handle drag-over detection for trash/bin and folder icons
-  useEffect(() => {
-    const handlePointerMove = (e: PointerEvent) => {
-      // Check if any desktop icons are being dragged
-      const draggedIcons = document.querySelectorAll('.desktop-icon.dragging');
-      
-      if (draggedIcons.length > 0) {
-        isDraggingRef.current = true;
-        // Update dragged IDs from current selection
-        if (selection.size > 0) {
-          draggedIconIdsRef.current = new Set(selection);
-        }
+  function updateDropTarget(clientX: number, clientY: number) {
+    if (!dragStateRef.current) return;
+    setDropTarget(resolveDrop(clientX, clientY)?.key ?? null);
+  }
 
-        const draggedIds = Array.from(draggedIconIdsRef.current);
+  /** Pointer position → local top-left inside a drop zone, icon anchored under the cursor. */
+  function zoneLocalPoint(el: HTMLElement, clientX: number, clientY: number) {
+    const m = createLocalCoordinateMetrics(el);
+    const p = m.clientToLocal(clientX, clientY);
+    return {
+      x: Math.max(8, Math.min(Math.max(8, m.width - BROWSER_ICON_SIZE - 8), p.x - 48)),
+      y: Math.max(8, Math.min(Math.max(8, m.height - BROWSER_ICON_SIZE - 8), p.y - 30)),
+    };
+  }
 
-        // Check if over trash icon (Blog folder)
-        if (trashRef.current) {
-          const trashRect = trashRef.current.getBoundingClientRect();
-          const overTrash = e.clientX >= trashRect.left && e.clientX <= trashRect.right &&
-                            e.clientY >= trashRect.top && e.clientY <= trashRect.bottom;
-          if (overTrash && draggedIds.length > 0 && !draggedIds.includes('trash')) {
-            setDragOverTrash(true);
-            dragOverTargetRef.current = 'trash';
-          } else if (dragOverTargetRef.current === 'trash' && !overTrash) {
-            setDragOverTrash(false);
-            if (!overTrash) dragOverTargetRef.current = null;
-          }
-        }
+  function finishDrag(clientX: number, clientY: number, didDrag: boolean) {
+    const st = dragStateRef.current;
+    dragStateRef.current = null;
+    setDragGhost(null);
+    setDropTarget(null);
+    if (!st || !didDrag) return;
+    dragStateRef.current = st;               // resolveDrop needs it
+    const resolved = resolveDrop(clientX, clientY);
+    dragStateRef.current = null;
+    const ids = st.items.map((i) => i.id);
 
-        // Check if over bin icon
-        if (binRef.current) {
-          const binRect = binRef.current.getBoundingClientRect();
-          const overBin = e.clientX >= binRect.left && e.clientX <= binRect.right &&
-                          e.clientY >= binRect.top && e.clientY <= binRect.bottom;
-          if (overBin && draggedIds.length > 0 && !draggedIds.includes('bin')) {
-            setDragOverBin(true);
-            dragOverTargetRef.current = 'bin';
-          } else if (dragOverTargetRef.current === 'bin' && !overBin) {
-            setDragOverBin(false);
-            if (!overBin) dragOverTargetRef.current = null;
-          }
-        }
+    if (!resolved) {
+      // Cancelled (over a plain window / menubar): desktop icons snap back.
+      if (st.source.kind === "desktop" && st.startPositions) {
+        const starts = st.startPositions;
+        setIcons((prev) => prev.map((i) => (starts.has(i.id) ? { ...i, ...starts.get(i.id)! } : i)));
+      }
+      return;
+    }
+    const { key, el } = resolved;
 
-        // Check if over any desktop folder icon (e.g., Projects)
-        const folderEls = document.querySelectorAll<HTMLElement>('.desktop-icon[data-folder="true"]');
-        let overAnyFolder: string | null = null;
-        folderEls.forEach((el) => {
-          const id = el.dataset.id || '';
-          if (!id || draggedIds.includes(id)) return;
-          const r = el.getBoundingClientRect();
-          if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
-            overAnyFolder = id;
-          }
-        });
-        if (overAnyFolder) {
-          dragOverTargetRef.current = overAnyFolder;
-          setDragOverFolder(overAnyFolder);
-        } else if (dragOverTargetRef.current && !['trash', 'bin'].includes(dragOverTargetRef.current)) {
-          dragOverTargetRef.current = null;
-          setDragOverFolder(null);
-        }
+    const removeFromSource = () => {
+      if (st.source.kind === "desktop") {
+        setIcons((prev) => prev.filter((i) => !ids.includes(i.id)));
+        setSelection(new Set());
+      } else if (st.source.kind === "folder") {
+        const folderId = st.source.folderId;
+        folderRegistry[folderId]?.setItems((prev) => prev.filter((i) => !ids.includes(i.id)));
       } else {
-        // No dragging happening
-        if (!isDraggingRef.current) {
-          setDragOverTrash(false);
-          setDragOverBin(false);
-          setDragOverFolder(null);
-          dragOverTargetRef.current = null;
-        }
+        setTrash((prev) => prev.filter((i) => !ids.includes(i.id)));
       }
     };
 
-    const handlePointerUp = () => {
-      const targetId = dragOverTargetRef.current;
-      const iconIds = Array.from(draggedIconIdsRef.current);
-      
-      // Small delay to ensure DesktopIcon has finished its drag handling
-      setTimeout(() => {
-        if (iconIds.length > 0 && targetId) {
-          const iconsToMove = icons.filter(i => iconIds.includes(i.id));
-          
-          if (iconsToMove.length > 0) {
-            if (targetId === 'bin') {
-              // Move to trash - works for both files and folders
-              addToTrash(iconsToMove);
-              setIcons(prev => prev.filter(i => !iconIds.includes(i.id)));
-              setSelection(new Set()); // Clear selection after moving
-            } else if (targetId === 'trash') {
-              // Move to Blog folder (trash window)
-              {
-                const addItem = blogBrowserAddItemRef.current;
-                if (addItem) {
-                  iconsToMove.forEach((icon, idx) => {
-                    const browserItem: BrowserItem = {
-                      id: icon.id,
-                      label: icon.label,
-                      type: icon.id === 'test-folder' || icon.app === 'test-folder' ? "folder" : "file",
-                      x: 20 + (idx % 3) * 100,
-                      y: 20 + Math.floor(idx / 3) * 100,
-                      windowId: icon.app
-                    };
-                    addItem(browserItem);
-                  });
-                  setIcons(prev => prev.filter(i => !iconIds.includes(i.id)));
-                  setSelection(new Set()); // Clear selection after moving
-                }
-              }
-            } else if (targetId === 'projects') {
-              setProjectFolderItems(prev => {
-                const existing = new Set(prev.map(i => i.id));
-                const newItems = iconsToMove
-                  .filter(icon => !existing.has(icon.id))
-                  .map((icon, idx) => ({
-                    id: icon.id,
-                    label: icon.label,
-                    type: icon.type === 'folder' ? 'folder' as const : 'file' as const,
-                    x: 20 + ((prev.length + idx) % 3) * 100,
-                    y: 20 + Math.floor((prev.length + idx) / 3) * 100,
-                    windowId: icon.app,
-                  }));
-                return [...prev, ...newItems];
-              });
-              setIcons(prev => prev.filter(i => !iconIds.includes(i.id)));
-              setSelection(new Set());
-            }
-          }
-        }
+    if (key === "desktop") {
+      if (st.source.kind === "desktop") return; // already live-moved
+      const p = clientToDesktop(clientX, clientY);
+      const base = p ? clampToDesktop(p.left - 48, p.top - 30) : clampToDesktop(40, 80);
+      setIcons((prev) => {
+        const next = prev.map((i) => {
+          const hit = st.items.find((it) => it.id === i.id);
+          return hit ? { ...i, x: base.x, y: base.y } : i;
+        });
+        const additions = st.items
+          .filter((it) => !prev.some((i) => i.id === it.id))
+          .map((it, idx) => ({
+            id: it.id,
+            label: it.label,
+            app: it.app,
+            type: it.type,
+            ...clampToDesktop(base.x + idx * 24, base.y + idx * 24),
+          }));
+        return [...next, ...additions];
+      });
+      removeFromSource();
+      return;
+    }
 
-        setDragOverTrash(false);
-        setDragOverBin(false);
-        setDragOverFolder(null);
-        dragOverTargetRef.current = null;
-        draggedIconIdsRef.current.clear();
-        isDraggingRef.current = false;
-      }, 50);
-    };
+    if (key === "bin") {
+      addToTrash(st.items.map((it) => ({ id: it.id, label: it.label, app: it.app, type: it.type, x: 0, y: 0 })));
+      removeFromSource();
+      return;
+    }
 
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
+    if (key === "trashwin") {
+      const pos = zoneLocalPoint(el, clientX, clientY);
+      if (st.source.kind === "trash") {
+        setTrash((prev) => prev.map((i) => (ids.includes(i.id) ? { ...i, x: pos.x, y: pos.y } : i)));
+        return;
+      }
+      addToTrash(st.items.map((it, idx) => ({
+        id: it.id,
+        label: it.label,
+        app: it.app,
+        type: it.type,
+        x: pos.x + (idx % 3) * 100,
+        y: pos.y + Math.floor(idx / 3) * 100,
+      })));
+      removeFromSource();
+      return;
+    }
+
+    const folderMatch = key.match(/^(?:window|folder):(.*)$/);
+    if (folderMatch) {
+      const targetId = folderMatch[1];
+      const reg = folderRegistry[targetId];
+      if (!reg) return;
+      const droppedOnWindow = key.startsWith("window:");
+      const pos = droppedOnWindow ? zoneLocalPoint(el, clientX, clientY) : null;
+
+      if (st.source.kind === "folder" && st.source.folderId === targetId) {
+        // Reposition within the same folder window
+        if (pos) reg.setItems((prev) => prev.map((i) => (ids.includes(i.id) ? { ...i, x: pos.x, y: pos.y } : i)));
+        return;
+      }
+
+      reg.setItems((prev) => {
+        const existing = new Set(prev.map((i) => i.id));
+        const startSlot = prev.length;
+        const additions = st.items
+          .filter((it) => !existing.has(it.id))
+          .map((it, idx) => ({
+            id: it.id,
+            label: it.label,
+            type: it.type === "folder" ? ("folder" as const) : ("file" as const),
+            x: pos ? pos.x + (idx % 3) * 100 : 20 + ((startSlot + idx) % 3) * 100,
+            y: pos ? pos.y + Math.floor(idx / 3) * 100 : 20 + Math.floor((startSlot + idx) / 3) * 100,
+            windowId: it.type === "folder" ? undefined : it.app,
+          }));
+        return [...prev, ...additions];
+      });
+      removeFromSource();
+      return;
+    }
+  }
+
+  /** Start dragging an item that lives in a folder window or the trash. */
+  function beginItemDrag(e: React.PointerEvent, source: DragSource, item: DragItem) {
+    if (e.button !== 0) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let dragging = false;
+    const move = (ev: PointerEvent) => {
+      if (!dragging) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5) return;
+        dragging = true;
+        dragStateRef.current = { source, items: [item] };
+      }
+      const p = clientToDesktop(ev.clientX, ev.clientY);
+      if (p) setDragGhost({ item, x: p.left - 48, y: p.top - 30 });
+      updateDropTarget(ev.clientX, ev.clientY);
     };
-  }, [icons, setIcons, selection, setSelection]);
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      finishDrag(ev.clientX, ev.clientY, dragging);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  /** Desktop icons live-move; the controller only tracks targets and the drop. */
+  function beginDesktopDrag(iconIds: string[]) {
+    const dragged = icons.filter((i) => iconIds.includes(i.id));
+    dragStateRef.current = {
+      source: { kind: "desktop" },
+      items: dragged.map((i) => ({ id: i.id, label: i.label, app: i.app, type: i.type })),
+      startPositions: new Map(dragged.map((i) => [i.id, { x: i.x, y: i.y }])),
+    };
+  }
 
   useEffect(() => {
     const crt = document.querySelector(".crt");
@@ -1194,7 +1267,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
         </div>
       </header>
 
-      <main id="desktop" className="desktop" ref={desktopRef} onContextMenu={onContextMenu} onMouseDown={onDesktopMouseDown}>
+      <main id="desktop" className="desktop" ref={desktopRef} data-dropzone="desktop" onContextMenu={onContextMenu} onMouseDown={onDesktopMouseDown}>
         {icons.map((icon) => (
           <DesktopIcon
             key={icon.id}
@@ -1204,38 +1277,28 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             setIcons={setIcons}
             selection={selection}
             setSelection={setSelection}
+            isDropTarget={dropTarget === `folder:${icon.id}`}
+            onDragStart={beginDesktopDrag}
+            onDragMove={updateDropTarget}
+            onDragEnd={finishDrag}
             onDbl={() => { if (windows[icon.app]) openWin(icon.app); }}
           />
         ))}
-        
-        {/* Shared draggable plane: items being dragged from folders */}
-        {draggingFromFolder && (
+
+        {/* Drag ghost: single overlay following the pointer during item drags */}
+        {dragGhost && (
           <div
-            key={`dragging-${draggingFromFolder.item.id}`}
-            style={{
-              position: 'absolute',
-              left: draggingFromFolder.x,
-              top: draggingFromFolder.y,
-              zIndex: 20000,
-              pointerEvents: 'none'
-            }}
+            className="drag-ghost-layer"
+            style={{ position: "absolute", left: dragGhost.x, top: dragGhost.y, zIndex: 30000, pointerEvents: "none" }}
           >
-            <DesktopIcon
-              icon={{
-                id: draggingFromFolder.item.id,
-                label: draggingFromFolder.item.label,
-                app: draggingFromFolder.item.windowId || draggingFromFolder.item.id,
-                x: 0,
-                y: 0,
-                type: draggingFromFolder.item.type
-              }}
-              icons={[]}
-              canDrag={false}
-              setIcons={() => {}}
-              selection={new Set()}
-              setSelection={() => {}}
-              onDbl={() => {}}
-            />
+            <div className="desktop-icon drag-ghost-icon" style={{ position: "relative", left: 0, top: 0 }}>
+              <div className="icon">
+                <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
+                  <use href={`#${getSpriteId({ ...dragGhost.item, type: dragGhost.item.type })}`}></use>
+                </svg>
+              </div>
+              <span className="icon-label">{dragGhost.item.label}</span>
+            </div>
           </div>
         )}
 
@@ -1319,8 +1382,9 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
         {/* Trash bin icon (draggable) */}
         <button
           ref={binRef}
-          className={`desktop-icon trash-icon ${trash.length > 0 ? 'has-items' : ''} ${dragOverBin ? 'is-over' : ''} ${selection.has("bin") ? "is-selected" : ""}`}
+          className={`desktop-icon trash-icon ${trash.length > 0 ? 'has-items' : ''} ${dropTarget === 'bin' ? 'is-over' : ''} ${selection.has("bin") ? "is-selected" : ""}`}
           data-id="bin"
+          data-dropzone="bin"
           style={{ 
             position: 'absolute', 
             left: defaultBinPos.x,
@@ -1429,27 +1493,23 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
         </Window>
         
         <Window id="trash" title="Blog" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window">
-          <BlogBrowser 
-            windows={windows} 
-            openWin={openWin} 
-            frontWin={frontWin} 
-            closeWin={closeWin} 
-            nextZ={nextZ} 
+          <BlogBrowser
+            folderId="blog"
+            items={blogFolderItems}
+            setItems={setBlogFolderItems}
+            windows={windows}
+            openWin={openWin}
             setNextZ={setNextZ}
-            desktopIcons={icons}
-            setDesktopIcons={setIcons}
-            desktopRef={desktopRef}
-            testFolderItems={testFolderItems}
-            setTestFolderItems={setTestFolderItems}
-            draggingFromFolder={draggingFromFolder}
-            setDraggingFromFolder={setDraggingFromFolder}
-            addItemRef={blogBrowserAddItemRef}
             darkMode={darkMode}
+            beginItemDrag={beginItemDrag}
+            dropTarget={dropTarget}
+            dragSourceId={dragGhost?.item.id ?? null}
+            folderCounts={folderCounts}
           />
         </Window>
-        
+
         <Window id="bin" title="Trash" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window">
-          <TrashBrowser 
+          <TrashBrowser
             trash={trash}
             restoreIcon={restoreIcon}
             restoreAll={restoreAll}
@@ -1457,14 +1517,12 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             trashCtxMenu={trashCtxMenu}
             setTrashCtxMenu={setTrashCtxMenu}
             trashCtxRef={trashCtxRef}
-            desktopIcons={icons}
-            setDesktopIcons={setIcons}
-            desktopRef={desktopRef}
-            draggingFromFolder={draggingFromFolder}
-            setDraggingFromFolder={setDraggingFromFolder}
             darkMode={darkMode}
             openWin={openWin}
             windows={windows}
+            beginItemDrag={beginItemDrag}
+            dropTarget={dropTarget}
+            dragSourceId={dragGhost?.item.id ?? null}
           />
         </Window>
         
@@ -1480,44 +1538,32 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
         </Window>
         <Window id="test-folder" title="Test Folder" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window">
           <BlogBrowser
-            windows={windows}
-            openWin={openWin}
-            frontWin={frontWin}
-            closeWin={closeWin}
-            nextZ={nextZ}
-            setNextZ={setNextZ}
-            desktopIcons={icons}
-            setDesktopIcons={setIcons}
-            desktopRef={desktopRef}
-            darkMode={darkMode}
             folderId="test-folder"
             items={testFolderItems}
             setItems={setTestFolderItems}
-            testFolderItems={testFolderItems}
-            setTestFolderItems={setTestFolderItems}
-            draggingFromFolder={draggingFromFolder}
-            setDraggingFromFolder={setDraggingFromFolder}
+            windows={windows}
+            openWin={openWin}
+            setNextZ={setNextZ}
+            darkMode={darkMode}
+            beginItemDrag={beginItemDrag}
+            dropTarget={dropTarget}
+            dragSourceId={dragGhost?.item.id ?? null}
+            folderCounts={folderCounts}
           />
         </Window>
         <Window id="projects" title="Projects" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window">
           <BlogBrowser
-            windows={windows}
-            openWin={openWin}
-            frontWin={frontWin}
-            closeWin={closeWin}
-            nextZ={nextZ}
-            setNextZ={setNextZ}
-            desktopIcons={icons}
-            setDesktopIcons={setIcons}
-            desktopRef={desktopRef}
-            darkMode={darkMode}
             folderId="projects"
             items={projectFolderItems}
             setItems={setProjectFolderItems}
-            testFolderItems={testFolderItems}
-            setTestFolderItems={setTestFolderItems}
-            draggingFromFolder={draggingFromFolder}
-            setDraggingFromFolder={setDraggingFromFolder}
+            windows={windows}
+            openWin={openWin}
+            setNextZ={setNextZ}
+            darkMode={darkMode}
+            beginItemDrag={beginItemDrag}
+            dropTarget={dropTarget}
+            dragSourceId={dragGhost?.item.id ?? null}
+            folderCounts={folderCounts}
           />
         </Window>
         <Window id="project-notetime" title="NoteTime.txt" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window blog-post-window">
@@ -1596,7 +1642,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   );
 }
 
-function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, onDbl, onDragMove, onDragEnd }: { icon: Icon; icons: Icon[]; canDrag: boolean; setIcons: React.Dispatch<React.SetStateAction<Icon[]>>; selection: Set<string>; setSelection: (s: Set<string>) => void; onDbl: () => void; onDragMove?: (x: number, y: number) => void; onDragEnd?: (x: number, y: number, dragging: boolean) => void; }) {
+function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, onDbl, onDragStart, onDragMove, onDragEnd, isDropTarget }: { icon: Icon; icons: Icon[]; canDrag: boolean; setIcons: React.Dispatch<React.SetStateAction<Icon[]>>; selection: Set<string>; setSelection: (s: Set<string>) => void; onDbl: () => void; onDragStart?: (ids: string[]) => void; onDragMove?: (x: number, y: number) => void; onDragEnd?: (x: number, y: number, dragging: boolean) => void; isDropTarget?: boolean; }) {
   const ref = useRef<HTMLButtonElement | null>(null);
   const [burst, setBurst] = useState(false);
   const down = (e: React.PointerEvent) => {
@@ -1633,8 +1679,9 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
         const dist = Math.hypot(dx, dy);
         if (dist < 4) return;
         dragging = true;
-        ref.current?.setPointerCapture(e.pointerId);
+        try { ref.current?.setPointerCapture(e.pointerId); } catch {}
         ref.current?.classList.add('dragging');
+        if (onDragStart) onDragStart(Array.from(nextSel));
       }
       setIcons((list) => list.map((i) => {
         if (!nextSel.has(i.id)) return i;
@@ -1659,7 +1706,7 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
   };
   const spriteId = getIconSpriteId(icon);
   return (
-    <button ref={ref} className={`desktop-icon ${selection.has(icon.id) ? "is-selected" : ""} ${burst ? "is-burst" : ""}`} data-id={icon.id} data-folder={icon.type === "folder" ? "true" : undefined} style={{ left: icon.x, top: icon.y, position: "absolute" }} onDoubleClick={onDbl} onPointerDown={down} onClick={() => { setBurst(true); window.setTimeout(() => setBurst(false), 500); }}>
+    <button ref={ref} className={`desktop-icon ${selection.has(icon.id) ? "is-selected" : ""} ${burst ? "is-burst" : ""} ${isDropTarget ? "is-over" : ""}`} data-id={icon.id} data-folder={icon.type === "folder" ? "true" : undefined} data-dropzone={icon.type === "folder" ? "ifolder" : undefined} style={{ left: icon.x, top: icon.y, position: "absolute" }} onDoubleClick={onDbl} onPointerDown={down} onClick={() => { setBurst(true); window.setTimeout(() => setBurst(false), 500); }}>
       <div className="icon">
         <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
           <use href={`#${spriteId}`}></use>
@@ -1899,285 +1946,35 @@ type BrowserItem = { id: string; label: string; type: "file" | "folder"; x: numb
 
 function TrashBrowser({
   trash,
+  setTrash,
   restoreIcon,
   restoreAll,
-  setTrash,
   trashCtxMenu,
   setTrashCtxMenu,
   trashCtxRef,
-  desktopIcons,
-  setDesktopIcons,
-  desktopRef,
-  draggingFromFolder,
-  setDraggingFromFolder,
   darkMode,
   openWin,
-  windows
+  windows,
+  beginItemDrag,
+  dropTarget,
+  dragSourceId,
 }: {
   trash: Icon[];
+  setTrash: React.Dispatch<React.SetStateAction<Icon[]>>;
   restoreIcon: (id: string, at?: { x: number; y: number }) => void;
   restoreAll: () => void;
-  setTrash: React.Dispatch<React.SetStateAction<Icon[]>>;
   trashCtxMenu: { x: number; y: number; id: string } | null;
   setTrashCtxMenu: React.Dispatch<React.SetStateAction<{ x: number; y: number; id: string } | null>>;
   trashCtxRef: React.RefObject<HTMLDivElement | null>;
-  desktopIcons?: Icon[];
-  setDesktopIcons?: React.Dispatch<React.SetStateAction<Icon[]>>;
-  desktopRef?: React.RefObject<HTMLDivElement | null>;
-  draggingFromFolder?: { item: BrowserItem; x: number; y: number; sourceFolder: string } | null;
-  setDraggingFromFolder?: React.Dispatch<React.SetStateAction<{ item: BrowserItem; x: number; y: number; sourceFolder: string } | null>>;
   darkMode: boolean;
   openWin: (id: string) => void;
-  windows: Record<string, { id: string; open: boolean; z: number }>;
+  windows: Record<string, Win>;
+  beginItemDrag: (e: React.PointerEvent, source: DragSource, item: DragItem) => void;
+  dropTarget: string | null;
+  dragSourceId: string | null;
 }) {
   const browserRef = useRef<HTMLDivElement | null>(null);
   const [selection, setSelection] = useState<Set<string>>(new Set());
-  const [draggedItem, setDraggedItem] = useState<string | null>(null);
-  const dragStateRef = useRef<{ hasDragged: boolean }>({ hasDragged: false });
-  const desktopDraggedIconRef = useRef<string | null>(null);
-  const clickTimeoutRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
-  const lastClickTimeRef = useRef<{ [key: string]: number }>({});
-  const isDoubleClickRef = useRef<{ [key: string]: boolean }>({});
-
-  // Convert trash items to BrowserItem format with positions
-  const [trashItems, setTrashItems] = useState<BrowserItem[]>(() => {
-    return trash.map((icon, idx) => ({
-      id: icon.id,
-      label: icon.label,
-      type: icon.type === "folder" ? "folder" as const : "file" as const,
-      x: icon.x || (20 + (idx % 3) * 100),
-      y: icon.y || (20 + Math.floor(idx / 3) * 100),
-      windowId: icon.app
-    }));
-  });
-
-  // Sync trashItems when trash changes
-  useEffect(() => {
-    setTrashItems(prev => {
-      const existingIds = new Set(prev.map(i => i.id));
-      const newItems = trash.filter(icon => !existingIds.has(icon.id));
-      
-      // Update existing items and filter out removed ones
-      const updated = prev.map(item => {
-        const icon = trash.find(i => i.id === item.id);
-        return icon ? { ...item, label: icon.label, type: icon.type === "folder" ? "folder" as const : "file" as const, windowId: icon.app, x: icon.x || item.x, y: icon.y || item.y } : item;
-      }).filter(item => trash.some(i => i.id === item.id));
-      
-      // Add new items with their positions from trash (which should already have x, y set)
-      newItems.forEach((icon) => {
-        const existingPositions = updated.map(i => ({ x: i.x, y: i.y }));
-        // Use position from icon if available, otherwise calculate
-        let x = icon.x || 20;
-        let y = icon.y || 20;
-        
-        // If no position set or position conflicts, find next available spot
-        if (!icon.x || !icon.y || existingPositions.some(p => Math.abs(p.x - x) < 96 && Math.abs(p.y - y) < 96)) {
-          // Find first available position in grid from top-left
-          let found = false;
-          for (let row = 0; row < 10 && !found; row++) {
-            for (let col = 0; col < 3 && !found; col++) {
-              x = 20 + col * 100;
-              y = 20 + row * 100;
-              if (!existingPositions.some(p => Math.abs(p.x - x) < 96 && Math.abs(p.y - y) < 96)) {
-                found = true;
-              }
-            }
-          }
-        }
-        
-        updated.push({
-          id: icon.id,
-          label: icon.label,
-          type: icon.type === "folder" ? "folder" as const : "file" as const,
-          x,
-          y,
-          windowId: icon.app
-        });
-      });
-      
-      return updated;
-    });
-  }, [trash]);
-
-  // Helper to convert browser coordinates to desktop coordinates
-  const browserToDesktopCoords = (browserX: number, browserY: number, clientX: number, clientY: number): { x: number; y: number } | null => {
-    if (!browserRef.current || !desktopRef?.current) return null;
-    const desktopPoint = createLocalCoordinateMetrics(desktopRef.current).clientToLocal(clientX, clientY);
-    const desktopX = desktopPoint.x - 48;
-    const desktopY = desktopPoint.y - 24;
-    
-    return { x: Math.max(8, desktopX), y: Math.max(0, desktopY) };
-  };
-
-  const handleItemPointerDown = (itemId: string, e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    
-    const item = trashItems.find(i => i.id === itemId);
-    if (!item || !setDraggingFromFolder) return;
-    
-    const nextSel = selection.has(itemId) ? new Set(selection) : new Set([itemId]);
-    setSelection(nextSel);
-    
-    dragStateRef.current.hasDragged = false;
-    setDraggedItem(itemId);
-    const startX = e.clientX, startY = e.clientY;
-    const startItemX = item.x;
-    const startItemY = item.y;
-    
-    const initialDesktopCoords = browserToDesktopCoords(item.x, item.y, e.clientX, e.clientY);
-    if (!initialDesktopCoords) return;
-    
-    let dragging = false;
-
-    const move = (ev: PointerEvent) => {
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
-      const dist = Math.hypot(dx, dy);
-      
-      if (!dragging && dist > 4) {
-        dragging = true;
-        dragStateRef.current.hasDragged = true;
-        e.preventDefault();
-      }
-      
-      if (dragging) {
-        if (browserRef.current) {
-          const browserRect = browserRef.current.getBoundingClientRect();
-          const browserX = ev.clientX - browserRect.left;
-          const browserY = ev.clientY - browserRect.top;
-          const isOutsideBrowser = browserX < 0 || browserX > browserRect.width || browserY < 0 || browserY > browserRect.height;
-          
-          const newX = startItemX + dx;
-          const newY = startItemY + dy;
-          
-          if (isOutsideBrowser && setDraggingFromFolder) {
-            const desktopCoords = browserToDesktopCoords(item.x, item.y, ev.clientX, ev.clientY);
-            if (desktopCoords) {
-              setDraggingFromFolder(prev => prev ? {
-                ...prev,
-                x: desktopCoords.x,
-                y: desktopCoords.y
-              } : {
-                item,
-                x: desktopCoords.x,
-                y: desktopCoords.y,
-                sourceFolder: "bin"
-              });
-            }
-          } else if (setDraggingFromFolder) {
-            setDraggingFromFolder(null);
-          }
-          
-          const clampedX = Math.max(10, Math.min(browserRect.width - 100, newX));
-          const clampedY = Math.max(10, Math.min(browserRect.height - 100, newY));
-          setTrashItems(list => list.map(i => i.id === itemId ? { ...i, x: clampedX, y: clampedY } : i));
-        }
-      }
-    };
-
-    const up = (ev?: PointerEvent) => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      
-      if (dragging && ev && setDraggingFromFolder) {
-        const browserRect = browserRef.current?.getBoundingClientRect();
-        const isWithinBrowser = browserRect && 
-          ev.clientX >= browserRect.left && 
-          ev.clientX <= browserRect.right && 
-          ev.clientY >= browserRect.top && 
-          ev.clientY <= browserRect.bottom;
-        
-        const desktopCoords = browserToDesktopCoords(item.x, item.y, ev.clientX, ev.clientY);
-        
-        if (isWithinBrowser) {
-          // Update position within trash
-          if (browserRef.current) {
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
-            const newX = Math.max(10, Math.min(browserRect.width - 100, startItemX + dx));
-            const newY = Math.max(10, Math.min(browserRect.height - 100, startItemY + dy));
-            setTrashItems(list => list.map(i => i.id === itemId ? { ...i, x: newX, y: newY } : i));
-            // Update trash state with new position
-            setTrash(prev => prev.map(i => i.id === itemId ? { ...i, x: newX, y: newY } : i));
-          }
-        } else if (desktopCoords && setDesktopIcons && !isDoubleClickRef.current[itemId]) {
-          // Dropped on desktop - restore icon (but not if it was a double-click)
-          restoreIcon(itemId, desktopCoords);
-          setTrashItems(list => list.filter(i => i.id !== itemId));
-        }
-        
-        setDraggingFromFolder(null);
-      } else if (setDraggingFromFolder) {
-        setDraggingFromFolder(null);
-      }
-      
-      setDraggedItem(null);
-    };
-
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-
-  // Handle desktop icon drag into trash browser
-  useEffect(() => {
-    if (!desktopRef?.current || !setDesktopIcons || !browserRef.current) return;
-    
-    const handlePointerMove = (e: PointerEvent) => {
-      const desktopIcon = document.querySelector('.desktop-icon.dragging') as HTMLElement;
-      if (desktopIcon && browserRef.current) {
-        desktopDraggedIconRef.current = desktopIcon.dataset.id || null;
-      } else {
-        desktopDraggedIconRef.current = null;
-      }
-    };
-    
-    const handlePointerUp = (e: PointerEvent) => {
-      const draggedIconId = desktopDraggedIconRef.current;
-      
-      if (draggedIconId && browserRef.current && setDesktopIcons) {
-        const rect = browserRef.current.getBoundingClientRect();
-        const overBrowser = e.clientX >= rect.left && e.clientX <= rect.right &&
-                           e.clientY >= rect.top && e.clientY <= rect.bottom;
-        
-        if (overBrowser) {
-          const desktopIcon = desktopIcons?.find(i => i.id === draggedIconId);
-          if (desktopIcon) {
-            // Add to trash
-            const browserX = e.clientX - rect.left - 48;
-            const browserY = e.clientY - rect.top - 24;
-            const newX = Math.max(10, browserX);
-            const newY = Math.max(10, browserY);
-            
-            setTrash(prev => {
-              if (prev.some(i => i.id === desktopIcon.id)) {
-                return prev.map(i => i.id === desktopIcon.id ? { ...i, x: newX, y: newY, type: desktopIcon.type } : i);
-              }
-              return [...prev, {
-                id: desktopIcon.id,
-                label: desktopIcon.label,
-                app: desktopIcon.app,
-                x: newX,
-                y: newY,
-                type: desktopIcon.type
-              }];
-            });
-            
-            // Remove from desktop
-            setDesktopIcons(prev => prev.filter(i => i.id !== draggedIconId));
-          }
-        }
-      }
-      
-      desktopDraggedIconRef.current = null;
-    };
-    
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    };
-  }, [desktopRef, setDesktopIcons, desktopIcons, setTrash]);
 
   // Close trash context menu when clicking outside
   useEffect(() => {
@@ -2191,122 +1988,51 @@ function TrashBrowser({
   }, [trashCtxRef, setTrashCtxMenu]);
 
   return (
-    <div 
-      className="blog-browser" 
+    <div
+      className={`blog-browser ${dropTarget === "trashwin" ? "is-drop-target" : ""}`}
       ref={browserRef}
+      data-dropzone="trashwin"
       onPointerDown={(e) => {
-        if (e.target === browserRef.current) {
-          setSelection(new Set());
-        }
+        if (e.target === browserRef.current) setSelection(new Set());
       }}
     >
-      {trashItems.length === 0 ? (
-        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text)' }}>
-          <p style={{ color: '#ffffff' }}>Trash is empty</p>
+      {trash.length === 0 ? (
+        <div style={{ padding: "40px", textAlign: "center", color: "var(--text)" }}>
+          <p>Trash is empty</p>
         </div>
       ) : (
-        trashItems.map((item) => {
-          const isDraggingToDesktop = draggedItem === item.id && draggingFromFolder?.item.id === item.id && draggingFromFolder?.sourceFolder === "bin";
-          
-          return (
-            <button
-              key={item.id}
-              className={`browser-icon ${selection.has(item.id) ? 'is-selected' : ''} ${draggedItem === item.id ? 'dragging' : ''}`}
-              style={{ 
-                position: 'absolute', 
-                left: item.x, 
-                top: item.y,
-                opacity: isDraggingToDesktop ? 0 : 1,
-                pointerEvents: isDraggingToDesktop ? 'none' : 'auto'
-              }}
-              onClick={() => {
-                const now = Date.now();
-                const lastClick = lastClickTimeRef.current[item.id] || 0;
-                const timeSinceLastClick = now - lastClick;
-                
-                // If clicks are very close together, mark as potential double-click
-                if (timeSinceLastClick < 300) {
-                  isDoubleClickRef.current[item.id] = true;
-                }
-                lastClickTimeRef.current[item.id] = now;
-                
-                if (!dragStateRef.current.hasDragged) {
-                  // If there's already a pending timeout, this is likely a double-click
-                  // Let onDoubleClick handle it, but don't create another timeout
-                  if (clickTimeoutRef.current[item.id]) {
-                    return;
-                  }
-                  
-                  // Delay the click action to allow double-click to cancel it
-                  clickTimeoutRef.current[item.id] = setTimeout(() => {
-                    // Only select if it wasn't a double-click
-                    if (!isDoubleClickRef.current[item.id]) {
-                      const nextSel = selection.has(item.id) ? new Set(selection) : new Set([item.id]);
-                      setSelection(nextSel);
-                    }
-                    delete clickTimeoutRef.current[item.id];
-                    isDoubleClickRef.current[item.id] = false;
-                  }, 200);
-                }
-                dragStateRef.current.hasDragged = false;
-              }}
-              onDoubleClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Mark as double-click to prevent restore on pointer up
-                isDoubleClickRef.current[item.id] = true;
-                
-                // Cancel any pending click timeout
-                if (clickTimeoutRef.current[item.id]) {
-                  clearTimeout(clickTimeoutRef.current[item.id]);
-                  delete clickTimeoutRef.current[item.id];
-                }
-                
-                // Open the file/app if it has a valid windowId
-                // Don't check hasDragged - double-click intent is clear even with small movements
-                if (item.windowId && windows[item.windowId]) {
-                  openWin(item.windowId);
-                }
-                dragStateRef.current.hasDragged = false;
-                setSelection(new Set());
-                
-                // Clear the double-click flag after a delay
-                setTimeout(() => {
-                  isDoubleClickRef.current[item.id] = false;
-                }, 300);
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const browserRect = browserRef.current?.getBoundingClientRect();
-                if (browserRect) {
-                  setTrashCtxMenu({
-                    x: e.clientX - browserRect.left,
-                    y: e.clientY - browserRect.top,
-                    id: item.id
-                  });
-                }
-                if (!selection.has(item.id)) {
-                  setSelection(new Set([item.id]));
-                }
-              }}
-              onPointerDown={(e) => {
-                if (e.button !== 0) return;
-                handleItemPointerDown(item.id, e);
-              }}
-            >
-              <div className="icon">
-                <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
-                  <use href={`#${getSpriteId(item)}`}></use>
-                </svg>
-              </div>
-              <span className="icon-label">{item.label}</span>
-            </button>
-          );
-        })
+        trash.map((icon) => (
+          <button
+            key={icon.id}
+            className={`browser-icon ${selection.has(icon.id) ? "is-selected" : ""} ${dragSourceId === icon.id ? "is-drag-source" : ""}`}
+            style={{ position: "absolute", left: icon.x, top: icon.y }}
+            onClick={() => setSelection(new Set([icon.id]))}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (icon.app && windows[icon.app]) openWin(icon.app);
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const browserRect = browserRef.current?.getBoundingClientRect();
+              if (browserRect) {
+                setTrashCtxMenu({ x: e.clientX - browserRect.left, y: e.clientY - browserRect.top, id: icon.id });
+              }
+              if (!selection.has(icon.id)) setSelection(new Set([icon.id]));
+            }}
+            onPointerDown={(e) => beginItemDrag(e, { kind: "trash" }, { id: icon.id, label: icon.label, app: icon.app, type: icon.type })}
+          >
+            <div className="icon">
+              <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
+                <use href={`#${getSpriteId(icon)}`}></use>
+              </svg>
+            </div>
+            <span className="icon-label">{icon.label}</span>
+          </button>
+        ))
       )}
-      
+
       {/* Trash context menu */}
       {trashCtxMenu && trashCtxMenu.id !== 'bin' && (
         <div
@@ -2326,19 +2052,19 @@ function TrashBrowser({
           }}
           role="menu"
         >
-          <button className="menu-entry" role="menuitem" onClick={() => { 
-            restoreIcon(trashCtxMenu.id); 
-            setTrashCtxMenu(null); 
+          <button className="menu-entry" role="menuitem" onClick={() => {
+            restoreIcon(trashCtxMenu.id);
+            setTrashCtxMenu(null);
             setSelection(new Set());
           }}>Put Back</button>
-          <button className="menu-entry" role="menuitem" onClick={() => { 
-            restoreAll(); 
-            setTrashCtxMenu(null); 
+          <button className="menu-entry" role="menuitem" onClick={() => {
+            restoreAll();
+            setTrashCtxMenu(null);
             setSelection(new Set());
           }}>Put Back All</button>
-          <button className="menu-entry" role="menuitem" onClick={() => { 
+          <button className="menu-entry" role="menuitem" onClick={() => {
             setTrash(prev => prev.filter(i => i.id !== trashCtxMenu.id));
-            setTrashCtxMenu(null); 
+            setTrashCtxMenu(null);
             setSelection(new Set());
           }}>Delete Permanently</button>
         </div>
@@ -2348,377 +2074,35 @@ function TrashBrowser({
 }
 
 function BlogBrowser({
+  folderId,
+  items,
+  setItems,
   windows,
   openWin,
-  frontWin,
-  closeWin,
-  nextZ,
   setNextZ,
-  desktopIcons,
-  setDesktopIcons,
-  desktopRef,
-  folderId = "blog",
-  initialItems,
-  items: controlledItems,
-  setItems: setControlledItems,
-  testFolderItems: externalTestFolderItems,
-  setTestFolderItems: setExternalTestFolderItems,
-  draggingFromFolder,
-  setDraggingFromFolder,
-  addItemRef,
-  darkMode
+  darkMode,
+  beginItemDrag,
+  dropTarget,
+  dragSourceId,
+  folderCounts,
 }: {
+  folderId: string;
+  items: BrowserItem[];
+  setItems: React.Dispatch<React.SetStateAction<BrowserItem[]>>;
   windows: Record<string, Win>;
   openWin: (id: string) => void;
-  frontWin: (id: string) => void;
-  closeWin: (id: string) => void;
-  nextZ: number;
   setNextZ: (fn: (z: number) => number) => void;
-  desktopIcons?: Icon[];
-  setDesktopIcons?: React.Dispatch<React.SetStateAction<Icon[]>>;
-  desktopRef?: React.RefObject<HTMLDivElement | null>;
-  folderId?: string;
-  initialItems?: BrowserItem[];
-  items?: BrowserItem[];
-  setItems?: React.Dispatch<React.SetStateAction<BrowserItem[]>>;
-  testFolderItems?: BrowserItem[];
-  setTestFolderItems?: React.Dispatch<React.SetStateAction<BrowserItem[]>>;
-  draggingFromFolder?: { item: BrowserItem; x: number; y: number; sourceFolder: string } | null;
-  setDraggingFromFolder?: React.Dispatch<React.SetStateAction<{ item: BrowserItem; x: number; y: number; sourceFolder: string } | null>>;
-  addItemRef?: React.MutableRefObject<((item: BrowserItem) => void) | null>;
   darkMode: boolean;
+  beginItemDrag: (e: React.PointerEvent, source: DragSource, item: DragItem) => void;
+  dropTarget: string | null;
+  dragSourceId: string | null;
+  folderCounts: Record<string, number>;
 }) {
   const browserRef = useRef<HTMLDivElement | null>(null);
-  const [localItems, setLocalItems] = useState<BrowserItem[]>(controlledItems || initialItems || [
-    { id: "blog-recursion", label: "Recursive Algorithms.txt", type: "file", x: 20, y: 20, windowId: "blog-recursion" },
-    { id: "blog-sorting", label: "Mathematics of Sorting.txt", type: "file", x: 120, y: 20, windowId: "blog-sorting" },
-    { id: "blog-graphs", label: "Graph Theory.txt", type: "file", x: 220, y: 20, windowId: "blog-graphs" },
-    { id: "test-folder", label: "Test Folder", type: "folder", x: 20, y: 120 },
-  ]);
-  const items = controlledItems !== undefined ? controlledItems : localItems;
-  const setItems = setControlledItems || setLocalItems;
-
-  // Expose function to add items from outside (e.g., when dragging onto folder icon)
-  useEffect(() => {
-    if (addItemRef) {
-      addItemRef.current = (item: BrowserItem) => {
-        setItems(prev => {
-          // Check if item already exists
-          if (prev.some(i => i.id === item.id)) {
-            return prev.map(i => i.id === item.id ? item : i);
-          }
-          // Find a position that doesn't overlap
-          const existingPositions = prev.map(i => ({ x: i.x, y: i.y }));
-          let x = item.x || 20;
-          let y = item.y || 20;
-          while (existingPositions.some(p => Math.abs(p.x - x) < 96 && Math.abs(p.y - y) < 96)) {
-            x += 100;
-            if (x > 500) {
-              x = 20;
-              y += 100;
-            }
-          }
-          return [...prev, { ...item, x, y }];
-        });
-      };
-    }
-    return () => {
-      if (addItemRef) {
-        addItemRef.current = null;
-      }
-    };
-  }, [addItemRef]);
-  // Use external testFolderItems if provided (for shared state), otherwise local state
-  const [localTestFolderItems, setLocalTestFolderItems] = useState<BrowserItem[]>([]);
-  const testFolderItems = externalTestFolderItems !== undefined ? externalTestFolderItems : localTestFolderItems;
-  const setTestFolderItems = setExternalTestFolderItems || setLocalTestFolderItems;
   const [selection, setSelection] = useState<Set<string>>(new Set());
-  const [draggedItem, setDraggedItem] = useState<string | null>(null);
-  const [dragOverFolder, setDragOverFolder] = useState(false);
-  const dragOverFolderRef = useRef(false);
-  const dragOverTargetFolderRef = useRef<string | null>(null);
-  const dragStateRef = useRef<{ hasDragged: boolean }>({ hasDragged: false });
-  const desktopDragOverTargetRef = useRef<string | null>(null);
-  const desktopDraggedIconRef = useRef<string | null>(null);
   const [browserCtxMenu, setBrowserCtxMenu] = useState<{ x: number; y: number; itemId: string } | null>(null);
   const browserCtxMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const getBrowserMetrics = () => {
-    if (!browserRef.current) return null;
-    return createLocalCoordinateMetrics(browserRef.current);
-  };
-
-  const clientToBrowserCoords = (clientX: number, clientY: number, metrics = getBrowserMetrics()) => {
-    if (!metrics) return null;
-    const point = metrics.clientToLocal(clientX, clientY);
-
-    return {
-      x: point.x,
-      y: point.y,
-      width: metrics.width,
-      height: metrics.height,
-    };
-  };
-
-  const clampBrowserItemPosition = (x: number, y: number, width: number, height: number) => ({
-    x: Math.max(10, Math.min(width - BROWSER_ICON_SIZE - 8, x)),
-    y: Math.max(10, Math.min(height - BROWSER_ICON_SIZE - 8, y)),
-  });
-
-  const getDraggedDesktopIconBrowserPosition = (iconId: string, clientX: number, clientY: number) => {
-    const metrics = getBrowserMetrics();
-    if (!metrics) return null;
-    const escapedId = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(iconId) : iconId.replace(/"/g, '\\"');
-    const draggedEl = document.querySelector<HTMLElement>(`.desktop-icon.dragging[data-id="${escapedId}"]`);
-
-    if (draggedEl) {
-      const iconRect = draggedEl.getBoundingClientRect();
-      const topLeft = metrics.clientToLocal(iconRect.left, iconRect.top);
-      return clampBrowserItemPosition(
-        topLeft.x,
-        topLeft.y,
-        metrics.width,
-        metrics.height
-      );
-    }
-
-    const browserCoords = clientToBrowserCoords(clientX, clientY);
-    if (!browserCoords) return null;
-    return clampBrowserItemPosition(browserCoords.x - BROWSER_ICON_SIZE / 2, browserCoords.y - 24, browserCoords.width, browserCoords.height);
-  };
-
-  // Helper to convert the current pointer to a desktop top-left while preserving the original grab point.
-  const clientToDesktopItemPosition = (clientX: number, clientY: number, grabOffset: { x: number; y: number }): { x: number; y: number } | null => {
-    if (!browserRef.current || !desktopRef?.current) return null;
-    const desktopPoint = createLocalCoordinateMetrics(desktopRef.current).clientToLocal(clientX, clientY);
-    const desktopX = desktopPoint.x - grabOffset.x;
-    const desktopY = desktopPoint.y - grabOffset.y;
-    
-    return { x: Math.max(8, desktopX), y: Math.max(0, desktopY) };
-  };
-
-  // Helper to find which window is on top at a given point
-  const getTopWindowAtPoint = (clientX: number, clientY: number): string | null => {
-    const elementAtPoint = document.elementFromPoint(clientX, clientY);
-    if (!elementAtPoint) return null;
-    
-    // Find the window element
-    const windowEl = elementAtPoint.closest('.window') as HTMLElement | null;
-    if (!windowEl) return null;
-    
-    const windowId = windowEl.dataset.app;
-    return windowId || null;
-  };
-
-  const handleItemPointerDown = (itemId: string, e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    
-    // Get the item first - don't call setState inside setItems callback
-    const item = items.find(i => i.id === itemId);
-    if (!item || !setDraggingFromFolder) return;
-    
-    // Handle selection (like desktop)
-    const nextSel = selection.has(itemId) ? new Set(selection) : new Set([itemId]);
-    setSelection(nextSel);
-    
-    dragStateRef.current.hasDragged = false;
-    setDraggedItem(itemId);
-    const startX = e.clientX, startY = e.clientY;
-    const dragTarget = e.currentTarget as HTMLElement;
-    const pointerId = e.pointerId;
-    
-    // Store the starting position of the item
-    const startItemX = item.x;
-    const startItemY = item.y;
-    const dragMetrics = getBrowserMetrics();
-    const startBrowserCoords = clientToBrowserCoords(e.clientX, e.clientY, dragMetrics);
-    if (!startBrowserCoords) return;
-    const grabOffset = {
-      x: startBrowserCoords.x - startItemX,
-      y: startBrowserCoords.y - startItemY,
-    };
-    
-    let dragging = false;
-
-      const move = (ev: PointerEvent) => {
-        const dx = ev.clientX - startX;
-        const dy = ev.clientY - startY;
-        const dist = Math.hypot(dx, dy);
-        
-        if (!dragging && dist > 4) {
-          dragging = true;
-          dragStateRef.current.hasDragged = true;
-          try { dragTarget.setPointerCapture(pointerId); } catch {}
-          e.preventDefault();
-        }
-        
-        if (dragging) {
-          // Update browser item position during drag so it follows cursor
-          if (browserRef.current) {
-            const browserCoords = clientToBrowserCoords(ev.clientX, ev.clientY, dragMetrics);
-            if (!browserCoords) return;
-            const browserX = browserCoords.x;
-            const browserY = browserCoords.y;
-            
-            // Check if dragging outside browser bounds
-            const isOutsideBrowser = browserX < 0 || browserX > browserCoords.width || browserY < 0 || browserY > browserCoords.height;
-            
-            const newX = browserX - grabOffset.x;
-            const newY = browserY - grabOffset.y;
-            
-            // Only show desktop ghost if dragging outside browser
-            if (isOutsideBrowser && setDraggingFromFolder) {
-              // Start/update dragging on desktop plane
-              const desktopCoords = clientToDesktopItemPosition(ev.clientX, ev.clientY, grabOffset);
-              if (desktopCoords) {
-                setDraggingFromFolder(prev => prev ? {
-                  ...prev,
-                  x: desktopCoords.x,
-                  y: desktopCoords.y
-                } : {
-                  item,
-                  x: desktopCoords.x,
-                  y: desktopCoords.y,
-                  sourceFolder: folderId
-                });
-              }
-            } else if (setDraggingFromFolder) {
-              // Clear desktop ghost if back inside browser
-              setDraggingFromFolder(null);
-            }
-            
-            if (!isOutsideBrowser) {
-              const clamped = clampBrowserItemPosition(newX, newY, browserCoords.width, browserCoords.height);
-              setItems(list => list.map(i => i.id === itemId ? { ...i, x: clamped.x, y: clamped.y } : i));
-            }
-            
-            // Check if over folder within browser window
-            dragOverTargetFolderRef.current = null;
-            if (!isOutsideBrowser) {
-              const folders = items.filter(i => i.type === "folder" && i.id !== itemId);
-              for (const folder of folders) {
-                const folderRect = { 
-                  left: folder.x, 
-                  top: folder.y, 
-                  right: folder.x + 96, 
-                  bottom: folder.y + 96 
-                };
-                const overFolder = browserX >= folderRect.left && browserX <= folderRect.right && 
-                                  browserY >= folderRect.top && browserY <= folderRect.bottom;
-                if (overFolder) {
-                  dragOverTargetFolderRef.current = folder.id;
-                  dragOverFolderRef.current = true;
-                  setDragOverFolder(true);
-                  break;
-                }
-              }
-            }
-            
-            if (!dragOverTargetFolderRef.current) {
-              dragOverFolderRef.current = false;
-              setDragOverFolder(false);
-            }
-          }
-        }
-      };
-
-      const up = (ev?: PointerEvent) => {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", up);
-        try { dragTarget.releasePointerCapture(pointerId); } catch {}
-        
-        if (dragging && ev && setDraggingFromFolder) {
-          // Check if dropped within browser bounds first (more reliable than elementFromPoint)
-          const dropBrowserCoords = ev ? clientToBrowserCoords(ev.clientX, ev.clientY, dragMetrics) : null;
-          const isWithinBrowser = !!dropBrowserCoords &&
-            dropBrowserCoords.x >= 0 &&
-            dropBrowserCoords.x <= dropBrowserCoords.width &&
-            dropBrowserCoords.y >= 0 &&
-            dropBrowserCoords.y <= dropBrowserCoords.height;
-          
-          const desktopCoords = clientToDesktopItemPosition(ev.clientX, ev.clientY, grabOffset);
-          const dropPosition = dropBrowserCoords
-            ? clampBrowserItemPosition(dropBrowserCoords.x - grabOffset.x, dropBrowserCoords.y - grabOffset.y, dropBrowserCoords.width, dropBrowserCoords.height)
-            : null;
-          let movedIntoFolder = false;
-          
-          // Check if dropped within the same folder window
-          if (isWithinBrowser) {
-            if (dragOverTargetFolderRef.current && dragOverFolderRef.current) {
-              // Dropped on a folder icon
-              const targetFolderId = dragOverTargetFolderRef.current;
-              
-              // Only move to nested folder if it's different from current folder
-              // Check: if source folder equals target folder, don't move (just update position)
-              if (targetFolderId === "test-folder" && item.type === "file" && folderId !== "test-folder") {
-                // Moving to test-folder from another folder
-                setTestFolderItems(prev => [...prev, { 
-                  ...item, 
-                  x: dropPosition?.x ?? item.x,
-                  y: dropPosition?.y ?? item.y,
-                }]);
-                setItems(list => list.filter(i => i.id !== itemId));
-                movedIntoFolder = true;
-              }
-              // If dragging to the same folder icon (folderId === targetFolderId), do nothing - just update position below
-            }
-            
-            // Always update position if dropped within same folder window (whether on folder icon or not)
-            if (dropPosition && !movedIntoFolder) {
-              setItems(list => list.map(i => i.id === itemId ? { ...i, x: dropPosition.x, y: dropPosition.y } : i));
-            }
-          } else if (desktopCoords && setDesktopIcons) {
-            // Dropped on desktop - add to desktop icons
-            const existingIcon = desktopIcons?.find(i => i.id === item.id);
-            if (!existingIcon) {
-              setDesktopIcons(prev => {
-                if (prev.some(i => i.id === item.id)) {
-                  return prev.map(i => 
-                    i.id === item.id 
-                      ? { ...i, x: desktopCoords.x, y: desktopCoords.y, type: item.type }
-                      : i
-                  );
-                }
-                return [...prev, {
-                  id: item.id,
-                  label: item.label,
-                  app: item.type === "folder" ? item.id : item.windowId || item.id,
-                  x: desktopCoords.x,
-                  y: desktopCoords.y,
-                  type: item.type
-                }];
-              });
-            } else {
-              setDesktopIcons(prev => prev.map(i => 
-                i.id === item.id 
-                  ? { ...i, x: desktopCoords.x, y: desktopCoords.y, type: item.type }
-                  : i
-              ));
-            }
-            setItems(list => list.filter(i => i.id !== itemId));
-          }
-          
-          setDraggingFromFolder(null);
-        } else if (setDraggingFromFolder) {
-          setDraggingFromFolder(null);
-        }
-        
-        setDraggedItem(null);
-        dragOverTargetFolderRef.current = null;
-        dragOverFolderRef.current = false;
-        setDragOverFolder(false);
-      };
-
-      window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", up);
-  };
-
-  // Expose function to add items from desktop
-  const addItemFromDesktop = useRef<((item: BrowserItem) => void) | null>(null);
-  addItemFromDesktop.current = (item: BrowserItem) => {
-    setItems(prev => [...prev, item]);
-  };
-  
   // Close browser context menu when clicking outside
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -2730,230 +2114,55 @@ function BlogBrowser({
     return () => window.removeEventListener("pointerdown", onDown);
   }, []);
 
-  // Handle desktop icon drag into browser - check on pointer move
-  useEffect(() => {
-    if (!desktopRef?.current || !setDesktopIcons || !browserRef.current) return;
-    
-    const handlePointerMove = (e: PointerEvent) => {
-      // Check if a desktop icon is being dragged
-      const desktopIcon = document.querySelector('.desktop-icon.dragging') as HTMLElement;
-      if (desktopIcon && browserRef.current) {
-        desktopDraggedIconRef.current = desktopIcon.dataset.id || null;
-        
-        const browserCoords = clientToBrowserCoords(e.clientX, e.clientY);
-        const overBrowser = !!browserCoords &&
-          browserCoords.x >= 0 &&
-          browserCoords.x <= browserCoords.width &&
-          browserCoords.y >= 0 &&
-          browserCoords.y <= browserCoords.height;
-        
-        if (overBrowser && browserCoords) {
-          // Check if over any folder
-          desktopDragOverTargetRef.current = null;
-          setItems(currentItems => {
-            const folders = currentItems.filter(i => i.type === "folder");
-            for (const folder of folders) {
-              const folderRect = { 
-                left: folder.x,
-                top: folder.y,
-                right: folder.x + BROWSER_ICON_SIZE,
-                bottom: folder.y + BROWSER_ICON_SIZE,
-              };
-              const overFolder = browserCoords.x >= folderRect.left && browserCoords.x <= folderRect.right &&
-                                browserCoords.y >= folderRect.top && browserCoords.y <= folderRect.bottom;
-              if (overFolder) {
-                desktopDragOverTargetRef.current = folder.id;
-                dragOverFolderRef.current = true;
-                  setDragOverFolder(true);
-                return currentItems;
-              }
-            }
-            dragOverFolderRef.current = false;
-              setDragOverFolder(false);
-            return currentItems;
-          });
-        } else {
-          desktopDragOverTargetRef.current = null;
-          dragOverFolderRef.current = false;
-            setDragOverFolder(false);
-        }
-      } else {
-        desktopDraggedIconRef.current = null;
-        desktopDragOverTargetRef.current = null;
-      }
-    };
-    
-    const handlePointerUp = (e: PointerEvent) => {
-      // Read refs at the moment of drop
-      const draggedIconId = desktopDraggedIconRef.current;
-      const dragOverTarget = desktopDragOverTargetRef.current;
-      const wasOverFolder = dragOverFolderRef.current;
-      
-      if (draggedIconId && browserRef.current && setDesktopIcons) {
-        const browserCoords = clientToBrowserCoords(e.clientX, e.clientY);
-        const overBrowser = !!browserCoords &&
-          browserCoords.x >= 0 &&
-          browserCoords.x <= browserCoords.width &&
-          browserCoords.y >= 0 &&
-          browserCoords.y <= browserCoords.height;
-        
-        if (overBrowser) {
-          const desktopIcon = desktopIcons?.find(i => i.id === draggedIconId);
-          if (desktopIcon) {
-            const dropPosition = getDraggedDesktopIconBrowserPosition(draggedIconId, e.clientX, e.clientY);
-            if (!dropPosition) return;
-
-            // Check if dropped on a folder FIRST
-            if (dragOverTarget && wasOverFolder) {
-              if (dragOverTarget === "test-folder") {
-                // Add to test folder
-                setTestFolderItems(prev => {
-                  const newItems = [...prev, {
-                    id: desktopIcon.id,
-                    label: desktopIcon.label,
-                    type: desktopIcon.type === "folder" ? "folder" as const : "file" as const,
-                    x: dropPosition.x,
-                    y: dropPosition.y,
-                    windowId: desktopIcon.app
-                  }];
-                  return newItems;
-                });
-                // Remove from desktop
-                setDesktopIcons(prev => prev.filter(i => i.id !== draggedIconId));
-                // Clear refs
-                desktopDraggedIconRef.current = null;
-                desktopDragOverTargetRef.current = null;
-                  setDragOverFolder(false);
-                  dragOverFolderRef.current = false;
-                return;
-              }
-            }
-            
-            // Add to browser at drop position (only if NOT dropped on folder)
-            // Check if item already exists in browser to avoid duplicates
-            setItems(prev => {
-              const exists = prev.some(i => i.id === desktopIcon.id);
-              if (exists) {
-                // Item already exists, just update position
-                return prev.map(i => 
-                  i.id === desktopIcon.id 
-                    ? {
-                        ...i,
-                        x: dropPosition.x,
-                        y: dropPosition.y,
-                        type: desktopIcon.type === "folder" ? "folder" as const : "file" as const
-                      }
-                    : i
-                );
-              }
-              // Add new item
-              return [...prev, {
-                id: desktopIcon.id,
-                label: desktopIcon.label,
-                type: desktopIcon.type === "folder" ? "folder" as const : "file" as const,
-                x: dropPosition.x,
-                y: dropPosition.y,
-                windowId: desktopIcon.app
-              }];
-            });
-            setDesktopIcons(prev => prev.filter(i => i.id !== draggedIconId));
-          }
-        }
-      }
-      
-      // Clear refs
-      desktopDraggedIconRef.current = null;
-      desktopDragOverTargetRef.current = null;
-        setDragOverFolder(false);
-        dragOverFolderRef.current = false;
-    };
-    
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    };
-  }, [desktopRef, setDesktopIcons, desktopIcons, setItems, setTestFolderItems]);
+  const openItem = (item: BrowserItem) => {
+    if (item.type === "file" && item.windowId) {
+      if (windows[item.windowId]) openWin(item.windowId);
+      setNextZ((z) => z + 1);
+    } else if (item.type === "folder") {
+      openWin(item.id);
+      setNextZ((z) => z + 1);
+    }
+  };
 
   return (
-    <div 
-      className="blog-browser" 
+    <div
+      className={`blog-browser ${dropTarget === `window:${folderId}` ? "is-drop-target" : ""}`}
       ref={browserRef}
+      data-dropzone="window"
+      data-folder-id={folderId}
       onPointerDown={(e) => {
-        // Clear selection when clicking on empty space
-        if (e.target === browserRef.current) {
-          setSelection(new Set());
-        }
+        if (e.target === browserRef.current) setSelection(new Set());
       }}
     >
-      {items.map((item) => {
-        // Only hide browser icon when dragging outside the folder (to desktop)
-        // When dragging within the same folder, keep it visible
-        const isDraggingToDesktop = draggedItem === item.id && draggingFromFolder?.item.id === item.id && draggingFromFolder?.sourceFolder === folderId;
-        const isDraggingWithinFolder = draggedItem === item.id && !draggingFromFolder;
-        
-        return (
+      {items.map((item) => (
         <button
           key={item.id}
-          className={`browser-icon ${item.type} ${selection.has(item.id) ? 'is-selected' : ''} ${draggedItem === item.id ? 'dragging' : ''} ${item.type === 'folder' && dragOverFolder ? 'drag-over' : ''}`}
-          style={{ 
-            position: 'absolute', 
-            left: item.x, 
-            top: item.y,
-            opacity: isDraggingToDesktop ? 0 : 1,
-            pointerEvents: isDraggingToDesktop ? 'none' : 'auto'
-          }}
-          onClick={(e) => {
-            // Only select on single click, don't open
-            if (!dragStateRef.current.hasDragged) {
-              const nextSel = selection.has(item.id) ? new Set(selection) : new Set([item.id]);
-              setSelection(nextSel);
-            }
-            dragStateRef.current.hasDragged = false;
-          }}
+          className={`browser-icon ${item.type} ${selection.has(item.id) ? "is-selected" : ""} ${dragSourceId === item.id ? "is-drag-source" : ""} ${item.type === "folder" && dropTarget === `folder:${item.id}` ? "drag-over" : ""}`}
+          data-dropzone={item.type === "folder" ? "bfolder" : undefined}
+          data-folder-id={item.type === "folder" ? item.id : undefined}
+          style={{ position: "absolute", left: item.x, top: item.y }}
+          onClick={() => setSelection(new Set([item.id]))}
           onDoubleClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
-            // Cancel any pending drag
-            dragStateRef.current.hasDragged = false;
-            if (setDraggingFromFolder) {
-              setDraggingFromFolder(null);
-            }
-            setDraggedItem(null);
-            
-            if (item.type === "file" && item.windowId) {
-              openWin(item.windowId);
-              setNextZ((z) => z + 1);
-            } else if (item.type === "folder") {
-              // Open folder window - use item.id as the window ID
-              openWin(item.id);
-              setNextZ((z) => z + 1);
-            }
+            openItem(item);
           }}
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            // Don't show context menu if dragging
-            if (dragStateRef.current.hasDragged) return;
-            
             if (!browserRef.current) return;
             const browserRect = browserRef.current.getBoundingClientRect();
-            setBrowserCtxMenu({
-              x: e.clientX - browserRect.left,
-              y: e.clientY - browserRect.top,
-              itemId: item.id
-            });
-            
-            // Select item if not already selected
-            if (!selection.has(item.id)) {
-              setSelection(new Set([item.id]));
-            }
+            setBrowserCtxMenu({ x: e.clientX - browserRect.left, y: e.clientY - browserRect.top, itemId: item.id });
+            if (!selection.has(item.id)) setSelection(new Set([item.id]));
           }}
           onPointerDown={(e) => {
-            // Don't start drag on right-click
             if (e.button !== 0) return;
-            handleItemPointerDown(item.id, e);
+            beginItemDrag(e, { kind: "folder", folderId }, {
+              id: item.id,
+              label: item.label,
+              app: item.type === "folder" ? item.id : item.windowId || item.id,
+              type: item.type,
+            });
           }}
         >
           <div className="icon">
@@ -2962,13 +2171,12 @@ function BlogBrowser({
             </svg>
           </div>
           <span className="icon-label">{item.label}</span>
-          {item.type === "folder" && item.id === "test-folder" && testFolderItems.length > 0 && (
-            <span className="folder-count" aria-label={`${testFolderItems.length} items`}>{testFolderItems.length}</span>
+          {item.type === "folder" && (folderCounts[item.id] ?? 0) > 0 && (
+            <span className="folder-count" aria-label={`${folderCounts[item.id]} items`}>{folderCounts[item.id]}</span>
           )}
         </button>
-        );
-      })}
-      
+      ))}
+
       {/* Browser context menu */}
       {browserCtxMenu && (
         <div
@@ -2990,15 +2198,7 @@ function BlogBrowser({
         >
           <button className="menu-entry" role="menuitem" onClick={() => {
             const item = items.find(i => i.id === browserCtxMenu.itemId);
-            if (item) {
-              if (item.type === "file" && item.windowId) {
-                openWin(item.windowId);
-                setNextZ((z) => z + 1);
-              } else if (item.type === "folder") {
-                openWin(item.id);
-                setNextZ((z) => z + 1);
-              }
-            }
+            if (item) openItem(item);
             setBrowserCtxMenu(null);
           }}>Open</button>
           <button className="menu-entry" role="menuitem" onClick={() => {

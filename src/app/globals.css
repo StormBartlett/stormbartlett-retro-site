@@ -461,8 +461,11 @@ html,body,#__next{height:100%}
 .code-block{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; background:rgba(0,0,0,.05); padding:10px; margin:12px 0; border:1px solid var(--border); font-size:12px; line-height:1.5; overflow-x:auto; white-space:pre}
 :root.dark-mode .code-block{background:rgba(255,255,255,.08)}
 
-/* Drag ghost visuals from trash */
-.drag-ghost{opacity:.9; filter: drop-shadow(0 4px 12px rgba(0,0,0,.35));}
+/* Central drag-and-drop visuals */
+.drag-ghost-icon{opacity:.75;filter:drop-shadow(0 4px 10px rgba(0,0,0,.4))}
+.browser-icon.is-drag-source{opacity:.35}
+.blog-browser.is-drop-target{outline:2px dashed var(--border);outline-offset:-4px;background:color-mix(in srgb,var(--border) 6%,var(--bg-desktop))}
+.desktop-icon.is-over{outline:2px dashed var(--border);background:rgba(127,127,127,.15)}
 
 /* Blocky classic scrollbar handle */
 *::-webkit-scrollbar{width:18px;height:18px;background:var(--scrollbar-track)}
