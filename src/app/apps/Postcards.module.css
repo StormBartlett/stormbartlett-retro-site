@@ -21,7 +21,7 @@
 .app button:focus-visible, .app input:focus-visible, .app textarea:focus-visible { outline: 2px solid #5d626e; outline-offset: 3px; }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 17px; }
 .eyebrow { display: block; font-size: 7px; letter-spacing: 1.3px; margin-bottom: 5px; }
-.header h2 { font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 400; letter-spacing: -.9px; margin: 0; }
+.header h2 { font-family: var(--retro-ui-font); font-size: 22px; font-weight: 400; letter-spacing: -.9px; margin: 0; }
 .seal { width: 38px; height: 43px; flex-shrink: 0; padding-top: 3px; background: #ebc7d4; border: 1px dashed #29272e; transform: rotate(9deg); font-size: 24px; text-align: center; line-height: 1; }
 .seal small { display: block; font-size: 8px; margin-top: 3px; }
 .preview { width: 100%; transform: rotate(-1.5deg); filter: drop-shadow(3px 4px 0 #d6d0c6); }
@@ -33,7 +33,7 @@
 .options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .choice, .stampChoice, .paperChoice { border: 1px solid #a7a19a; background: #fffcf6; }
 .choice { padding: 5px 4px 6px; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 9px !important; }
-.sceneGlyph { font-family: Georgia, serif; font-size: 21px; height: 24px; line-height: 23px; }
+.sceneGlyph { font-family: var(--retro-ui-font); font-size: 21px; height: 24px; line-height: 23px; }
 .selected { border-color: #29272e; background: #f1e3b9; box-shadow: 1px 2px 0 #29272e; }
 .choice:hover, .paperChoice:hover, .stampChoice:hover { border-color: #29272e; }
 .formRow { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
@@ -61,7 +61,7 @@
 .notice { min-height: 30px; line-height: 1.6; margin: 10px 0 14px; font-size: 8px; color: #746b68; }
 .drafts { border: 1px solid #b9b2a9; padding: 11px 9px; background: #eeeae0; }
 .draftHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
-.draftHeading h3 { margin: 0; font-family: Georgia, serif; font-size: 14px; font-weight: normal; }
+.draftHeading h3 { margin: 0; font-family: var(--retro-ui-font); font-size: 14px; font-weight: normal; }
 .draftHeading > span { font-size: 8px; color: #79706c; }
 .deviceNote { margin: 5px 0 9px; font-size: 7px; color: #796f6a; }
 .empty { text-align: center; color: #92857c; font-size: 9px; padding: 11px 0 4px; }
@@ -72,7 +72,7 @@
 .loadDraft strong, .loadDraft small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .loadDraft strong { font-size: 9px; font-weight: normal; margin-bottom: 3px; }
 .loadDraft small { font-size: 7px; color: #81756e; }
-.draftGlyph { background: #fffbf1; width: 27px; height: 23px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid #bfb4a7; font-family: Georgia, serif; font-size: 17px; }
+.draftGlyph { background: #fffbf1; width: 27px; height: 23px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid #bfb4a7; font-family: var(--retro-ui-font); font-size: 17px; }
 .loadDraft:hover strong { text-decoration: underline; }
 .deleteDraft { flex-shrink: 0; border: 0; background: transparent; padding: 7px 0 7px 8px; font-size: 16px !important; color: #8d7e73 !important; }
 .deleteDraft:hover { color: #29272e !important; }

@@ -2,6 +2,13 @@ export const DESKTOP_PREFERENCES_KEY = "storm-desktop-preferences-v1";
 export const DESKTOP_PREFERENCES_EVENT = "storm-preferences-change";
 
 export const WALLPAPERS = {
+  crt: {
+    label: "CRT",
+    color: "var(--bg-desktop)",
+    image: "none",
+    size: "auto",
+    ink: "var(--text)",
+  },
   "classic-dots": {
     label: "Classic",
     color: "#d6d6ce",
@@ -55,9 +62,9 @@ export type DesktopPreferences = {
 };
 
 export const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = {
-  wallpaper: "classic-dots",
+  wallpaper: "crt",
   accent: "graphite",
-  scanlines: false,
+  scanlines: true,
   reduceEffects: false,
   sound: false,
 };
@@ -73,7 +80,7 @@ function validatePreferences(value: unknown): DesktopPreferences {
       ? candidate.wallpaper as DesktopPreferences["wallpaper"] : DEFAULT_DESKTOP_PREFERENCES.wallpaper,
     accent: typeof candidate.accent === "string" && Object.hasOwn(ACCENTS, candidate.accent)
       ? candidate.accent as DesktopPreferences["accent"] : DEFAULT_DESKTOP_PREFERENCES.accent,
-    scanlines: typeof candidate.scanlines === "boolean" ? candidate.scanlines : false,
+    scanlines: typeof candidate.scanlines === "boolean" ? candidate.scanlines : DEFAULT_DESKTOP_PREFERENCES.scanlines,
     reduceEffects: typeof candidate.reduceEffects === "boolean" ? candidate.reduceEffects : false,
     sound: typeof candidate.sound === "boolean" ? candidate.sound : false,
   };

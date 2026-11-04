@@ -100,7 +100,7 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 :root.dark-mode .window{background:linear-gradient(180deg,var(--window-paper-hi),var(--window-paper-lo));box-shadow:inset 2px 2px 0 rgba(255,255,255,.18),inset -2px -2px 0 rgba(0,0,0,.9),6px 6px 0 rgba(255,255,255,.08),0 16px 26px var(--window-shadow),0 0 0 1px rgba(255,255,255,.72)}
 .blog-window{width:420px;height:350px}
 .about-portfolio-window{width:320px;height:350px;min-width:286px;min-height:332px}
-.about-portfolio-window .window-body{background:linear-gradient(180deg,var(--window-paper-hi) 0%,var(--window-paper) 42%,var(--window-paper-lo) 100%);color:var(--window-ink)!important;padding:16px 18px 14px;overflow:auto;font-family:"Silkscreen","VT323",ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;font-size:15px;line-height:1.45;font-weight:400;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -1px 0 rgba(0,0,0,.08)}
+.about-portfolio-window .window-body{background:linear-gradient(180deg,var(--window-paper-hi) 0%,var(--window-paper) 42%,var(--window-paper-lo) 100%);color:var(--window-ink)!important;padding:16px 18px 14px;overflow:auto;font-family:var(--retro-ui-font);font-size:15px;line-height:1.45;font-weight:400;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -1px 0 rgba(0,0,0,.08)}
 :root.dark-mode .about-portfolio-window .window-body{background:#050505;color:#ffffff!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
 .about-portfolio{min-height:100%;display:flex;flex-direction:column;gap:12px}
 .about-portfolio-header{display:grid;grid-template-columns:54px minmax(0,1fr);align-items:center;gap:10px;min-height:64px}
@@ -632,3 +632,18 @@ body{touch-action:auto}.storm-desktop .desktop{touch-action:pan-x pan-y pinch-zo
 .storm-desktop :is(.desktop-icon,.browser-icon) .icon:has(svg[stroke="currentColor"]){filter:none;color:#25232c}
 .window-body:has(>.app-boundary>.folder-toolbar),.app-boundary:has(>.folder-toolbar){display:flex;flex-direction:column;min-height:0;overflow:hidden}.app-boundary:has(>.folder-toolbar){flex:1;height:100%}
 @media(max-width:540px){.falling-sand-container{flex-direction:column;gap:0;padding:0}.falling-sand-game{min-height:240px}.falling-sand-hud{width:100%;max-height:225px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;padding:7px}.falling-sand-hud .hud-section:first-child{grid-column:1/-1}.falling-sand-hud .material-buttons{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px}.falling-sand-hud .material-btn{font-size:9px;padding:4px 1px;min-height:38px}.falling-sand-hud .hud-label,.falling-sand-hud .brush-size-display{font-size:9px}.falling-sand-hud .clear-btn{min-height:32px;padding:4px 7px}}
+
+/* CRT glass is an overlay: filtering the CSS3D ancestor breaks Safari projection. */
+:root:not([data-desktop-scanlines="off"]) .storm-desktop::after{content:"";display:block;position:absolute;inset:0;z-index:40002;pointer-events:none;background:repeating-linear-gradient(0deg,var(--desktop-crt-line,#00000012) 0 1px,transparent 1px 3px),radial-gradient(ellipse at center,transparent 50%,#0003 100%);box-shadow:inset 0 0 65px #0002}
+:root[data-reduce-effects="true"] .storm-desktop::after{display:none}
+/* High contrast selection and drag feedback, independent of wallpaper or theme. */
+.storm-desktop .desktop-icon.is-selected,.storm-desktop .browser-icon.is-selected{background:#8c9ebc40;outline:2px solid #171717;outline-offset:1px;box-shadow:0 0 0 4px #fff9df}
+.storm-desktop .desktop-icon.is-selected::before,.storm-desktop .browser-icon.is-selected::before{border:1px dashed #fff9df;inset:-1px}
+.storm-desktop .desktop-icon.is-selected .icon-label,.storm-desktop .browser-icon.is-selected .icon-label{color:#fff9df!important;background:#171717;text-shadow:none;padding:2px}
+.storm-desktop .desktop-icon.dragging,.storm-desktop .browser-icon.is-drag-source{opacity:.9!important}
+.storm-desktop .desktop-icon.is-over,.storm-desktop .blog-browser.is-drop-target{outline:3px dashed #fff9df;outline-offset:-4px;box-shadow:inset 0 0 0 5px #171717;background-color:#8c9ebc50}
+.drag-ghost-icon{outline:2px solid #171717;box-shadow:0 0 0 2px #fff9df;opacity:.9}
+/* One glass layer only: stacked scanlines create moiré on the scaled 3D screen. */
+.storm-desktop.embedded-screen::before,.model-screen::before{display:none!important}
+
+:root.dark-mode{--desktop-crt-line:#ffffff0d}

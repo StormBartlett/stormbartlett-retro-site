@@ -515,7 +515,7 @@ export default function FallingSand() {
           top: "8px",
           left: "8px",
           color: "#ffffff",
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+          fontFamily: "var(--retro-ui-font)",
           fontSize: "14px",
           fontWeight: "700",
           textShadow: "1px 1px 2px rgba(0,0,0,0.8)",

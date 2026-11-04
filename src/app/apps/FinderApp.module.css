@@ -129,3 +129,5 @@
 }
 
 .item{touch-action:none;user-select:none}.dragSource{opacity:.35}.dropTarget{outline:2px solid var(--finder-ink)!important;outline-offset:-3px;background:#dce0d0!important}.dragGhost{position:absolute;left:0;top:0;z-index:200;display:flex;align-items:center;flex-direction:column;gap:6px;width:90px;pointer-events:none;opacity:.85;will-change:transform;font-size:10px}.dragGhost span{background:var(--finder-paper);color:var(--finder-ink);padding:1px 3px;text-align:center;overflow-wrap:anywhere}
+
+.iconGrid .selected,.dragGhost{outline:2px solid #171717;outline-offset:1px;box-shadow:0 0 0 4px #fff9df;background:#a3b4cc44}.dragSource{opacity:.8}

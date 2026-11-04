@@ -39,6 +39,8 @@ export const appComponents: Record<string, ComponentType<{ onOpenApp?: (id: stri
 export function AppGlyph({ glyph, size = 32 }: { glyph: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true" shapeRendering="crispEdges">
     {glyph === "folder" ? <><path d="M3 8h10l3 4h13v15H3z" fill="var(--app-icon-fill,#f3e8bb)"/><path d="M3 14h26M8 19h7"/></> :
+    glyph === "game" ? <><path d="M4 8h11l3 4h11v15H3V9z" fill="#e6d3a3"/><path d="M3 14h26"/><path d="M10 18h12v7H10z" fill="#eee9dc"/><path d="M13 19v5m-2-2h5m3-2h2m-1 3h2" stroke="#27272b" strokeWidth="2"/></> :
+    glyph === "workshop" ? <><path d="M4 8h11l3 4h11v15H3V9z" fill="#b9c6c4"/><path d="M3 14h26"/><path d="m9 22 5-6 5 6-5 4z" fill="#e6d3a3"/><path d="M21 17h4v8h-4z" fill="#c88771"/></> :
     glyph === "paint" ? <><path d="M5 4h22v24H5z" fill="var(--app-icon-fill,#f2c9d8)"/><path d="m10 21 9-12 4 3-9 12-5 1zM9 7h5M20 23h4"/><path d="m18 11 4 3"/></> :
     glyph === "terminal" ? <><path d="M3 6h26v21H3z" fill="var(--app-icon-fill,#cdd7f5)"/><path d="M3 11h26m-21 5 4 3-4 3m7 0h7M6 8h2m2 0h2"/></> :
     glyph === "tasks" ? <><path d="M5 5h22v23H5z" fill="var(--app-icon-fill,#cce4cf)"/><path d="M5 11h22M9 16l2 2 3-4m3 2h6M9 23h4m4 0h6M12 3h8v5h-8z"/></> :
@@ -66,7 +68,7 @@ export function AppLauncher({ onOpenApp, onClose, initialQuery = "" }: { onOpenA
   const [index, setIndex] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
-  const choices = [{id:"about-portfolio",name:"About Storm",description:"Software developer",glyph:"tasks"}, {id:"playground",name:"Playground",description:"Applications",glyph:"game"}, ...portfolioApps].filter(app => `${app.name} ${app.description}`.toLowerCase().includes(query.toLowerCase()));
+  const choices = [{id:"about-portfolio",name:"About Storm",description:"Software developer",glyph:"tasks"}, {id:"playground",name:"Playground",description:"Applications",glyph:"workshop"}, ...portfolioApps].filter(app => `${app.name} ${app.description}`.toLowerCase().includes(query.toLowerCase()));
   useEffect(() => { previousFocus.current = document.activeElement as HTMLElement; input.current?.focus(); return () => previousFocus.current?.focus(); }, []);
   const launch = (id: string) => { onOpenApp(id); onClose(); };
   return <div className="launcher-backdrop" onPointerDown={e => { if (e.target === e.currentTarget) onClose(); }}>

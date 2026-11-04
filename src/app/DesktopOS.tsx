@@ -66,7 +66,7 @@ function getSpriteId({ id, label, type }: { id: string; label: string; type?: "f
 
 function IconArtwork({item,size=48}:{item:{id:string;label:string;app?:string;windowId?:string;type?:"file"|"folder"};size?:number}) {
   const app=item.app??item.windowId??item.id;
-  const glyph=portfolioApps.find(entry=>entry.id===app)?.glyph??(app==="playground"?"game":undefined);
+  const glyph=portfolioApps.find(entry=>entry.id===app)?.glyph??(app==="playground"?"workshop":undefined);
   return glyph?<AppGlyph glyph={glyph} size={size}/>:<svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true"><use href={`#${getSpriteId(item)}`}/></svg>;
 }
 

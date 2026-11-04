@@ -204,7 +204,7 @@
 .history .button:nth-child(2) {
   width: 27px;
   padding: 1px;
-  font-family: Arial, sans-serif;
+  font-family: var(--retro-ui-font);
   font-size: 20px;
   line-height: 1;
 }
