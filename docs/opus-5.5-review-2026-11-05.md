@@ -21,4 +21,16 @@ Falling Sand's separate Opus review identified frame-rate scheduling drift, hidd
 
 The integrated tree passed 161 tests, TypeScript and a production build before final preview verification. Browser checks include physical collisions, reversible Mac case, file drag/reload/undo, five-level nesting, direct game boot, Esc help/resume, keyboard tower placement, phone movement controls and zero-FPS drawing.
 
-Native iPhone Safari and Android testing remain outstanding. Safari focus handling was improved from code review, not validated on an actual Safari device. The two file browsers retain separate stores; cross-store desktop/Finder dragging is not provided. Default app icons remain recoverable after reload, and Put Back does not resolve duplicate names. Collisions assume the tested, non-overlapping device starts.
+The initial review had no Safari validation. The follow-up below exercises Safari in an iPhone simulator; physical iPhone and Android device testing remain outstanding. The two file browsers retain separate stores; cross-store desktop/Finder dragging is not provided. Default app icons remain recoverable after reload, and Put Back does not resolve duplicate names. Collisions assume the tested, non-overlapping device starts.
+
+## Follow-up: warm scenes and mobile Safari
+
+Two further read-only reviews used `claude-opus-5-5` with high effort, confirmed in model usage. Codex implemented the fixes in `b6df222` and the accompanying visual/mobile polish in `6c6b176`.
+
+Opus identified Canvas teardown as the repeat-opening cost: GLTF caching retained parsed assets but not a live renderer's uploaded resources. The scene now stays mounted after the first visit, keeps its viewport size, and uses `frameloop="never"` while hidden. The Matrix animation unmounts while away. Screen reattachment preserves DesktopOS, camera, windows and peripherals. Cached GLTF resources are explicitly retained.
+
+The final review also led to bounded context-loss recovery, rebuilding the environment after restoration, keeping the flat desktop available after graphics failure, guarding stale screen-slot cleanup, delaying resize notification until the screen exists, and cancelling peripheral inertia on hide. RTX lights keep a stable light count across model changes. Rainbow key colors are static, so they add no continuous animation loop.
+
+163 tests passed, including retained model lifetime and graphics-failure/retry coverage. The final production build passed. Native Safari in an iPhone 17 simulator on iOS 26.4.1 passed model switching/reopening, portrait and landscape, nested file drops, and gameplay checks for all five games. Chromium additionally verified retained hidden Canvas presence and peripheral collisions. The landscape selector and Snake's clipped direction controls were fixed after those browser checks.
+
+See [mobile Safari verification](mobile-safari-2026-11-05.md) for scope, evidence and remaining limits. Context loss was addressed by review and fallback tests; an actual GPU context-loss stress test was not performed.
