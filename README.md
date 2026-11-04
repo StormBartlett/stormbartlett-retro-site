@@ -41,3 +41,15 @@ Notes, task lists, artwork, postcard drafts, compositions, preferences, and scor
 `PortfolioApps.tsx` is the lazy-loaded app registry and shared launcher. Each mini app owns its component and CSS module under `src/app/apps`. `finderModel.ts` validates stored visitor files and rejects filesystem cycles and app injection. `DesktopOS.tsx` owns windows and legacy desktop interactions; `storm-app-focus` pauses background games. `RetroHardware.tsx` creates the keyboard and mouse using instanced keys and a local label atlas; its gesture events connect to desktop actions. The physical mouse moves a screen pointer and activates controls; physical keys type into the last focused input. Drag/throw either device, or use Reset desk to bring them back.
 
 The 3D scene is optional. Phone desktop mode avoids a WebGL dependency. Desktop/model view and CSS3D screen alignment need real-device checks in iOS Safari, Chrome iOS, and embedded webviews before claiming complete cross-browser parity. See `docs/portfolio-review.md` for the review findings.
+
+## Hardware collection
+
+Model view has a three-way switcher: Classic Mac, Studio Laptop, and RTX Workstation. These are original Blender models, with their screen placement and framing exported alongside the glTF assets. The desktop stays mounted while hardware changes, so open apps and in-memory work survive. The laptop's baked keycaps carry key metadata and can type into desktop inputs; the other machines retain draggable external peripherals.
+
+Regenerate geometry and the manifest with Blender 4.1 or later:
+
+```sh
+/Applications/Blender.app/Contents/MacOS/Blender --background --python assets/blender/build_hardware.py -- --output public/models
+```
+
+Optional `--sources <directory>` saves editable `.blend` files. Models use local geometry/materials and no remote textures. Only the selected hardware is loaded; the scene still renders on demand. The three rigs use the same OS with responsive screen sizes rather than separate app implementations.

@@ -10,6 +10,7 @@ export type DeskBounds = { minX: number; maxX: number; minZ: number; maxZ: numbe
 export type RetroHardwareProps = {
   /** The bottom of the hardware rests at this height. Coordinates are local to its parent. */
   position?: [number, number, number];
+  tone?: "classic" | "modern";
   rotationY?: number;
   bounds?: DeskBounds;
   onInteractionChange?: (active: boolean) => void;
@@ -222,7 +223,7 @@ function roundedSlab(width: number, depth: number, height: number, radius: numbe
   return geometry;
 }
 
-function useHardwareResources() {
+function useHardwareResources(tone: "classic" | "modern" = "classic") {
   const resources = React.useMemo(() => {
     const cream = new THREE.MeshStandardMaterial({ color: "#d8cfb5", roughness: 0.64 });
     const light = new THREE.MeshStandardMaterial({ color: "#e8dfc7", roughness: 0.6 });
@@ -230,8 +231,11 @@ function useHardwareResources() {
     const dark = new THREE.MeshStandardMaterial({ color: "#817966", roughness: 0.84 });
     const cord = new THREE.MeshStandardMaterial({ color: "#aca28a", roughness: 0.77 });
     const keys = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.64 });
+    if(tone === "modern") {
+      cream.color.set("#303845");light.color.set("#495464");side.color.set("#151c24");dark.color.set("#0a1018");cord.color.set("#242b35");keys.color.set("#91dfcd");keys.emissive.set("#294f48");keys.emissiveIntensity=.16;
+    }
     return { cream, light, side, dark, cord, keys };
-  }, []);
+  }, [tone]);
   React.useEffect(() => () => Object.values(resources).forEach((material) => material.dispose()), [resources]);
   return resources;
 }
@@ -374,10 +378,10 @@ function makeLegends() {
 
 /** Compact 1980s keyboard. Tap a key; drag any part; release with a little momentum. */
 export function RetroKeyboard({
-  position = KEYBOARD_POSITION, rotationY = -0.025, bounds = KEYBOARD_BOUNDS, onInteractionChange,
+  position = KEYBOARD_POSITION, rotationY = -0.025, bounds = KEYBOARD_BOUNDS, onInteractionChange, tone = "classic",
 }: RetroHardwareProps) {
   const { groupRef, begin, hover, leave } = useDeskDrag(bounds, onInteractionChange);
-  const materials = useHardwareResources();
+  const materials = useHardwareResources(tone);
   const { invalidate } = useThree();
   const caps = React.useRef<THREE.InstancedMesh>(null);
   const animation = React.useRef({ held: -1, pulse: -1, until: 0, depths: new Float32Array(KEYS.length), matrix: new THREE.Object3D() });
@@ -484,10 +488,10 @@ export function RetroKeyboard({
 
 /** A single-button desktop mouse. Clicks emit a scoped event rather than clicking page elements. */
 export function RetroMouse({
-  position = MOUSE_POSITION, rotationY = -0.11, bounds = MOUSE_BOUNDS, onInteractionChange,
+  position = MOUSE_POSITION, rotationY = -0.11, bounds = MOUSE_BOUNDS, onInteractionChange, tone = "classic",
 }: RetroHardwareProps) {
   const { groupRef, begin, hover, leave } = useDeskDrag(bounds, onInteractionChange);
-  const materials = useHardwareResources();
+  const materials = useHardwareResources(tone);
   const { invalidate } = useThree();
   const button = React.useRef<THREE.Group>(null);
   const press = React.useRef({ held: false, until: 0 });
