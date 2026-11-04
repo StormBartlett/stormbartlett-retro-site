@@ -1,4 +1,5 @@
 import manifest from "../../public/models/hardware-manifest.json";
+import type { DeskBody } from "./deskPhysics";
 
 export type Vec3 = [number, number, number];
 export type HardwareId = "classic" | "laptop" | "rgb";
@@ -19,6 +20,15 @@ export const HARDWARE_PROFILES = manifest as HardwareProfile[];
 export const HARDWARE_STORAGE_KEY = "storm-hardware-profile-v1";
 export function hardwareProfile(value: unknown): HardwareProfile {
   return HARDWARE_PROFILES.find(profile => profile.id === value) ?? HARDWARE_PROFILES[0];
+}
+/** Fixed collision footprints for each computer, in desk X/Z space. */
+export function deskObstacles(id: HardwareId): DeskBody[] {
+  if (id === "classic") return [{ x: 0, z: -.65, halfX: 1.16, halfZ: .85 }];
+  if (id === "laptop") return [{ x: 0, z: .35, halfX: 1.97, halfZ: 1.30 }];
+  return [{ x: -.75, z: -.3, halfX: .61, halfZ: .48 }, { x: 2.2, z: -.05, halfX: .91, halfZ: .98 }];
+}
+export function keyboardStart(id: HardwareId): Vec3 {
+  return [id === "rgb" ? -.75 : -.1, -1.54, 1.4];
 }
 export function screenScale(profile: HardwareProfile) {
   return profile.screen.width * 40 / profile.screen.cssWidth;

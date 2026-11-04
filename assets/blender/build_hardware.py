@@ -5,7 +5,7 @@ import bpy, math, json, os, sys, argparse
 from mathutils import Vector, Matrix, Euler
 from pathlib import Path
 args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
-p = argparse.ArgumentParser(); p.add_argument('--output', default='public/models'); p.add_argument('--sources')
+p = argparse.ArgumentParser(); p.add_argument('--output', default='public/models'); p.add_argument('--sources'); p.add_argument('--classic-style', choices=['angular','rounded'], default='angular')
 opt = p.parse_args(args); output = Path(opt.output).resolve(); output.mkdir(parents=True, exist_ok=True)
 C = Matrix(((1,0,0),(0,0,-1),(0,1,0)))
 def v3(v): return C @ Vector(v)
@@ -96,28 +96,36 @@ def fan(name,pos,radius,color,axis='z',parent=None):
     return g
 
 def classic():
-    body=cube('Macintosh porcelain shell',(0,-.08,-.65),(2.25,2.75,1.65),'ivory',.095)
+    if opt.classic_style == 'rounded':
+      body=cube('Macintosh porcelain shell',(0,-.08,-.65),(2.25,2.75,1.65),'ivory',.095)
+    else:
+      # Broad planar front, tapered back and crisp chamfers echo the original Plus.
+      vertices=[(-1.15,-1.42,.19),(1.15,-1.42,.19),(1.15,1.30,.19),(-1.15,1.30,.19),(-1.04,-1.42,-1.48),(1.04,-1.42,-1.48),(.99,1.17,-1.48),(-.99,1.17,-1.48)]
+      mesh=bpy.data.meshes.new('Angular Plus shell');mesh.from_pydata([v3(v)[:] for v in vertices],[],[(0,1,2,3),(1,5,6,2),(5,4,7,6),(4,0,3,7),(3,2,6,7),(4,5,1,0)]);mesh.update()
+      body=bpy.data.objects.new('Angular Plus shell',mesh);bpy.context.collection.objects.link(body);body.data.materials.append(M['ivory'])
+      bevel=body.modifiers.new('Crisp chamfers','BEVEL');bevel.width=.016;bevel.segments=1
+      body.modifiers.new('Weighted face normals','WEIGHTED_NORMAL')
     cut=cube('screen pocket cutter',(0,.43,.18),(1.83,1.43,.5),None,.12)
     bpy.context.view_layer.objects.active=cut;bpy.ops.object.modifier_apply(modifier=cut.modifiers[0].name)
     mod=body.modifiers.new('Recessed CRT pocket','BOOLEAN');mod.operation='DIFFERENCE';mod.solver='EXACT';mod.object=cut
     bpy.context.view_layer.objects.active=body;bpy.ops.object.modifier_move_up(modifier=mod.name);bpy.ops.object.modifier_apply(modifier=mod.name);bpy.data.objects.remove(cut,do_unlink=True)
-    ring('Deep CRT bezel',(0,.43,.205),1.84,1.44,.15,.09,'edge',.16)
+    ring('Deep CRT bezel',(0,.43,.205),1.84,1.44,.15 if opt.classic_style=='rounded' else .065,.09,'edge',.16)
     ring('Black glass seal',(0,.43,.286),1.68,1.28,.09,.025,'rubber',.025)
     cube('CRT dark backing',(0,.43,.274),(1.63,1.23,.018),'black',.006)
-    cube('Floppy slot recess',(.35,-.68,.185),(.99,.075,.018),'rubber',.008)
+    cube('Floppy slot recess',(.35,-.68,.203),(.99,.075,.018),'rubber',.008)
     cube('Floppy upper lip',(.35,-.635,.201),(1.06,.035,.055),'cream',.008)
     cube('Disk eject',(.93,-.68,.203),(.12,.065,.042),'edge',.012)
-    text('Disk legend','800K',(.71,-.79,.19),.04)
-    cube('Badge surround',(-.78,-.78,.185),(.25,.25,.022),'cream',.025)
-    for i,col in enumerate(('teal','violet','pink','amber')):cube('Prismatic badge '+str(i),(-.78,-.704-i*.035,.2),(.15,.031,.01),col,.002)
-    text('Case wordmark','storm',(-.61,-1.02,.19),.105)
-    text('Case edition','PERSONAL COMPUTER',(.27,-1.045,.189),.039)
+    text('Disk legend','800K',(.71,-.79,.212),.04)
+    cube('Badge surround',(-.78,-.78,.205),(.25,.25,.022),'cream',.006)
+    for i,col in enumerate(('teal','violet','pink','amber')):cube('Prismatic badge '+str(i),(-.78,-.704-i*.035,.223),(.15,.031,.01),col,.002)
+    text('Case wordmark','storm',(-.61,-1.02,.212),.105)
+    text('Case edition','PERSONAL COMPUTER',(.27,-1.045,.212),.039)
     cyl('Power jewel',(-.93,-1.15,.195),.021,.022,'amber')
     for row in range(5):
       for side in (-1,1):
-        for j in range(4):cube('Side ventilation', (side*1.126,.76-row*.095,-.24-j*.16),(.011,.027,.11),'ink',.004)
-    cube('Carry handle inset',(0,1.297,-.85),(.88,.013,.32),'rubber',.006)
-    cube('Carry handle bridge',(0,1.308,-.82),(.94,.028,.10),'ivory',.012)
+        for j in range(4):cube('Side ventilation', (side*(1.126 if opt.classic_style=='rounded' else 1.151-(.43+j*.16)/1.67*.15),.76-row*.095,-.24-j*.16),(.011,.027,.11),'ink',.004)
+    cube('Carry handle inset',(0,1.297 if opt.classic_style=='rounded' else 1.218,-.85),(.88,.013,.32),'rubber',.006)
+    cube('Carry handle bridge',(0,1.308 if opt.classic_style=='rounded' else 1.234,-.82),(.94,.028,.10),'ivory',.012)
     for i in range(10):cube('Rear exhaust '+str(i),(-.72+i*.16,.65,-1.48),(.055,.65,.012),'ink',.006)
     cube('Lower plinth',(0,-1.46,-.69),(2.04,.13,1.45),'edge',.035)
     for x in (-.76,.76):

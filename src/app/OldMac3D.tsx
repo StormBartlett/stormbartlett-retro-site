@@ -5,9 +5,10 @@ import { Environment, Html, Lightformer, OrbitControls, useGLTF } from "@react-t
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as React from "react";
 import * as THREE from "three";
-import { RetroKeyboard, RetroMouse } from "./RetroHardware";
+import { reportInteraction, RetroKeyboard, RetroMouse } from "./RetroHardware";
+import type { DeskWorld } from "./deskPhysics";
 import { readStoredSetting, useIsMobileViewport, writeStoredSetting } from "./FullscreenContext";
-import { framingDistance, HARDWARE_PROFILES, HARDWARE_STORAGE_KEY, hardwareProfile, screenScale, type HardwareProfile } from "./hardwareProfiles";
+import { deskObstacles, framingDistance, HARDWARE_PROFILES, HARDWARE_STORAGE_KEY, hardwareProfile, keyboardStart, screenScale, type HardwareProfile } from "./hardwareProfiles";
 import styles from "./HardwareGallery.module.css";
 
 const CAMERA_FOV = 28;
@@ -58,7 +59,7 @@ function HardwareModel({ profile, onReady, onInteractionChange }: { profile: Har
       if(!active || (event && event.pointerId!==active.pointer)) return;
       active.object.position.y=active.y; press.current=null;
       try {active.capture?.releasePointerCapture(active.pointer);} catch {}
-      latestInteraction.current(false);
+      reportInteraction(latestInteraction.current,false);
       if(event?.type==="pointerup" && Math.hypot(event.clientX-active.x,event.clientY-active.cy)<7) {
         window.dispatchEvent(new CustomEvent("storm-hardware-key",{detail:{key:active.key}}));
       }
@@ -78,7 +79,7 @@ function HardwareModel({ profile, onReady, onInteractionChange }: { profile: Har
     const capture=event.target as unknown as {setPointerCapture(id:number):void;releasePointerCapture(id:number):void};
     try{capture.setPointerCapture(event.pointerId);}catch{}
     press.current={object:hit,y:hit.position.y,key,pointer:event.pointerId,x:event.clientX,cy:event.clientY,capture};
-    hit.position.y-=.012;onInteractionChange(true);invalidate();
+    hit.position.y-=.012;reportInteraction(latestInteraction.current,true);invalidate();
   };
   return <primitive object={scene} onPointerDown={down}/>;
 }
@@ -136,7 +137,10 @@ function SceneFraming({profile,controlsRef,version}: {profile:HardwareProfile;co
 
 export default function OldMac3D({onScreenSlot,onScreenTap}: {onScreenSlot:(slot:HTMLElement)=>void;onScreenTap?:()=>void}) {
   const isMobile=useIsMobileViewport();
-  const [profile,setProfile]=React.useState(()=>hardwareProfile(readStoredSetting(HARDWARE_STORAGE_KEY)));
+  const [baseProfile,setProfile]=React.useState(()=>hardwareProfile(readStoredSetting(HARDWARE_STORAGE_KEY)));
+  const [softCase,setSoftCase]=React.useState(()=>readStoredSetting("storm-mac-soft-case-v1")==="1");
+  const profile=React.useMemo(()=>baseProfile.id==="classic"&&softCase?{...baseProfile,asset:"/models/studio-mac-rounded.glb"}:baseProfile,[baseProfile,softCase]);
+  const physics=React.useMemo<DeskWorld>(()=>new Map(deskObstacles(profile.id).map((body,i)=>[`fixed-${i}`,body])),[profile.id]);
   const [deskVersion,setDeskVersion]=React.useState(0);
   const [loadedAsset,setLoadedAsset]=React.useState("");
   const screenRef=React.useRef<THREE.Group|null>(null);
@@ -172,29 +176,30 @@ export default function OldMac3D({onScreenSlot,onScreenTap}: {onScreenSlot:(slot
         <StudioLighting/>
         {/* Rebind mesh hit testing per rig; the live screen below stays mounted. */}
         <React.Suspense fallback={null}>
-          <HardwareModel key={profile.id} profile={profile} onReady={ready} onInteractionChange={interaction}/>
+          <HardwareModel key={profile.asset} profile={profile} onReady={ready} onInteractionChange={interaction}/>
         </React.Suspense>
         <mesh receiveShadow position={[.4,-1.59,.2]}>
           <boxGeometry args={[8.4,.10,5.4]}/><meshStandardMaterial color={profile.id==="rgb"?"#292f38":"#aaa18d"} roughness={.7}/>
         </mesh>
-        {profile.keyboard&&<RetroKeyboard key={`${profile.id}-keyboard-${deskVersion}`} position={[profile.id==="rgb"?-.75:-.1,-1.54,1.4]} tone={profile.id==="rgb"?"modern":"classic"} onInteractionChange={interaction}/>}
-        <RetroMouse key={`${profile.id}-mouse-${deskVersion}`} position={profile.mouse} bounds={bounds} tone={profile.id==="classic"?"classic":"modern"} onInteractionChange={interaction}/>
+        {profile.keyboard&&<RetroKeyboard key={`${profile.id}-keyboard-${deskVersion}`} position={keyboardStart(profile.id)} tone={profile.id==="rgb"?"modern":"classic"} bounds={{minX:-2.5,maxX:3.3,minZ:-1.9,maxZ:2.3}} physics={physics} onInteractionChange={interaction}/>}
+        <RetroMouse key={`${profile.id}-mouse-${deskVersion}`} position={profile.mouse} bounds={bounds} tone={profile.id==="classic"?"classic":"modern"} physics={physics} onInteractionChange={interaction}/>
         {profile.id==="rgb"&&<><pointLight position={[2.5,.4,.6]} color="#77f7dd" intensity={1.3} distance={2.4}/><pointLight position={[2,-.3,.5]} color="#be91ff" intensity={.8} distance={2}/></>}
         <ScreenAnchor profile={profile} groupRef={screenRef} portalRef={screenOverlayRef} onSlot={onScreenSlot} tapRef={tapRef}/>
         <OrbitControls makeDefault ref={controlsRef} enableDamping dampingFactor={.09} enablePan={false} minDistance={1.5} maxDistance={70} minAzimuthAngle={-Math.PI/3} maxAzimuthAngle={Math.PI/3} minPolarAngle={Math.PI/4} maxPolarAngle={Math.PI/2.02} onStart={()=>{animRef.current=null;}}/>
-        <SceneFraming profile={profile} controlsRef={controlsRef} version={deskVersion}/>
+        {/* The case toggle swaps the model only, so it keeps the current camera view. */}
+        <SceneFraming profile={baseProfile} controlsRef={controlsRef} version={deskVersion}/>
         <CameraAnimator controlsRef={controlsRef} animRef={animRef}/>
       </Canvas>
     </div>
     <div ref={screenOverlayRef} className={styles.screenOverlay}/>
     <section className={styles.selector} aria-label="Choose your computer">
-      <div className={styles.eyebrow}><span>THE HARDWARE COLLECTION</span><span>0{index+1} / 03</span></div>
-      <div className={styles.heading}><button onClick={()=>cycle(-1)} aria-label="Previous computer">‹</button><div><h1>{profile.label}</h1><p>{profile.subtitle}</p></div><button onClick={()=>cycle(1)} aria-label="Next computer">›</button></div>
+      <div className={styles.eyebrow}><span>COMPUTER</span><span>0{index+1} / 03</span></div>
+      <div className={styles.heading}><button onClick={()=>cycle(-1)} aria-label="Previous computer">‹</button><div><h1>{profile.label}</h1></div><button onClick={()=>cycle(1)} aria-label="Next computer">›</button></div>
       <div className={styles.tabs} role="group" aria-label="Computer models" onKeyDown={event=>{if(event.key==="ArrowRight"){event.preventDefault();cycle(1);}if(event.key==="ArrowLeft"){event.preventDefault();cycle(-1);}}}>
         {HARDWARE_PROFILES.map((item,i)=><button key={item.id} aria-pressed={profile.id===item.id} onClick={()=>select(item.id)}><span aria-hidden="true">0{i+1}</span>{item.id==="classic"?"Mac":item.id==="laptop"?"Laptop":"RTX PC"}</button>)}
       </div>
-      <div className={styles.actions}><button onClick={zoomToScreen}>View screen ↗</button><button onClick={reset}>Reset desk</button><span role="status">{loadedAsset===profile.asset?"Same OS. Your desk.":"Loading hardware…"}</span></div>
+      <div className={styles.actions}><button onClick={zoomToScreen}>View screen ↗</button><button onClick={reset}>Reset desk</button>{profile.id==="classic"&&<button aria-pressed={softCase} onClick={()=>setSoftCase(value=>{writeStoredSetting("storm-mac-soft-case-v1",value?"0":"1");return !value;})}>{softCase?"Case: rounded":"Case: angular"}</button>}<span role="status">{loadedAsset===profile.asset?"":"Loading…"}</span></div>
     </section>
-    <p className={styles.hint}>{profile.id==="laptop"?"The laptop keys type, too. Tap the trackpad to search.":"Drag or throw the keyboard and mouse. Keys really type."}</p>
+    <p className={styles.hint}>{profile.id==="laptop"?"Click keys to type · Trackpad to search":"Drag peripherals · Click keys to type"}</p>
   </div>;
 }

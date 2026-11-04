@@ -5,12 +5,14 @@
 import * as React from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
+import { moveOnDesk, rotatedFootprint, type DeskBody, type DeskWorld } from "./deskPhysics";
 
 export type DeskBounds = { minX: number; maxX: number; minZ: number; maxZ: number };
 export type RetroHardwareProps = {
   /** The bottom of the hardware rests at this height. Coordinates are local to its parent. */
   position?: [number, number, number];
   tone?: "classic" | "modern";
+  physics?: DeskWorld;
   rotationY?: number;
   bounds?: DeskBounds;
   onInteractionChange?: (active: boolean) => void;
@@ -28,7 +30,7 @@ const KEY_TRAVEL = 0.024;
 type InteractionCallback = (active: boolean) => void;
 // Shared callbacks stay locked until every active touch has released its hardware.
 const interactionCounts = new Map<InteractionCallback, number>();
-function reportInteraction(callback: InteractionCallback | undefined, active: boolean) {
+export function reportInteraction(callback: InteractionCallback | undefined, active: boolean) {
   if (!callback) return;
   const count = interactionCounts.get(callback) ?? 0;
   if (active) {
@@ -47,8 +49,16 @@ type PointerCaptureTarget = {
 };
 
 /** Pointer capture plus window fallbacks also covers a release outside the canvas. */
-function useDeskDrag(bounds: DeskBounds, onInteractionChange?: (active: boolean) => void) {
+function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: number; angle: number }, physics?: DeskWorld, onInteractionChange?: (active: boolean) => void) {
   const group = React.useRef<THREE.Group>(null);
+  const bodyId = React.useId();
+  const body = React.useRef<DeskBody>({ x: 0, z: 0, ...rotatedFootprint(footprint.width, footprint.depth, footprint.angle) });
+  React.useLayoutEffect(() => {
+    if (!group.current || !physics) return;
+    Object.assign(body.current, { x: group.current.position.x, z: group.current.position.z }, rotatedFootprint(footprint.width, footprint.depth, footprint.angle));
+    physics.set(bodyId, body.current);
+    return () => { physics.delete(bodyId); };
+  }, [physics, bodyId, footprint.width, footprint.depth, footprint.angle]);
   const { camera, gl, invalidate } = useThree();
   const latest = React.useRef({ bounds, onInteractionChange });
   React.useLayoutEffect(() => { latest.current = { bounds, onInteractionChange }; }, [bounds, onInteractionChange]);
@@ -114,12 +124,13 @@ function useDeskDrag(bounds: DeskBounds, onInteractionChange?: (active: boolean)
       const b = latest.current.bounds;
       const x = THREE.MathUtils.clamp(s.hit.x + s.offsetX, b.minX, b.maxX);
       const z = THREE.MathUtils.clamp(s.hit.z + s.offsetZ, b.minZ, b.maxZ);
+      const resolved = physics ? moveOnDesk(body.current, x, z, physics.values()) : { x, z };
       const now = performance.now();
       const dt = Math.max((now - s.lastTime) / 1000, 0.008);
-      s.velocityX = THREE.MathUtils.clamp((x - s.lastX) / dt * 0.65 + s.velocityX * 0.35, -5, 5);
-      s.velocityZ = THREE.MathUtils.clamp((z - s.lastZ) / dt * 0.65 + s.velocityZ * 0.35, -5, 5);
-      s.lastX = root.position.x = x;
-      s.lastZ = root.position.z = z;
+      s.velocityX = THREE.MathUtils.clamp((resolved.x - s.lastX) / dt * 0.65 + s.velocityX * 0.35, -5, 5);
+      s.velocityZ = THREE.MathUtils.clamp((resolved.z - s.lastZ) / dt * 0.65 + s.velocityZ * 0.35, -5, 5);
+      s.lastX = root.position.x = resolved.x;
+      s.lastZ = root.position.z = resolved.z;
       s.lastTime = now;
       invalidate();
     };
@@ -140,7 +151,7 @@ function useDeskDrag(bounds: DeskBounds, onInteractionChange?: (active: boolean)
       finish(true);
       gl.domElement.style.cursor = "";
     };
-  }, [camera, finish, gl, invalidate]);
+  }, [camera, finish, gl, invalidate, physics]);
 
   useFrame((_, delta) => {
     const s = state.current;
@@ -150,12 +161,14 @@ function useDeskDrag(bounds: DeskBounds, onInteractionChange?: (active: boolean)
     const b = latest.current.bounds;
     const nextX = root.position.x + s.velocityX * dt;
     const nextZ = root.position.z + s.velocityZ * dt;
-    root.position.x = THREE.MathUtils.clamp(nextX, b.minX, b.maxX);
-    root.position.z = THREE.MathUtils.clamp(nextZ, b.minZ, b.maxZ);
+    const x = THREE.MathUtils.clamp(nextX, b.minX, b.maxX);
+    const z = THREE.MathUtils.clamp(nextZ, b.minZ, b.maxZ);
+    const resolved = physics ? moveOnDesk(body.current, x, z, physics.values()) : { x, z, hitX: false, hitZ: false };
+    root.position.x = resolved.x; root.position.z = resolved.z;
     // A little energy is returned at the desk boundary; friction settles the object quickly.
     const friction = Math.exp(-6.8 * dt);
-    s.velocityX *= nextX === root.position.x ? friction : -0.16;
-    s.velocityZ *= nextZ === root.position.z ? friction : -0.16;
+    s.velocityX *= !resolved.hitX && nextX === root.position.x ? friction : -0.16;
+    s.velocityZ *= !resolved.hitZ && nextZ === root.position.z ? friction : -0.16;
     if (Math.abs(s.velocityX) < 0.008) s.velocityX = 0;
     if (Math.abs(s.velocityZ) < 0.008) s.velocityZ = 0;
     invalidate();
@@ -216,8 +229,8 @@ function roundedSlab(width: number, depth: number, height: number, radius: numbe
   shape.lineTo(x, z + radius);
   shape.quadraticCurveTo(x, z, x + radius, z);
   const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: height, bevelEnabled: true, bevelSegments: 3, steps: 1,
-    bevelSize: bevel, bevelThickness: bevel, curveSegments: 5,
+    depth: height, bevelEnabled: true, bevelSegments: 1, steps: 1,
+    bevelSize: bevel, bevelThickness: bevel, curveSegments: 2,
   });
   geometry.rotateX(-Math.PI / 2);
   return geometry;
@@ -378,18 +391,18 @@ function makeLegends() {
 
 /** Compact 1980s keyboard. Tap a key; drag any part; release with a little momentum. */
 export function RetroKeyboard({
-  position = KEYBOARD_POSITION, rotationY = -0.025, bounds = KEYBOARD_BOUNDS, onInteractionChange, tone = "classic",
+  position = KEYBOARD_POSITION, rotationY = -0.025, bounds = KEYBOARD_BOUNDS, onInteractionChange, tone = "classic", physics,
 }: RetroHardwareProps) {
-  const { groupRef, begin, hover, leave } = useDeskDrag(bounds, onInteractionChange);
+  const { groupRef, begin, hover, leave } = useDeskDrag(bounds, { width: 2.48, depth: 1.01, angle: rotationY }, physics, onInteractionChange);
   const materials = useHardwareResources(tone);
   const { invalidate } = useThree();
   const caps = React.useRef<THREE.InstancedMesh>(null);
   const animation = React.useRef({ held: -1, pulse: -1, until: 0, depths: new Float32Array(KEYS.length), matrix: new THREE.Object3D() });
   const geometries = React.useMemo(() => ({
-    base: roundedSlab(2.43, 0.91, 0.075, 0.045, 0.016),
-    deck: roundedSlab(2.38, 0.87, 0.026, 0.035, 0.012),
-    recess: roundedSlab(2.29, 0.772, 0.012, 0.018, 0.006),
-    key: roundedSlab(0.126, 0.126, 0.035, 0.008, 0.008),
+    base: roundedSlab(2.43, 0.91, 0.085, 0.008, 0.007),
+    deck: roundedSlab(2.38, 0.87, 0.026, 0.006, 0.004),
+    recess: roundedSlab(2.29, 0.772, 0.012, 0.004, 0.003),
+    key: roundedSlab(0.126, 0.126, 0.035, 0.002, 0.003),
   }), []);
   const legends = React.useMemo(() => typeof document === "undefined" ? null : makeLegends(), []);
   React.useLayoutEffect(() => {
@@ -488,9 +501,9 @@ export function RetroKeyboard({
 
 /** A single-button desktop mouse. Clicks emit a scoped event rather than clicking page elements. */
 export function RetroMouse({
-  position = MOUSE_POSITION, rotationY = -0.11, bounds = MOUSE_BOUNDS, onInteractionChange, tone = "classic",
+  position = MOUSE_POSITION, rotationY = -0.11, bounds = MOUSE_BOUNDS, onInteractionChange, tone = "classic", physics,
 }: RetroHardwareProps) {
-  const { groupRef, begin, hover, leave } = useDeskDrag(bounds, onInteractionChange);
+  const { groupRef, begin, hover, leave } = useDeskDrag(bounds, { width: .444, depth: .636, angle: rotationY }, physics, onInteractionChange);
   const materials = useHardwareResources(tone);
   const { invalidate } = useThree();
   const button = React.useRef<THREE.Group>(null);
@@ -506,9 +519,9 @@ export function RetroMouse({
     }}));
   });
   const geometries = React.useMemo(() => ({
-    sole: roundedSlab(0.414, 0.606, 0.027, 0.085, 0.009),
-    shell: roundedSlab(0.41, 0.6, 0.083, 0.088, 0.022),
-    button: roundedSlab(0.354, 0.258, 0.026, 0.043, 0.013),
+    sole: roundedSlab(0.414, 0.606, 0.027, 0.008, 0.004),
+    shell: roundedSlab(0.41, 0.6, 0.095, 0.009, 0.006),
+    button: roundedSlab(0.364, 0.27, 0.028, 0.003, 0.004),
   }), []);
   React.useEffect(() => () => Object.values(geometries).forEach((geometry) => geometry.dispose()), [geometries]);
   useFrame((_, delta) => {
