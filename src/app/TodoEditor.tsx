@@ -2,6 +2,7 @@
 
 import { useMemo, useEffect } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
+import type { JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
@@ -40,8 +41,8 @@ export default function TodoEditor({ initialText = "" }: TodoEditorProps) {
     // Lines starting with "- [ ]" or "- [x]" become tasks
     // Other lines become regular paragraphs
     const lines = initialText.split(/\n/);
-    const taskItems: any[] = [];
-    const paragraphs: any[] = [];
+    const taskItems: JSONContent[] = [];
+    const paragraphs: JSONContent[] = [];
     
     for (const line of lines) {
       const trimmed = line.trim();
@@ -84,7 +85,7 @@ export default function TodoEditor({ initialText = "" }: TodoEditorProps) {
       }
     }
     
-    const content: any[] = [];
+    const content: JSONContent[] = [];
     
     // If we have task items, add them as a task list
     if (taskItems.length > 0) {

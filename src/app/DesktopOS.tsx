@@ -2,10 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import TiptapEditor from "./TiptapEditor";
-import TodoEditor from "./TodoEditor";
-import FallingSand from "./FallingSand";
+import AppErrorBoundary from "./AppErrorBoundary";
+import dynamic from "next/dynamic";
+import { AppGlyph, AppLauncher, Playground, appComponents, portfolioApps } from "./PortfolioApps";
+import { installDesktopSounds } from "./DesktopSounds";
+import { hydrateDesktopPreferences } from "./apps/desktopPreferences";
+const TiptapEditor = dynamic(() => import("./TiptapEditor"));
+const TodoEditor = dynamic(() => import("./TodoEditor"));
+const FallingSand = dynamic(() => import("./FallingSand"));
 import { useFullscreen } from "./FullscreenContext";
+
+
+const desktopStorage = {
+  getItem(key: string) { try { return window.localStorage.getItem(key); } catch { return null; } },
+  setItem(key: string, value: string) { try { window.localStorage.setItem(key, value); } catch { /* Session remains usable when storage is unavailable. */ } },
+  removeItem(key: string) { try { window.localStorage.removeItem(key); } catch {} },
+};
 
 type Icon = { id: string; label: string; app: string; x: number; y: number; type?: "file" | "folder" };
 type Win = { id: string; open: boolean; z: number; x?: number; y?: number };
@@ -33,8 +45,8 @@ type LocalCoordinateMetrics = {
   height: number;
   clientToLocal: (clientX: number, clientY: number) => { x: number; y: number };
 };
-const DESKTOP_BIN_POSITION = { x: 252, y: 73 };
-const MOBILE_TOP_ROW_ORDER = ["about", "skills", "bin", "calculator", "projects", "falling-sand", "activity"] as const;
+const DESKTOP_BIN_POSITION = { x: 392, y: 44 };
+const MOBILE_TOP_ROW_ORDER = ["about", "projects", "playground", "pixel-studio", "activity", "terminal", "skills", "games", "bin"] as const;
 const ICON_STORAGE_KEYS = ["nx-icons", "nx-icons-mobile-portrait", "nx-icons-mobile-landscape"];
 const TRASH_POSITION_STORAGE_KEYS = ["nx-trash-pos", "nx-trash-pos-mobile-portrait", "nx-trash-pos-mobile-landscape"];
 const BIN_POSITION_STORAGE_KEYS = ["nx-bin-pos", "nx-bin-pos-mobile-portrait", "nx-bin-pos-mobile-landscape"];
@@ -148,12 +160,16 @@ function createLocalCoordinateMetrics(element: HTMLElement): LocalCoordinateMetr
 }
 
 const baseIcons: Icon[] = [
-  { id: "about", label: "About.txt", app: "about", x: 40, y: 64 },
-  { id: "skills", label: "Skills.txt", app: "skills", x: 160, y: 64 },
-  { id: "calculator", label: "Calculator", app: "calculator", x: 400, y: 64 },
-  { id: "projects", label: "Projects", app: "projects", x: 520, y: 64, type: "folder" },
-  { id: "falling-sand", label: "Falling Sand", app: "falling-sand", x: 640, y: 64 },
-  { id: "activity", label: "Activity Monitor", app: "activity", x: 760, y: 64 },
+  { id: "about", label: "About Storm", app: "about-portfolio", x: 32, y: 44 },
+  { id: "skills", label: "Skills.txt", app: "skills", x: 32, y: 152 },
+  { id: "calculator", label: "Calculator", app: "calculator", x: 32, y: 260 },
+  { id: "projects", label: "Projects", app: "projects", x: 152, y: 44, type: "folder" },
+  { id: "falling-sand", label: "Falling Sand", app: "falling-sand", x: 152, y: 152 },
+  { id: "activity", label: "Project Manager", app: "project-tasks", x: 152, y: 260 },
+  { id: "playground", label: "Playground", app: "playground", x: 272, y: 44, type: "folder" },
+  { id: "pixel-studio", label: "Pixel Studio", app: "pixel-studio", x: 272, y: 152 },
+  { id: "terminal", label: "Terminal", app: "terminal", x: 272, y: 260 },
+  { id: "games", label: "Games", app: "games", x: 392, y: 152, type: "folder" },
 ];
 
 function buildMobileTopRowLayout(width: number, isPortrait: boolean) {
@@ -181,7 +197,7 @@ function buildMobileTopRowLayout(width: number, isPortrait: boolean) {
 
 const aboutText = `Hi, I'm Storm Bartlett, a front-end-focused software engineer who builds interfaces for technical systems and works across the full stack when the problem needs it.
 
-My strongest thread is turning complex workflows into usable software: React/Next.js product architecture at NoteTime, visualisation layers for simulation and data-heavy tooling, and AI/search-backed interfaces that need to stay understandable under real use.
+My strongest thread is turning complex workflows into usable software: React/Next.js product architecture at Noteception, visualisation layers for simulation and data-heavy tooling, and AI/search-backed interfaces that need to stay understandable under real use.
 
 I care about the parts that make software survive after the first version: clear component boundaries, fast UI, reliable data flow, tests, documentation, and enough system understanding to debug beyond the front end.
 
@@ -313,6 +329,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     { id: "test-folder", label: "Test Folder", type: "folder", x: 20, y: 120 },
   ]);
   const [windows, setWindows] = useState<Record<string, Win>>({
+    ...Object.fromEntries([...portfolioApps.map(app => app.id), "playground"].map(id => [id, { id, open: false, z: 10 }])),
     about: { id: "about", open: false, z: 11, ...initialWindowCascadeBase },
     "about-portfolio": { id: "about-portfolio", open: false, z: 10 },
     skills: { id: "skills", open: false, z: 10 },
@@ -331,6 +348,81 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     "project-fallingsand": { id: "project-fallingsand", open: false, z: 10 },
   });
   const [nextZ, setNextZ] = useState(11);
+  const [launcherOpen, setLauncherOpen] = useState(false);
+  const [hardwareQuery, setHardwareQuery] = useState("");
+  const hardwareCursorRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { if(!modelScreen && hardwareCursorRef.current) hardwareCursorRef.current.style.display = "none"; }, [modelScreen]);
+  const [discovered, setDiscovered] = useState(false);
+  const openWinRef = useRef<(id: string) => void>(() => {});
+  useEffect(() => {
+    hydrateDesktopPreferences();
+    const stopSounds = installDesktopSounds();
+    let sequence = "";
+    let lastTextInput: HTMLInputElement | HTMLTextAreaElement | null = null;
+    const rememberTextInput = (event: FocusEvent) => {
+      if(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) lastTextInput = event.target;
+    };
+    document.addEventListener("focusin", rememberTextInput);
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setLauncherOpen(v => !v); return; }
+      if ((e.target as HTMLElement)?.closest("input,textarea,[contenteditable=true]")) return;
+      sequence = (sequence + e.key).slice(-128);
+      if (sequence.endsWith("ArrowUpArrowUpArrowDownArrowDownArrowLeftArrowRightArrowLeftArrowRightba")) { setDiscovered(true); openWinRef.current("terminal"); }
+    };
+    const onHardware = (e: Event) => {
+      const key = (e as CustomEvent<{ key: string }>).detail?.key;
+      if (!key) return;
+      if (key === "Escape") { setLauncherOpen(false); return; }
+      const focused = document.activeElement;
+      const active = focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement
+        ? focused : lastTextInput?.isConnected ? lastTextInput : focused;
+      if ((active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) && !active.readOnly && !active.disabled) {
+        active.focus({preventScroll:true});
+        if(key === "Enter") { active.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles:true,cancelable:true})); return; }
+        if(key.length === 1 || key === "Backspace") {
+          const start = active.selectionStart ?? active.value.length, end = active.selectionEnd ?? start;
+          const from = key === "Backspace" && start === end ? Math.max(0,start-1) : start;
+          const value = active.value.slice(0,from) + (key === "Backspace" ? "" : key) + active.value.slice(end);
+          const prototype = active instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          Object.getOwnPropertyDescriptor(prototype,"value")?.set?.call(active,value);
+          active.dispatchEvent(new Event("input", { bubbles:true }));
+          const cursor = from + (key === "Backspace" ? 0 : 1);
+          try { active.setSelectionRange(cursor,cursor); } catch {}
+          return;
+        }
+      }
+      if(key.length === 1) setHardwareQuery(key);
+      setLauncherOpen(true);
+    };
+    const onHardwarePointer = (event: Event) => {
+      const {u,v} = (event as CustomEvent<{u:number;v:number}>).detail ?? {};
+      const cursor=hardwareCursorRef.current, desktop=desktopRef.current;
+      if(!cursor || !desktop || !Number.isFinite(u) || !Number.isFinite(v)) return;
+      cursor.style.left = `${Math.max(0,Math.min(1,u)) * (desktop.clientWidth - 20)}px`;
+      cursor.style.top = `${Math.max(0,Math.min(1,v)) * (desktop.clientHeight - 24)}px`;
+      cursor.style.display="block";
+    };
+    const onHardwareClick = () => {
+      const cursor=hardwareCursorRef.current;
+      if(cursor && cursor.style.display === "block") {
+        const rect=cursor.getBoundingClientRect(), x=rect.left+1, y=rect.top+1;
+        const hit=document.elementFromPoint(x,y);
+        const control=hit?.closest<HTMLElement>("button,a,input,textarea,select");
+        if(control) {control.focus();control.click();return;}
+        if(hit && hit.closest(".desktop")) {
+          hit.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,cancelable:true,pointerId:999,pointerType:"mouse",button:0,clientX:x,clientY:y}));
+          hit.dispatchEvent(new PointerEvent("pointerup",{bubbles:true,cancelable:true,pointerId:999,pointerType:"mouse",button:0,clientX:x,clientY:y}));
+          return;
+        }
+      }
+      openWinRef.current("playground");
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("storm-hardware-key", onHardware);
+    window.addEventListener("storm-hardware-click", onHardwareClick);
+    window.addEventListener("storm-hardware-pointer", onHardwarePointer);
+    return () => { stopSounds(); document.removeEventListener("focusin", rememberTextInput); window.removeEventListener("keydown", onKey); window.removeEventListener("storm-hardware-key", onHardware); window.removeEventListener("storm-hardware-click", onHardwareClick); window.removeEventListener("storm-hardware-pointer", onHardwarePointer); };
+  }, []);
   const [crtOff, setCrtOff] = useState(false);
   const [clock, setClock] = useState("--:--");
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -392,10 +484,11 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   };
 
   useEffect(() => {
-    const saved = localStorage.getItem(iconStorageKey);
+    const saved = desktopStorage.getItem(iconStorageKey);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved) as Icon[];
+        const data: unknown = JSON.parse(saved);
+        const parsed = Array.isArray(data) ? data.filter((item): item is Icon => !!item && typeof item.id === "string" && Number.isFinite(item.x) && Number.isFinite(item.y)) : [];
         const merged = mergeIconsWithDefaults(parsed);
         setIcons(merged);
       } catch {
@@ -405,11 +498,11 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
       setIcons(initialIcons);
     }
     setIconsReady(true);
-    const savedTrash = localStorage.getItem("nx-trash");
+    const savedTrash = desktopStorage.getItem("nx-trash");
     if (savedTrash) {
-      try { setTrash(JSON.parse(savedTrash) as Icon[]); } catch {}
+      try { const items: unknown = JSON.parse(savedTrash); if (Array.isArray(items)) setTrash(items.filter((item): item is Icon => !!item && typeof item.id === "string" && typeof item.app === "string" && typeof item.label === "string" && Number.isFinite(item.x) && Number.isFinite(item.y))); } catch {}
     }
-    const savedTrashPos = localStorage.getItem(trashPosStorageKey);
+    const savedTrashPos = desktopStorage.getItem(trashPosStorageKey);
     if (savedTrashPos) {
       try {
         const p = JSON.parse(savedTrashPos) as { x: number; y: number };
@@ -421,7 +514,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     } else {
       setTrashPos(null);
     }
-    const savedBinPos = localStorage.getItem(binPosStorageKey);
+    const savedBinPos = desktopStorage.getItem(binPosStorageKey);
     if (savedBinPos) {
       try {
         const p = JSON.parse(savedBinPos) as { x: number; y: number };
@@ -433,7 +526,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     } else {
       setBinPos(null);
     }
-    const savedCrt = localStorage.getItem("nx-crt-off");
+    const savedCrt = desktopStorage.getItem("nx-crt-off");
     if (savedCrt === "1") setCrtOff(true);
     const update = () => {
       const d = new Date();
@@ -450,7 +543,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     if (!iconsReady) return;
     if (!isMobile) return;
     arrangeIcons();
-  }, [iconsReady, isMobile, mobileVariant]);
+  }, [iconsReady, isMobile, mobileVariant, modelScreen]);
 
   // Initialize trash position on mobile if not set
   useEffect(() => {
@@ -472,26 +565,26 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
 
   useEffect(() => {
     if (!iconsReady || loadedIconStorageKey !== iconStorageKey) return;
-    localStorage.setItem(iconStorageKey, JSON.stringify(icons));
+    desktopStorage.setItem(iconStorageKey, JSON.stringify(icons));
   }, [icons, iconStorageKey, iconsReady, loadedIconStorageKey]);
   useEffect(() => {
     if (!iconsReady || loadedIconStorageKey !== iconStorageKey) return;
-    localStorage.setItem("nx-trash", JSON.stringify(trash));
+    desktopStorage.setItem("nx-trash", JSON.stringify(trash));
   }, [iconStorageKey, iconsReady, loadedIconStorageKey, trash]);
   useEffect(() => {
     if (!iconsReady || loadedIconStorageKey !== iconStorageKey) return;
     if (trashPos) {
-      localStorage.setItem(trashPosStorageKey, JSON.stringify(trashPos));
+      desktopStorage.setItem(trashPosStorageKey, JSON.stringify(trashPos));
     } else {
-      localStorage.removeItem(trashPosStorageKey);
+      desktopStorage.removeItem(trashPosStorageKey);
     }
   }, [iconStorageKey, iconsReady, loadedIconStorageKey, trashPos, trashPosStorageKey]);
   useEffect(() => {
     if (!iconsReady || loadedIconStorageKey !== iconStorageKey) return;
     if (binPos) {
-      localStorage.setItem(binPosStorageKey, JSON.stringify(binPos));
+      desktopStorage.setItem(binPosStorageKey, JSON.stringify(binPos));
     } else {
-      localStorage.removeItem(binPosStorageKey);
+      desktopStorage.removeItem(binPosStorageKey);
     }
   }, [binPos, binPosStorageKey, iconStorageKey, iconsReady, loadedIconStorageKey]);
 
@@ -740,10 +833,12 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     const up = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       finishDrag(ev.clientX, ev.clientY, dragging);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   }
 
   /** Desktop icons live-move; the controller only tracks targets and the drop. */
@@ -760,11 +855,11 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     const crt = document.querySelector(".crt");
     if (!crt) return;
     crt.classList.toggle("crt-off", crtOff);
-    localStorage.setItem("nx-crt-off", crtOff ? "1" : "0");
+    desktopStorage.setItem("nx-crt-off", crtOff ? "1" : "0");
   }, [crtOff]);
 
   useEffect(() => {
-    const savedDark = localStorage.getItem("nx-dark-mode");
+    const savedDark = desktopStorage.getItem("nx-dark-mode");
     if (savedDark === "0") setDarkMode(false);
     if (savedDark === "1") setDarkMode(true);
   }, []);
@@ -772,7 +867,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   useEffect(() => {
     const root = document.documentElement;
     root.classList.toggle("dark-mode", darkMode);
-    localStorage.setItem("nx-dark-mode", darkMode ? "1" : "0");
+    desktopStorage.setItem("nx-dark-mode", darkMode ? "1" : "0");
   }, [darkMode]);
 
   useEffect(() => {
@@ -834,8 +929,8 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     const desktopHeight = desktopCssHeight || (typeof window !== "undefined" ? window.innerHeight - 28 : 772);
     const estimatedWindowWidth = isMobile
       ? Math.min(desktopWidth * (isMobilePortrait ? 0.86 : 0.84), isMobilePortrait ? 420 : 480)
-      : 220;
-    const estimatedWindowHeight = isMobile ? Math.min(400, Math.max(260, desktopHeight - 16)) : 96;
+      : Math.min(680, Math.max(200, desktopWidth - 16));
+    const estimatedWindowHeight = Math.min(490, Math.max(180, desktopHeight - 88));
     const maxX = Math.max(8, desktopWidth - estimatedWindowWidth - 8);
     const maxY = Math.max(0, desktopHeight - estimatedWindowHeight - 8);
     const base = isMobile ? mobileWindowCascadeBase : WINDOW_CASCADE_BASE;
@@ -844,7 +939,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     const y = base.y + slot * step.y;
 
     return {
-      x: Math.min(maxX, Math.max(8, x)),
+      x: isMobile ? 8 : Math.min(maxX, Math.max(8, x)),
       y: Math.min(maxY, Math.max(0, y)),
     };
   };
@@ -852,6 +947,8 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   const openWin = (id: string) => {
     const currentWindow = windows[id];
     if (!currentWindow) return;
+    setLauncherOpen(false);
+    window.dispatchEvent(new CustomEvent("storm-app-focus", {detail:{id}}));
 
     const shouldCascade = !currentWindow.open;
     const nextPosition = shouldCascade ? getCascadedWindowPosition(openCascadeIndexRef.current) : null;
@@ -863,11 +960,16 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     });
     setNextZ((z) => z + 1);
   };
+  useEffect(() => { openWinRef.current = openWin; });
   const frontWin = (id: string) => {
+    window.dispatchEvent(new CustomEvent("storm-app-focus", {detail:{id}}));
     setWindows((w) => ({ ...w, [id]: { ...w[id], z: nextZ + 1 } }));
     setNextZ((z) => z + 1);
   };
-  const closeWin = (id: string) => setWindows((w) => ({ ...w, [id]: { ...w[id], open: false } }));
+  const closeWin = (id: string) => {
+    window.dispatchEvent(new CustomEvent("storm-app-focus", {detail:{id:null}}));
+    setWindows((w) => ({ ...w, [id]: { ...w[id], open: false } }));
+  };
 
   function closeAllWindows() {
     setWindows((w) => {
@@ -896,12 +998,12 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     setIcons(initialIcons);
     setTrash([]);
     setSelection(new Set());
-    ICON_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
-    localStorage.removeItem("nx-trash");
+    ICON_STORAGE_KEYS.forEach((key) => desktopStorage.removeItem(key));
+    desktopStorage.removeItem("nx-trash");
     setTrashPos(null);
-    TRASH_POSITION_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+    TRASH_POSITION_STORAGE_KEYS.forEach((key) => desktopStorage.removeItem(key));
     setBinPos(null);
-    BIN_POSITION_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+    BIN_POSITION_STORAGE_KEYS.forEach((key) => desktopStorage.removeItem(key));
   }
 
   function deleteSelectedIcons() {
@@ -1037,8 +1139,8 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   function resetTrashPosition() {
     setTrashPos(null);
     setBinPos(null);
-    TRASH_POSITION_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
-    BIN_POSITION_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+    TRASH_POSITION_STORAGE_KEYS.forEach((key) => desktopStorage.removeItem(key));
+    BIN_POSITION_STORAGE_KEYS.forEach((key) => desktopStorage.removeItem(key));
   }
 
   function onContextMenu(e: React.MouseEvent) {
@@ -1139,22 +1241,12 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   }
 
   const rootClass = [
+    "storm-desktop",
     embedded && !modelScreen ? "embedded-screen" : "",
     modelScreen ? "model-screen-content" : "",
     isMobile ? "mobile" : "",
     isMobilePortrait ? "mobile-portrait" : isMobile ? "mobile-landscape" : "",
   ].filter(Boolean).join(" ");
-
-  // Compute default trash position if not set; ensure it's inside the desktop container
-  const defaultTrashPos = trashPos || (() => {
-    const deskRect = desktopRef.current?.getBoundingClientRect();
-    const width = deskRect?.width ?? (typeof window !== "undefined" ? window.innerWidth : 1280);
-    // Subtract menubar height (28px) when falling back to viewport height
-    const height = deskRect?.height ?? (typeof window !== "undefined" ? window.innerHeight - 28 : 772);
-    const x = Math.max(8, width - 96 - 8);
-    const y = Math.max(36, height - 96 - 8);
-    return clampToDesktop(x, y);
-  })();
 
   // Compute default bin position if not set; ensure it's inside the desktop container
   const defaultBinPos = binPos || getDefaultBinPosition();
@@ -1177,7 +1269,10 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
               <Image src="/lightning-logo-black.svg" width={17} height={20} alt="" className="apple-pixel" />
             </button>
             <div className="menu-dropdown" role="menu">
-              <div className="menu-label">Storm Bartlett</div>
+              <div className="menu-label">STORM OS · 1.0</div>
+              <button className="menu-entry" role="menuitem" onClick={() => { openWin("playground"); setOpenMenu(null); }}>Open Playground…</button>
+              <button className="menu-entry" role="menuitem" onClick={() => { openWin("finder"); setOpenMenu(null); }}>Browse Files…</button>
+              <button className="menu-entry" role="menuitem" onClick={() => { openWin("preferences"); setOpenMenu(null); }}>Control Panel…</button>
               <button className="menu-entry" role="menuitem" onClick={() => { openWin("about-portfolio"); setOpenMenu(null); }}>About Storm Bartlett</button>
             </div>
           </div>
@@ -1246,7 +1341,8 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
           )}
 
         </nav>
-        <div className="menubar-right" aria-live="polite">
+        <div className="menubar-right">
+          <button className="launcher-trigger" onClick={() => setLauncherOpen(true)} aria-label="Find an app" title="Find an app (⌘ / Ctrl K)">⌕</button>
           <span className="menu-user">Storm Bartlett</span>
           <button
             className="dark-mode-toggle"
@@ -1268,7 +1364,8 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
       </header>
 
       <main id="desktop" className="desktop" ref={desktopRef} data-dropzone="desktop" onContextMenu={onContextMenu} onMouseDown={onDesktopMouseDown}>
-        {icons.map((icon) => (
+        <div ref={hardwareCursorRef} className="hardware-screen-cursor" aria-hidden="true"/>
+        {icons.filter(icon => !isMobile || (MOBILE_TOP_ROW_ORDER as readonly string[]).includes(icon.id)).map((icon) => (
           <DesktopIcon
             key={icon.id}
             icon={icon}
@@ -1301,83 +1398,6 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             </div>
           </div>
         )}
-
-        {/* ============================================
-            BLOG FOLDER ICON - TEMPORARILY HIDDEN
-            To restore: Uncomment the block below
-            ============================================ */}
-        {/* Blog folder icon (draggable) */}
-        {/* <button
-          ref={trashRef}
-          className={`desktop-icon trash-icon ${dragOverTrash ? 'is-over' : ''}`}
-          data-id="trash"
-          style={{ 
-            position: 'absolute', 
-            left: defaultTrashPos.x,
-            top: defaultTrashPos.y,
-          }}
-          onDoubleClick={() => {
-            // Only open window if we didn't drag
-            if (!trashDragStateRef.current.hasDragged) {
-              openWin('trash');
-            }
-            trashDragStateRef.current.hasDragged = false;
-          }}
-          onPointerDown={(e) => {
-            if (e.button !== 0) return;
-            trashDragStateRef.current.hasDragged = false;
-            const startX = e.clientX, startY = e.clientY;
-            if (!desktopRef.current) return;
-            
-            const desktopMetrics = createLocalCoordinateMetrics(desktopRef.current);
-            const startLocal = desktopMetrics.clientToLocal(startX, startY);
-            
-            // Use the stored position as starting point (like DesktopIcon does with icon.x/y)
-            const currentPos = trashPos || defaultTrashPos;
-            const sx = currentPos.x;
-            const sy = currentPos.y;
-            let dragging = false;
-            
-            const move = (ev: PointerEvent) => {
-              const currentLocal = desktopMetrics.clientToLocal(ev.clientX, ev.clientY);
-              const dx = currentLocal.x - startLocal.x;
-              const dy = currentLocal.y - startLocal.y;
-              const dist = Math.hypot(dx, dy);
-              
-              if (!dragging) {
-                if (dist < 4) return; // Threshold before starting drag
-                dragging = true;
-                trashDragStateRef.current.hasDragged = true;
-                e.preventDefault(); // Only prevent default when actually dragging
-                trashRef.current?.setPointerCapture(e.pointerId);
-              }
-              
-              const nx = sx + dx;
-              const ny = sy + dy;
-              const c = clampToDesktop(nx, ny);
-              setTrashPos({ x: c.x, y: c.y });
-            };
-            
-            const up = (ev?: PointerEvent) => {
-              window.removeEventListener('pointermove', move);
-              window.removeEventListener('pointerup', up);
-              if (dragging) {
-                try { trashRef.current?.releasePointerCapture(e.pointerId); } catch {}
-              }
-            };
-            
-            window.addEventListener('pointermove', move);
-            window.addEventListener('pointerup', up);
-          }}
-          aria-label="Open Blog"
-        >
-          <div className="icon">
-            <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
-              <use href="#icon-folder"></use>
-            </svg>
-          </div>
-          <span className="icon-label">Blog</span>
-        </button> */}
 
         {/* Trash bin icon (draggable) */}
         <button
@@ -1434,7 +1454,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
               setBinPos({ x: c.x, y: c.y });
             };
             
-            const up = (ev?: PointerEvent) => {
+            const up = () => {
               window.removeEventListener('pointermove', move);
               window.removeEventListener('pointerup', up);
               if (dragging) {
@@ -1454,19 +1474,30 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             if (!point) return;
             setTrashCtxMenu({ x: point.left, y: point.top, id: 'bin' });
           }}
+          onClick={(e) => {if (!binDragStateRef.current.hasDragged && (e.detail === 0 || isMobile)) openWin("bin");}}
           aria-label="Trash"
         >
           <div className="icon">
-            <img 
+            <Image
               src={trash.length > 0 ? "/trash-full.svg" : "/trash.svg"} 
               alt="" 
-              width="48" 
-              height="48"
+              width={48}
+              height={48}
               aria-hidden="true"
             />
           </div>
           <span className="icon-label">Trash</span>
         </button>
+
+        <div className="desktop-signature"><span className="eyebrow">PERSONAL COMPUTER / PERSONAL PORTFOLIO</span><strong>Storm Bartlett<span aria-hidden="true">_</span></strong><span>Software developer. Curious by default.</span><button onClick={() => openWin("playground")}>A small world to explore ↗</button></div>
+        <nav className="desktop-dock" aria-label="Quick launch">
+          {[{id:"finder",label:"Files",glyph:"folder"},{id:"project-tasks",label:"Work",glyph:"tasks"},{id:"games",label:"Games",glyph:"game"},{id:"pixel-studio",label:"Paint",glyph:"paint"},{id:"terminal",label:"Terminal",glyph:"terminal"}].map(app => <button key={app.id} onClick={() => openWin(app.id)} aria-label={`Open ${app.label}`} title={app.label} className={windows[app.id]?.open ? "running" : ""}><AppGlyph glyph={app.glyph} size={28}/><span>{app.label}</span></button>)}
+          <button onClick={() => setLauncherOpen(true)} aria-label="All apps"><span className="dock-grid" aria-hidden="true">⊞</span><span>All apps</span></button>
+        </nav>
+        {discovered && <button className="secret-badge" onClick={() => setDiscovered(false)}>✦ Secret handshake discovered</button>}
+        {portfolioApps.map(app => { const App = appComponents[app.id]; return <Window key={app.id} id={app.id} title={app.name} windows={windows} frontWin={frontWin} closeWin={closeWin} className={`portfolio-app-window app-${app.id}`}><App onOpenApp={openWin}/></Window>; })}
+        <Window id="playground" title="Playground — Storm’s Software Cabinet" windows={windows} frontWin={frontWin} closeWin={closeWin} className="portfolio-app-window playground-window"><Playground onOpenApp={openWin}/></Window>
+        {launcherOpen && <AppLauncher initialQuery={hardwareQuery} onOpenApp={openWin} onClose={() => {setLauncherOpen(false);setHardwareQuery("");}}/>}
 
         <Window id="about" title="About Me" windows={windows} frontWin={frontWin} closeWin={closeWin}>
           <TiptapEditor initialText={aboutText} />
@@ -1652,6 +1683,7 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     e.preventDefault();
     const nextSel = selection.has(icon.id) ? new Set(selection) : new Set([icon.id]);
     setSelection(nextSel);
+    didDrag.current = false;
     const startX = e.clientX, startY = e.clientY;
     const desktopEl = ref.current?.closest('.desktop') as HTMLElement | null;
     const desktopMetrics = desktopEl ? createLocalCoordinateMetrics(desktopEl) : null;
@@ -1679,6 +1711,7 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
         const dist = Math.hypot(dx, dy);
         if (dist < 4) return;
         dragging = true;
+        didDrag.current = true;
         try { ref.current?.setPointerCapture(e.pointerId); } catch {}
         ref.current?.classList.add('dragging');
         if (onDragStart) onDragStart(Array.from(nextSel));
@@ -1695,6 +1728,7 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     const up = (ev?: PointerEvent) => {
       window.removeEventListener("pointermove", move as (this: Window, ev: PointerEvent) => void);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       if (dragging) {
         try { ref.current?.releasePointerCapture(e.pointerId); } catch {}
         ref.current?.classList.remove('dragging');
@@ -1703,14 +1737,15 @@ function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, 
     };
     window.addEventListener("pointermove", move as (this: Window, ev: PointerEvent) => void);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
   const spriteId = getIconSpriteId(icon);
+  const appGlyph = portfolioApps.find(app => app.id === icon.app)?.glyph ?? (icon.id === "playground" ? "game" : undefined);
+  const didDrag = useRef(false);
   return (
-    <button ref={ref} className={`desktop-icon ${selection.has(icon.id) ? "is-selected" : ""} ${burst ? "is-burst" : ""} ${isDropTarget ? "is-over" : ""}`} data-id={icon.id} data-folder={icon.type === "folder" ? "true" : undefined} data-dropzone={icon.type === "folder" ? "ifolder" : undefined} style={{ left: icon.x, top: icon.y, position: "absolute" }} onDoubleClick={onDbl} onPointerDown={down} onClick={() => { setBurst(true); window.setTimeout(() => setBurst(false), 500); }}>
+    <button ref={ref} className={`desktop-icon ${selection.has(icon.id) ? "is-selected" : ""} ${burst ? "is-burst" : ""} ${isDropTarget ? "is-over" : ""}`} data-id={icon.id} data-folder={icon.type === "folder" ? "true" : undefined} data-dropzone={icon.type === "folder" ? "ifolder" : undefined} style={{ left: icon.x, top: icon.y, position: "absolute" }} onDoubleClick={onDbl} onPointerDown={down} onClick={(e) => { if (didDrag.current) return; if (e.detail === 0 || matchMedia("(pointer: coarse)").matches) onDbl(); setBurst(true); window.setTimeout(() => setBurst(false), 500); }}>
       <div className="icon">
-        <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
-          <use href={`#${spriteId}`}></use>
-        </svg>
+        {appGlyph ? <AppGlyph glyph={appGlyph} size={48}/> : <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true"><use href={`#${spriteId}`}/></svg>}
       </div>
       <span className="icon-label">{icon.label}</span>
     </button>
@@ -1728,6 +1763,25 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
     divRef.current.style.left = `${w.x}px`;
     divRef.current.style.top = `${w.y}px`;
   }, [w?.open, w?.x, w?.y]);
+
+  useEffect(() => {
+    const el = divRef.current;
+    const desktop = el?.closest(".desktop") as HTMLElement | null;
+    if (!w?.open || !el || !desktop) return;
+    const fit = () => {
+      if (!desktop.clientWidth || !desktop.clientHeight) return;
+      const maxX = Math.max(0, desktop.clientWidth - el.offsetWidth - 4);
+      const maxY = Math.max(0, desktop.clientHeight - el.offsetHeight - 8);
+      const x = Math.max(0, Math.min(maxX, parseFloat(el.style.left) || 0));
+      const y = Math.max(0, Math.min(maxY, parseFloat(el.style.top) || 0));
+      if (parseFloat(el.style.left) !== x) el.style.left = `${x}px`;
+      if (parseFloat(el.style.top) !== y) el.style.top = `${y}px`;
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(desktop); observer.observe(el);
+    return () => observer.disconnect();
+  }, [w?.open]);
 
   useEffect(() => {
     // Autofocus any ProseMirror instance inside when window opens or is brought to front
@@ -1762,14 +1816,11 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
       restoreStateRef.current = null;
     } else {
       // Maximize
-      const defaultWidth = className?.includes('blog-window') ? "600px" : 
-                           className?.includes('calculator-window') ? "160px" : 
-                           "420px";
       restoreStateRef.current = {
         left: el.style.left || "80px",
         top: el.style.top || "80px",
-        width: el.style.width || defaultWidth,
-        height: el.style.height || ""
+        width: el.style.width || `${el.offsetWidth}px`,
+        height: el.style.height || `${el.offsetHeight}px`
       };
       
       const screenEl = el.closest('.embedded-screen') as HTMLElement | null;
@@ -1818,16 +1869,18 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
       const dy = currentLocal.y - startLocal.y;
       if (divRef.current && !isMaximizedRef.current) {
         // Allow full-screen movement - windows can move anywhere
-        divRef.current.style.left = `${windowStartX + dx}px`;
-        divRef.current.style.top = `${windowStartY + dy}px`;
+        divRef.current.style.left = `${Math.max(0, Math.min((dragPlane?.clientWidth ?? innerWidth) - Math.min(divRef.current.offsetWidth, 120), windowStartX + dx))}px`;
+        divRef.current.style.top = `${Math.max(0, Math.min((dragPlane?.clientHeight ?? innerHeight) - 70, windowStartY + dy))}px`;
       }
     };
     const up = () => {
       window.removeEventListener("pointermove", move as (this: Window, ev: PointerEvent) => void);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
     };
     window.addEventListener("pointermove", move as (this: Window, ev: PointerEvent) => void);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
   
   const handleResize = (e: React.PointerEvent, direction: string) => {
@@ -1890,15 +1943,17 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
     const up = () => {
       window.removeEventListener("pointermove", move as (this: Window, ev: PointerEvent) => void);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
     };
     
     window.addEventListener("pointermove", move as (this: Window, ev: PointerEvent) => void);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
   
   return (
-    <section className={`window ${className || ''}`} ref={divRef} style={{ zIndex: w.z as number, position: "absolute" }} data-app={id}>
-      <header className="titlebar" onPointerDown={(e)=>{ e.preventDefault(); e.stopPropagation(); down(e); }} onDoubleClick={toggleMaximize}>
+    <section className={`window ${className || ''}`} ref={divRef} style={{ zIndex: w.z as number, position: "absolute" }} data-app={id} role="region" aria-label={title} onPointerDown={() => frontWin(id)}>
+      <header className="titlebar" onPointerDown={(e)=>{ if ((e.target as HTMLElement).closest("button")) return; e.preventDefault(); e.stopPropagation(); down(e); }} onDoubleClick={toggleMaximize}>
         <div className="title">{title}</div>
         <div className="window-controls">
           <button
@@ -1928,7 +1983,7 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
           </button>
         </div>
       </header>
-      <div className="window-body">{children}</div>
+      <div className="window-body"><AppErrorBoundary>{children}</AppErrorBoundary></div>
       {/* Resize handles */}
       <div className="window-resize-handle nw" onPointerDown={(e) => handleResize(e, 'nw')} />
       <div className="window-resize-handle ne" onPointerDown={(e) => handleResize(e, 'ne')} />
@@ -2006,7 +2061,7 @@ function TrashBrowser({
             key={icon.id}
             className={`browser-icon ${selection.has(icon.id) ? "is-selected" : ""} ${dragSourceId === icon.id ? "is-drag-source" : ""}`}
             style={{ position: "absolute", left: icon.x, top: icon.y }}
-            onClick={() => setSelection(new Set([icon.id]))}
+            onClick={(e) => {setSelection(new Set([icon.id])); if (!dragSourceId && windows[icon.app] && (e.detail === 0 || matchMedia("(pointer: coarse)").matches)) openWin(icon.app);}}
             onDoubleClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -2141,7 +2196,7 @@ function BlogBrowser({
           data-dropzone={item.type === "folder" ? "bfolder" : undefined}
           data-folder-id={item.type === "folder" ? item.id : undefined}
           style={{ position: "absolute", left: item.x, top: item.y }}
-          onClick={() => setSelection(new Set([item.id]))}
+          onClick={(e) => {setSelection(new Set([item.id])); if (!dragSourceId && (e.detail === 0 || matchMedia("(pointer: coarse)").matches)) openItem(item);}}
           onDoubleClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
@@ -2399,7 +2454,7 @@ function mergeIconsWithDefaults(saved: Icon[]): Icon[] {
   const merged: Icon[] = [];
   baseIcons.forEach((def) => {
     const s = byId.get(def.id);
-    merged.push(s ? { ...s } : { ...def });
+    merged.push(s && Number.isFinite(s.x) && Number.isFinite(s.y) ? { ...def, x: s.x, y: s.y } : { ...def });
   });
   const width = typeof window !== "undefined" ? window.innerWidth : 1280;
   const height = typeof window !== "undefined" ? window.innerHeight : 800;

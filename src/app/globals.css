@@ -62,7 +62,7 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 :root.dark-mode .menu-dropdown{background:#fff;color:#101010;border-color:#101010;box-shadow:3px 3px 0 rgba(255,255,255,.18)}
 :root.dark-mode .menu-trigger:hover,:root.dark-mode .menu.is-open .menu-trigger,:root.dark-mode .menu-entry:hover,:root.dark-mode .menu-entry:focus{background:#101010;color:#fff}
 :root.dark-mode .is-selected{outline:none;background:rgba(255,255,255,.08)}
-:root.dark-mode body, :root.dark-mode .menu-trigger, :root.dark-mode .menu-entry, :root.dark-mode .desktop-icon, :root.dark-mode .window-body, :root.dark-mode pre, :root.dark-mode ul, :root.dark-mode li, :root.dark-mode p, :root.dark-mode .menu-user, :root.dark-mode .menu-label{color:#ffffff !important}
+:root.dark-mode body, :root.dark-mode .menu-trigger, :root.dark-mode .menu-entry, :root.dark-mode .desktop-icon, :root.dark-mode .window-body, :root.dark-mode .menu-user, :root.dark-mode .menu-label{color:#ffffff !important}
 :root.dark-mode .menubar .menu-trigger,:root.dark-mode .menubar .menu-entry,:root.dark-mode .menubar .menu-user,:root.dark-mode .menubar .menu-label{color:#101010 !important}
 :root.dark-mode .menubar .menu-trigger:hover,:root.dark-mode .menubar .menu.is-open .menu-trigger,:root.dark-mode .menubar .menu-entry:hover,:root.dark-mode .menubar .menu-entry:focus{color:#fff !important}
 :root:not(.dark-mode) .btn-close {
@@ -545,3 +545,77 @@ html,body,#__next{height:100%}
 .mobile .hud-label,.mobile .material-btn,.mobile .clear-btn{font-size:15px}
 .mobile .brush-size-display{font-size:16px}
 .mobile .hud-hint{font-size:14px}
+
+/* Storm OS — quiet chrome, more room to discover. */
+.storm-desktop{height:100%;isolation:isolate}
+.storm-desktop .desktop{background-color:var(--desktop-wallpaper-color,var(--bg-desktop));background-image:var(--desktop-wallpaper-image,radial-gradient(currentColor .55px,transparent .55px));background-size:var(--desktop-wallpaper-size,5px 5px);color:var(--desktop-wallpaper-ink,var(--text));bottom:0}
+.storm-desktop .desktop-icon .icon-label{color:var(--desktop-wallpaper-ink,var(--text))!important;text-shadow:0 1px var(--desktop-wallpaper-color,var(--bg-desktop))}
+.storm-desktop .desktop-icon .icon:has(svg[stroke="currentColor"]){filter:none;color:#25232c}
+.storm-desktop .menubar{height:32px;font-size:12px}
+.storm-desktop .desktop{top:32px}
+.storm-desktop .launcher-trigger{font:24px/1 monospace;padding:0 5px;border:0;background:transparent;color:#101010;cursor:pointer}
+.storm-desktop button:focus-visible,.storm-desktop a:focus-visible{outline:2px solid var(--desktop-accent,#a58cc7);outline-offset:3px}
+.desktop-signature{position:absolute;left:36px;bottom:100px;display:flex;flex-direction:column;gap:10px;max-width:450px;color:var(--desktop-wallpaper-ink,var(--text));pointer-events:none}
+.eyebrow{font:9px/1.5 var(--retro-ui-font);letter-spacing:1.5px;opacity:.6}
+.desktop-signature>strong{font:clamp(24px,3vw,40px)/1.15 "Courier Prime",monospace;letter-spacing:-1.8px;font-weight:700}
+.desktop-signature>strong span{color:var(--desktop-accent,#9185ac)}
+.desktop-signature>span:not(.eyebrow){font:12px/1.6 "Courier Prime",monospace;opacity:.65}
+.desktop-signature>button{align-self:flex-start;border:0;border-bottom:1px dotted currentColor;background:transparent;color:inherit;padding:0 0 5px;font:11px/1.5 var(--retro-editor-font);pointer-events:auto;cursor:pointer}
+.desktop-dock{position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:5;display:flex;gap:3px;padding:7px 9px 5px;background:#f8f5ec;color:#25232c;border:1.5px solid #25232c;box-shadow:3px 3px 0 #25232c;max-width:calc(100% - 20px)}
+.desktop-dock>button{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;padding:3px 6px 7px;background:transparent;border:0;color:inherit;font:9px/1.3 var(--retro-editor-font);cursor:pointer}
+.desktop-dock>button:hover{background:#eae5dc}
+.desktop-dock>button.running::after{content:"";position:absolute;bottom:1px;width:3px;height:3px;background:#25232c}
+.dock-grid{font:29px/28px monospace}
+.portfolio-app-window{width:540px;height:490px;max-width:calc(100% - 24px);max-height:calc(100% - 88px);min-height:240px}
+.portfolio-app-window .window-body{padding:0;overflow:auto;min-height:0;flex:1;font-family:var(--retro-editor-font);font-size:13px;line-height:1.5;touch-action:auto}
+.app-pixel-studio{width:540px;height:590px}.app-terminal{width:560px;height:430px}.app-finder{width:650px;height:490px}.app-project-tasks{width:560px;height:500px}.app-preferences{width:420px;height:570px}.app-postcards{width:430px;height:590px}.app-snake{width:430px;height:570px}.app-sound-lab{width:450px;height:620px}.app-focus-timer{width:420px;height:530px}
+.app-loading{padding:32px;text-align:center;font:12px/1.5 var(--retro-editor-font)}
+.playground-app{padding:24px;color:var(--window-ink);min-height:100%}
+.playground-heading h1{font:700 25px/1.2 var(--retro-editor-font);letter-spacing:-1px;margin:8px 0 12px}
+.playground-heading p{font:13px/1.7 var(--retro-editor-font);opacity:.7;margin:0;max-width:420px}
+.app-filters{display:flex;flex-wrap:wrap;gap:5px;margin:22px 0 16px}
+.app-filters button{padding:5px 10px;border:1px solid var(--window-ink);background:transparent;color:inherit;font:11px var(--retro-editor-font);cursor:pointer}
+.app-filters button[aria-pressed=true]{background:var(--window-ink);color:var(--bg-window)}
+.app-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.app-card{display:flex;align-items:center;gap:12px;text-align:left;padding:14px 10px;background:color-mix(in srgb,var(--bg-window) 94%,var(--desktop-accent,#ad96cf));border:1px solid color-mix(in srgb,var(--window-ink) 28%,transparent);color:var(--window-ink);min-width:0;cursor:pointer}
+.app-card:hover{border-color:var(--window-ink);box-shadow:2px 2px 0 var(--window-ink);transform:translate(-1px,-1px)}
+.app-card>svg{flex-shrink:0;color:#292630;filter:none}.app-card>span:nth-child(2){flex:1;min-width:0}.app-card strong{display:block;font:700 12px/1.5 var(--retro-editor-font)}.app-card small{display:block;font:10px/1.5 var(--retro-editor-font);opacity:.65;margin-top:4px}.app-card>span:last-child{align-self:flex-start;font:14px monospace;opacity:.5}
+.playground-footnote{font:10px/1.6 var(--retro-editor-font);opacity:.5;margin:20px 0 0}
+.launcher-backdrop{position:absolute;inset:0;z-index:40000;display:flex;align-items:flex-start;justify-content:center;padding:clamp(16px,10%,90px) 12px 12px;background:rgba(18,17,23,.38);touch-action:auto}
+.app-launcher{background:#faf8f1;color:#25232c;border:2px solid #25232c;width:500px;max-width:100%;max-height:100%;box-shadow:6px 6px 0 rgba(0,0,0,.3);display:flex;flex-direction:column;font:12px/1.5 var(--retro-editor-font)}
+.launcher-search{display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid #b8b4a9}.launcher-search>span{font:28px monospace}.launcher-search input{width:100%;min-width:0;padding:8px 0;border:0;outline:none;background:transparent;color:inherit;font:15px var(--retro-editor-font)}.launcher-search>button{border:1px solid #aaa79f;color:inherit;background:transparent;font:10px monospace;padding:4px;cursor:pointer}
+.launcher-results{overflow:auto;padding:6px;min-height:0}.launcher-results>button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:10px;border:0;background:transparent;color:#25232c;cursor:pointer}.launcher-results>button.active{background:#e7e1ef}.launcher-results>button>span:nth-child(2){flex:1}.launcher-results strong{display:block;font:700 13px var(--retro-editor-font)}.launcher-results small{display:block;font:11px/1.5 var(--retro-editor-font);opacity:.6;margin-top:3px}.app-launcher footer{padding:9px 14px;border-top:1px solid #b8b4a9;font:10px monospace;opacity:.6}
+:root.dark-mode .launcher-results p{color:#25232c!important}
+.secret-badge{position:absolute;right:18px;bottom:100px;z-index:50;padding:12px;border:1px solid currentColor;background:var(--bg-window);color:var(--text);font:11px monospace;cursor:pointer}
+:root[data-desktop-scanlines="off"] .embedded-screen::before{display:none}
+:root[data-desktop-scanlines="on"] .embedded-screen::before{display:block;z-index:40001}
+:root[data-reduce-effects="true"] *, :root[data-reduce-effects="true"] *::before,:root[data-reduce-effects="true"] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+:root[data-reduce-effects="true"] .crt .content{filter:none}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.crt .content{filter:none}}
+/* Keep applications usable in small viewports and virtual-keyboard layouts. */
+.storm-desktop.mobile .window{max-width:calc(100% - 16px);max-height:calc(100% - 78px);left:8px;min-width:0;min-height:180px}
+.storm-desktop.mobile .portfolio-app-window{width:calc(100% - 16px);height:calc(100% - 88px)}
+.storm-desktop.mobile .titlebar{min-height:36px;font-size:13px;padding-right:82px;touch-action:none}
+.storm-desktop.mobile .window-controls{gap:8px}.storm-desktop.mobile .btn-close,.storm-desktop.mobile .btn-zoom{width:28px;height:28px}
+.storm-desktop.mobile .portfolio-app-window .window-body,.storm-desktop.mobile .portfolio-app-window p,.storm-desktop.mobile .portfolio-app-window li{font-size:13px;line-height:1.55}
+.storm-desktop.mobile .desktop-dock{bottom:max(10px,env(safe-area-inset-bottom));padding:5px 4px 2px;gap:0}.storm-desktop.mobile .desktop-dock>button{min-width:44px;padding:3px 5px 7px;font-size:8px}
+.storm-desktop.mobile .desktop-signature{left:20px;bottom:112px;max-width:90%;gap:7px}.storm-desktop.mobile .desktop-signature>strong{font-size:27px}.storm-desktop.mobile .desktop-signature .eyebrow{font-size:7px;letter-spacing:1px}
+.storm-desktop.mobile .menubar{height:36px;padding:0 4px}.storm-desktop.mobile .desktop{top:36px}.storm-desktop.mobile .menubar-right{gap:4px}.storm-desktop.mobile .menu{margin-right:0}.storm-desktop.mobile .menu-trigger{padding:7px 5px;font-size:12px}.storm-desktop.mobile .menubar-right span{font-size:11px}.storm-desktop.mobile .menu-user{display:none}
+.storm-desktop.mobile .playground-app{padding:16px}.storm-desktop.mobile .app-grid{grid-template-columns:1fr}.storm-desktop.mobile .playground-heading h1{font-size:23px}.storm-desktop.mobile .launcher-search input{font-size:16px}.storm-desktop.mobile .launcher-backdrop{padding-top:10px}
+@media(max-height:650px){.desktop-signature{display:none}}
+@media(max-width:360px){.storm-desktop.mobile .menubar-right>span{display:none}.storm-desktop.mobile .desktop-dock>button{min-width:40px;padding-left:4px;padding-right:4px}}
+.games-library h1{font:700 28px/1.2 var(--retro-editor-font);letter-spacing:-1px;margin:12px 0}.games-library>p{font:12px/1.6 var(--retro-editor-font);opacity:.7}.games-library .app-grid{margin-top:24px;grid-template-columns:1fr}.game-card{padding:10px;gap:18px}.game-cover{position:relative;display:grid;place-items:center;flex-shrink:0;width:72px;height:64px;border:1px solid #25232c;color:#25232c;background:repeating-linear-gradient(0deg,#a7bcc1 0 3px,#a1b6bb 3px 4px)}.game-cover small{position:absolute;bottom:3px;right:4px;font:8px monospace;opacity:.6}.game-cover-1{background:#e0d3a7}.game-cover-2{background:#b5c9a2}.game-cover-3{background:#c8bed6}.game-cover-4{background:#d5ac98}.portfolio-app-window.app-star-patrol,.portfolio-app-window.app-balloon-bastion,.portfolio-app-window.app-mossblade{width:680px;height:610px}.app-project-tasks .window-body,.app-finder .window-body{display:flex;overflow:hidden}.app-postcards .window-body,.app-focus-timer .window-body{display:flex;justify-content:center;background:#f8f6f0}
+/* No transformed/filter ancestor around CSS3D: WebKit otherwise changes the
+   containing block for fixed children and flattens the monitor's HTML screen. */
+.crt .content{filter:none;transform:none}.crt{border-radius:0;box-shadow:none}.crt::after{display:none}
+.app-boundary{display:contents}.app-error{padding:24px;font:13px/1.6 var(--retro-editor-font)}.app-error button{font:inherit;padding:8px 16px;color:var(--window-ink);background:var(--bg-window);border:1px solid currentColor;cursor:pointer}
+.storm-desktop.mobile .portfolio-app-window button{min-height:32px}.storm-desktop.mobile .portfolio-app-window input:not([type=range]):not([type=color]):not([type=checkbox]){min-height:32px;font-size:16px}.storm-desktop.mobile .app-pixel-studio{height:min(540px,calc(100% - 88px))}
+/* Native touch scrolling belongs to each app; only direct manipulation surfaces
+   capture gestures. An ancestor touch-action:none blocks every child scroller. */
+body{touch-action:auto}.storm-desktop .desktop{touch-action:pan-x pan-y pinch-zoom}.storm-desktop .desktop-icon,.storm-desktop .titlebar,.storm-desktop .window-resize-handle{touch-action:none}.storm-desktop .window-body{overscroll-behavior:contain}
+.storm-desktop.mobile .menubar{height:calc(36px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top)}.storm-desktop.mobile .desktop{top:calc(36px + env(safe-area-inset-top))}
+.app-star-patrol .window-body{background:#e8ebdf}.app-balloon-bastion .window-body{background:#eef0e0}.app-mossblade .window-body{background:#e8edde}
+.hardware-hint{position:absolute;left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:101;display:flex;align-items:center;gap:14px;max-width:calc(100% - 24px);padding:9px 13px;border:1px solid #b4aa8a66;background:#181917df;color:#e9e4d7;font:10px/1.6 var(--retro-editor-font)}.hardware-hint button{white-space:nowrap;min-height:32px;color:inherit;border:1px solid #b4aa8a77;background:transparent;padding:3px 8px;font:inherit;cursor:pointer}@media(max-width:600px){.hardware-hint{width:calc(100% - 24px);bottom:max(14px,env(safe-area-inset-bottom));font-size:10px}}
+.hardware-screen-cursor{display:none;position:absolute;width:20px;height:24px;background:url('/cursor-light.svg') 0 0/20px 24px no-repeat;filter:drop-shadow(1px 1px 0 #fff);pointer-events:none;z-index:50000}
+.hardware-hint{pointer-events:none}.hardware-hint button{pointer-events:auto}
+.portfolio-app-window.app-star-patrol,.portfolio-app-window.app-balloon-bastion,.portfolio-app-window.app-mossblade{height:680px}

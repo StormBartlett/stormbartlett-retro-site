@@ -27,19 +27,19 @@
     "prosemirror-view": "^1.41.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "three": "0.180.0",
-    "vimirror": "github:sereneinserenade/vimirror"
+    "three": "0.180.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@types/node": "^20",
+    "@types/node": "^22.20.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "15.5.5",
-    "happy-dom": "^20.8.9",
-    "sharp": "^0.34.5",
+    "eslint-config-next": "^16.4.5",
+    "happy-dom": "^21.0.4",
+    "sharp": "^0.35.5",
     "typescript": "^5",
-    "vitest": "^3.2.4"
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
   }
 }

@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { MOBILE_MEDIA_QUERY } from "./FullscreenContext";
 
 /**
  * Full-bleed vertical "matrix rain" background.
  * Designed to sit BEHIND the 3D Mac in model view (z-index < 0, transparent
- * R3F canvas on top). Performant: single fillRect trail fade, capped DPR,
- * pauses when the tab is hidden.
+ * R3F canvas on top). Performant: single fillRect trail fade, capped DPR and
+ * frame rate, pauses when the tab is hidden. Reduced motion (OS setting or the
+ * Control Panel's data-reduce-effects) draws one still frame instead.
  *
  * Defaults below are the settings tuned in the standalone studio:
  *   rainbow · mixed charset · speed 0.15 · font 14 · density 1 · trail 0.025
@@ -92,6 +94,27 @@ function hexToRgb(hex: string) {
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+const FRAME_INTERVAL_MS = 1000 / 30;
+// `speed` and `trail` are per-frame values tuned at 60fps; scale them to keep the same look when capped.
+const TUNED_FRAME_MS = 1000 / 60;
+const MAX_FRAME_GAP_MS = 100;
+
+function subscribeReducedMotion(onChange: () => void) {
+  const query = window.matchMedia(REDUCED_MOTION_QUERY);
+  query.addEventListener("change", onChange);
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-reduce-effects"] });
+  return () => {
+    query.removeEventListener("change", onChange);
+    observer.disconnect();
+  };
+}
+
+function getReducedMotion() {
+  return window.matchMedia(REDUCED_MOTION_QUERY).matches || document.documentElement.dataset.reduceEffects === "true";
+}
+
 export default function MatrixBackground(props: MatrixBackgroundProps) {
   const cfg = { ...MATRIX_DEFAULTS, ...props };
   const {
@@ -103,6 +126,7 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
+  const reducedMotion = useSyncExternalStore(subscribeReducedMotion, getReducedMotion, () => false);
 
   const chars = useMemo(
     () => (glyphs && glyphs.length ? glyphs : Array.from(CHARSETS[charset] || CHARSETS.mixed)),
@@ -136,7 +160,7 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
     };
 
     const resize = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      dpr = Math.min(window.devicePixelRatio || 1, window.matchMedia(MOBILE_MEDIA_QUERY).matches ? 1.5 : 2);
       W = window.innerWidth;
       H = window.innerHeight;
       canvas.width = Math.floor(W * dpr);
@@ -163,16 +187,33 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
     const bg = hexToRgb(background);
     const start = performance.now();
 
-    const draw = (now: number) => {
+    const font = `${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+
+    const drawStill = () => {
+      ctx.font = font;
+      const rows = Math.ceil(H / fontSize);
+      for (let i = 0; i < cols; i++) {
+        if (!columns[i].active) continue;
+        const head = (Math.random() * rows) | 0;
+        for (let d = 0; d < 10; d++) {
+          ctx.globalAlpha = 0.6 * (1 - d / 10);
+          ctx.fillStyle = colorMode === "green" ? "#37d978" : `hsl(${hueFor(i, head - d, 0)}, ${saturation}%, 50%)`;
+          ctx.fillText(chars[(Math.random() * chars.length) | 0], i * fontSize, (head - d) * fontSize);
+        }
+      }
+      ctx.globalAlpha = 1;
+    };
+
+    const draw = (now: number, frameScale: number) => {
       const t = (now - start) / 1000;
-      ctx.fillStyle = `rgba(${bg.r},${bg.g},${bg.b},${trail})`;
+      ctx.fillStyle = `rgba(${bg.r},${bg.g},${bg.b},${Math.min(1, trail * frameScale)})`;
       ctx.fillRect(0, 0, W, H);
-      ctx.font = `${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+      ctx.font = font;
 
       for (let i = 0; i < cols; i++) {
         const c = columns[i];
         if (!c.active) continue;
-        c.acc += speed * c.speed;
+        c.acc += speed * c.speed * frameScale;
         if (c.acc < 1) continue;
         const steps = c.acc | 0;
         c.acc -= steps;
@@ -219,31 +260,51 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
           ctx.fillText(chars[(Math.random() * chars.length) | 0], x, y);
         }
       }
+    };
 
-      rafRef.current = requestAnimationFrame(draw);
+    if (reducedMotion) {
+      const resizeStill = () => {
+        resize();
+        drawStill();
+      };
+      resizeStill();
+      window.addEventListener("resize", resizeStill);
+      return () => window.removeEventListener("resize", resizeStill);
+    }
+
+    let lastFrame = 0;
+    const tick = (now: number) => {
+      rafRef.current = requestAnimationFrame(tick);
+      const elapsed = lastFrame ? now - lastFrame : FRAME_INTERVAL_MS;
+      // 1ms tolerance so a 60Hz display lands on every second frame despite timer jitter.
+      if (elapsed < FRAME_INTERVAL_MS - 1) return;
+      lastFrame = now;
+      draw(now, Math.min(elapsed, MAX_FRAME_GAP_MS) / TUNED_FRAME_MS);
     };
 
     const onVisibility = () => {
       if (document.hidden) {
-        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       } else if (rafRef.current == null) {
-        rafRef.current = requestAnimationFrame(draw);
+        lastFrame = 0;
+        rafRef.current = requestAnimationFrame(tick);
       }
     };
 
     resize();
     window.addEventListener("resize", resize);
     document.addEventListener("visibilitychange", onVisibility);
-    rafRef.current = requestAnimationFrame(draw);
+    if (!document.hidden) rafRef.current = requestAnimationFrame(tick);
 
     return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
       window.removeEventListener("resize", resize);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [
-    enabled, colorMode, hue, chars, speed, fontSize, density, trail, speedVariance,
+    enabled, reducedMotion, colorMode, hue, chars, speed, fontSize, density, trail, speedVariance,
     flicker, glow, glowAmount, rainbowVert, rainbowSpread, rainbowCycle, saturation, background,
   ]);
 

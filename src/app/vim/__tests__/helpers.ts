@@ -29,9 +29,9 @@ export function pressKey(editor: Editor, key: string, opts: Partial<KeyboardEven
   // Run through handleDOMEvents.keydown first
   let handled = false;
   for (const plugin of editor.state.plugins) {
-    const handler = (plugin.props.handleDOMEvents as Record<string, any>)?.keydown;
+    const handler = plugin.props.handleDOMEvents?.keydown;
     if (handler) {
-      const result = handler(editor.view, event);
+      const result = handler.call(plugin, editor.view, event);
       if (result) { handled = true; break; }
     }
   }
@@ -40,7 +40,7 @@ export function pressKey(editor: Editor, key: string, opts: Partial<KeyboardEven
   if (!handled) {
     for (const plugin of editor.state.plugins) {
       if (plugin.props.handleKeyDown) {
-        const result = plugin.props.handleKeyDown(editor.view, event);
+        const result = plugin.props.handleKeyDown.call(plugin, editor.view, event);
         if (result) break;
       }
     }
@@ -56,5 +56,5 @@ export function docText(editor: Editor): string {
 }
 
 export function getMode(editor: Editor): VimModes {
-  return (editor.storage as any).vimirror.currentVimMode;
+  return (editor.storage as unknown as { vimirror: { currentVimMode: VimModes } }).vimirror.currentVimMode;
 }

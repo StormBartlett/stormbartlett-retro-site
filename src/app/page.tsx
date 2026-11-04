@@ -1,122 +1,168 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import OldMac3D from "./OldMac3D";
+import dynamic from "next/dynamic";
+import { Component, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import DesktopOS from "./DesktopOS";
 import MatrixBackground from "./MatrixBackground";
-import { FullscreenProvider, useFullscreen } from "./FullscreenContext";
+import {
+  FullscreenProvider,
+  readStoredSetting,
+  useFullscreen,
+  useIsMobileViewport,
+  useMediaQuery,
+  writeStoredSetting,
+} from "./FullscreenContext";
 
 type ViewMode = "model" | "desktop";
 
+const MOBILE_VIEW_MODE_KEY = "nx-mobile-view-mode";
+
+const CHROME_STYLE: CSSProperties = {
+  position: "fixed",
+  zIndex: 10001,
+  minHeight: 44,
+  padding: "0 14px",
+  background: "#fff",
+  color: "#101010",
+  border: "2px solid #101010",
+  boxShadow: "3px 3px 0 rgba(0,0,0,.45)",
+  font: "inherit",
+};
+
+function ModelLoading() {
+  return (
+    <div
+      role="status"
+      style={{
+        ...CHROME_STYLE,
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        display: "flex",
+        alignItems: "center",
+      }}
+    >
+      Loading 3D view…
+    </div>
+  );
+}
+
+// Three.js is only fetched once the visitor is actually in model mode.
+const OldMac3D = dynamic(() => import("./OldMac3D"), { ssr: false, loading: ModelLoading });
+
+/** Chunk, WebGL-context and GLB failures all land here and fall back to the flat desktop. */
+class ModelErrorBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("3D view unavailable, using the desktop view instead.", error);
+    this.props.onError();
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
 function HomeContent() {
-  const [isMobile, setIsMobile] = useState(false);
-  const [orientation, setOrientation] = useState<"portrait" | "landscape">("landscape");
-  const [mobileViewMode, setMobileViewMode] = useState<ViewMode>("desktop");
-  const [isScreenCalibration, setIsScreenCalibration] = useState(false);
+  const isMobile = useIsMobileViewport();
+  const isPortrait = useMediaQuery("(orientation: portrait)");
   const { isFullscreen, setFullscreen } = useFullscreen();
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [mobileViewMode, setMobileViewMode] = useState<ViewMode>("desktop");
 
+  // Runs in the same effect flush as FullscreenProvider's load, so both settings apply in one render.
   useEffect(() => {
-    const calibratingScreen = new URLSearchParams(window.location.search).has("calibrateScreen");
-    setIsScreenCalibration(calibratingScreen);
-    if (calibratingScreen) {
-      setMobileViewMode("model");
-      return;
-    }
-
-    const likelyMobile = window.innerWidth <= 900 || matchMedia("(pointer: coarse)").matches;
-    if (likelyMobile) {
-      setMobileViewMode("desktop");
-      localStorage.setItem("nx-mobile-view-mode", "desktop");
-      return;
-    }
-
-    const saved = localStorage.getItem("nx-mobile-view-mode");
-    if (saved === "model" || saved === "desktop") {
-      setMobileViewMode(saved);
-    }
+    if (readStoredSetting(MOBILE_VIEW_MODE_KEY) === "model") setMobileViewMode("model");
+    setSettingsLoaded(true);
   }, []);
 
-  const setDesktopViewMode = (mode: ViewMode) => {
-    setFullscreen(mode === "desktop");
-  };
+  // The server and first client render are always the usable flat desktop; phones stay on it by default.
+  const viewMode: ViewMode = !settingsLoaded ? "desktop" : isMobile ? mobileViewMode : isFullscreen ? "desktop" : "model";
 
-  const setMobileViewModePersisted = (mode: ViewMode) => {
-    setMobileViewMode(mode);
-    localStorage.setItem("nx-mobile-view-mode", mode);
-  };
-
-  useEffect(() => {
-    const update = () => {
-      const coarse = typeof window !== "undefined" && matchMedia("(pointer: coarse)").matches;
-      const small = typeof window !== "undefined" && window.innerWidth <= 900;
-      const mobile = !!(coarse || small);
-      setIsMobile(mobile);
-      const isPortrait = typeof window !== "undefined" && window.innerWidth <= window.innerHeight;
-      setOrientation(isPortrait ? "portrait" : "landscape");
-    };
-    update();
-    const onResize = () => update();
-    let mq: MediaQueryList | null = null;
-    if (typeof window !== "undefined") {
-      mq = matchMedia("(pointer: coarse)");
-      mq.addEventListener?.("change", update);
-      window.addEventListener("resize", onResize);
-      window.addEventListener("orientationchange", onResize);
-    }
-    return () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("resize", onResize);
-        window.removeEventListener("orientationchange", onResize);
+  const changeViewMode = useCallback(
+    (mode: ViewMode) => {
+      if (isMobile) {
+        setMobileViewMode(mode);
+        writeStoredSetting(MOBILE_VIEW_MODE_KEY, mode);
+      } else {
+        setFullscreen(mode === "desktop");
       }
-      mq?.removeEventListener?.("change", update);
-    };
-  }, []);
+    },
+    [isMobile, setFullscreen]
+  );
+  const enterDesktop = useCallback(() => changeViewMode("desktop"), [changeViewMode]);
 
-  if (isMobile) {
-    const mobileDesktop = (
-      <DesktopOS
-        embedded
-        modelScreen={mobileViewMode === "model"}
-        mobileVariant={orientation}
-        viewMode={mobileViewMode}
-        onViewModeChange={setMobileViewModePersisted}
-      />
-    );
+  /*
+   * One DesktopOS instance lives for the whole session so open windows and app
+   * state survive view changes. React always sees `host` as a child of `home`;
+   * model mode moves that DOM node into the 3D screen slot. `home` never
+   * unmounts, so React never needs to remove `host` from a parent it no longer has.
+   */
+  const homeRef = useRef<HTMLDivElement | null>(null);
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const viewModeRef = useRef<ViewMode>(viewMode);
 
-    if (mobileViewMode === "model" || isScreenCalibration) {
-      return (
-        <>
-          <MatrixBackground />
-          <OldMac3D
-            onScreenPointerDown={() => {
-              if (!isScreenCalibration) setMobileViewModePersisted("desktop");
-            }}
-          >
-            {mobileDesktop}
-          </OldMac3D>
-        </>
-      );
+  useLayoutEffect(() => {
+    viewModeRef.current = viewMode;
+    const home = homeRef.current;
+    const host = hostRef.current;
+    // Same commit as the 3D tree's removal, so the desktop is never missing for a paint.
+    if (viewMode === "desktop" && home && host && host.parentElement !== home) {
+      home.appendChild(host);
+      // DesktopOS re-clamps icons on resize; the available area has just changed.
+      window.dispatchEvent(new Event("resize"));
     }
+  }, [viewMode]);
 
-    // Fill entire viewport with the embedded CRT screen on portrait/landscape
-    return <div style={{ width: "100svw", height: "100svh" }}>{mobileDesktop}</div>;
-  }
-
-  // Render the actual desktop as the main screen.
-  if (isFullscreen) {
-    return (
-      <div style={{ width: "100vw", height: "100vh" }}>
-        <DesktopOS embedded viewMode="desktop" onViewModeChange={setDesktopViewMode} />
-      </div>
-    );
-  }
+  const attachToScreenSlot = useCallback((slot: HTMLElement) => {
+    const host = hostRef.current;
+    // The slot can mount late, after the visitor has already left model mode.
+    if (viewModeRef.current !== "model" || !host) return;
+    slot.appendChild(host);
+    window.dispatchEvent(new Event("resize"));
+  }, []);
 
   return (
     <>
-      <MatrixBackground />
-      <OldMac3D>
-        <DesktopOS embedded modelScreen viewMode="model" onViewModeChange={setDesktopViewMode} />
-      </OldMac3D>
+      {/* Hidden while the 3D screen loads; the host is moved out of here once its slot exists. */}
+      <div ref={homeRef} style={{ width: "100%", height: "100%", display: viewMode === "model" ? "none" : "block" }}>
+        <div ref={hostRef} style={{ width: "100%", height: "100%" }}>
+          <DesktopOS
+            embedded
+            modelScreen={viewMode === "model"}
+            mobileVariant={isMobile ? (isPortrait ? "portrait" : "landscape") : undefined}
+            viewMode={viewMode}
+            onViewModeChange={changeViewMode}
+          />
+        </div>
+      </div>
+
+      {viewMode === "model" && (
+        <>
+          <MatrixBackground />
+          <ModelErrorBoundary onError={enterDesktop}>
+            <OldMac3D onScreenSlot={attachToScreenSlot} onScreenTap={isMobile ? enterDesktop : undefined} />
+          </ModelErrorBoundary>
+          {/* Plain DOM so it works while the model loads, and if WebGL never starts. */}
+          <button
+            type="button"
+            onClick={enterDesktop}
+            style={{
+              ...CHROME_STYLE,
+              top: "calc(env(safe-area-inset-top, 0px) + 12px)",
+              right: "calc(env(safe-area-inset-right, 0px) + 12px)",
+              cursor: "pointer",
+            }}
+          >
+            Enter Desktop
+          </button>
+        </>
+      )}
     </>
   );
 }

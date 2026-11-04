@@ -865,9 +865,9 @@ const Vimirror = Extension.create<VimirrorOptions, VimirrorStorage>({
                   const fakeEvent = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
                   let handled = false;
                   for (const plugin of view.state.plugins) {
-                    const handler = (plugin.props.handleDOMEvents as Record<string, any>)?.keydown;
+                    const handler = plugin.props.handleDOMEvents?.keydown;
                     if (handler) {
-                      const result = handler(view, fakeEvent);
+                      const result = handler.call(plugin, view, fakeEvent);
                       if (result) { handled = true; break; }
                     }
                   }

@@ -1,0 +1,337 @@
+.panel {
+  width: 300px;
+  max-width: 100%;
+  padding: 14px;
+  background: #f5f3e9;
+  color: #20201c !important;
+  font-family: var(--retro-ui-font, "Courier New", monospace);
+  font-size: 10px;
+  line-height: 1.5;
+  user-select: none;
+}
+
+.panel span,
+.panel p,
+.panel label,
+:global(:root.dark-mode) .panel p {
+  color: inherit !important;
+}
+
+.intro {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+}
+
+.intro strong {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.intro p {
+  margin: 3px 0 0;
+  font: 11px/1.3 var(--retro-editor-font, monospace);
+  opacity: .65;
+}
+
+.pixelSliders {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 2px solid currentColor;
+  box-shadow: 2px 2px 0 #b4b4a8;
+  font: bold 28px/1 monospace;
+}
+
+.preview {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  height: 135px;
+  padding: 8px 0 0;
+  margin-bottom: 14px;
+  background: repeating-linear-gradient(45deg, #e2e0d6 0 1px, transparent 1px 4px);
+  border: 1px solid #c1bfb3;
+}
+
+.previewScreen {
+  position: relative;
+  width: 190px;
+  height: 108px;
+  border: 5px solid #dddcd1;
+  outline: 1px solid #30302b;
+  box-shadow: 2px 2px 0 #aaa99d, inset 0 0 0 1px #30302b;
+  background-color: var(--preview-color);
+  background-image: var(--preview-image);
+  background-size: var(--preview-size);
+  overflow: hidden;
+}
+
+.previewScreen[data-scanlines="true"]::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background: repeating-linear-gradient(transparent 0 2px, #0002 2px 3px);
+}
+
+.previewMenu {
+  display: flex;
+  gap: 9px;
+  height: 13px;
+  padding: 1px 5px;
+  border-bottom: 1px solid #292924;
+  background: #fffef7;
+  color: #222 !important;
+  font: 6px/9px monospace;
+}
+
+.previewFile {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  position: absolute;
+  left: 12px;
+  top: 26px;
+  font: 6px/1 monospace;
+}
+
+.previewFile i {
+  width: 14px;
+  height: 17px;
+  background: repeating-linear-gradient(#fff 0 3px, #53534c 3px 4px);
+  border: 1px solid #30302b;
+  box-shadow: inset 2px 2px #fff, inset -2px -2px #fff;
+}
+
+.previewFile span {
+  background: #fffef7;
+  padding: 1px 2px;
+}
+
+.previewWindow {
+  position: absolute;
+  right: 11px;
+  top: 30px;
+  width: 104px;
+  height: 58px;
+  border: 1px solid #292924;
+  background: #fffef7;
+  box-shadow: 2px 2px 0 #29292466;
+}
+
+.previewWindow > div {
+  height: 9px;
+  border-bottom: 1px solid #292924;
+  background: repeating-linear-gradient(transparent 0 1px, #292924 1px 2px);
+  background-position: 2px 0;
+  box-shadow: inset 4px 0 #fffef7, inset -4px 0 #fffef7;
+}
+
+.previewWindow p {
+  margin: 7px 6px 0;
+  font: 6px/1.7 monospace;
+}
+
+.previewWindow > span {
+  position: absolute;
+  right: 7px;
+  bottom: 5px;
+  width: 22px;
+  height: 5px;
+  background: var(--preview-accent);
+  border: 1px solid #292924;
+}
+
+.previewStand {
+  width: 48px;
+  height: 7px;
+  background: #c2c1b5;
+  border: 1px solid #30302b;
+  border-top: 0;
+  box-shadow: 0 3px 0 -1px #d6d5c9, 0 4px 0 -1px #30302b;
+}
+
+.fieldset {
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.fieldset legend {
+  margin-bottom: 7px;
+  padding: 0;
+  font-size: 10px;
+}
+
+.wallpapers {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wallpaperOption,
+.accentOption {
+  appearance: none;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: #20201c;
+  cursor: pointer;
+  font: inherit;
+}
+
+.wallpaperOption {
+  display: grid;
+  gap: 4px;
+  padding: 0;
+  font-size: 8px;
+  text-align: center;
+}
+
+.swatch {
+  display: block;
+  height: 28px;
+  border: 1px solid #53534b;
+  box-shadow: inset 0 0 0 2px #f5f3e9;
+}
+
+.wallpaperOption[aria-pressed="true"] .swatch {
+  outline: 2px solid #252521;
+  outline-offset: 1px;
+}
+
+.wallpaperOption[aria-pressed="true"] > span:last-child {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.accents {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.accentOption {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 27px;
+  padding: 3px 4px;
+  border: 1px solid #aaa99d;
+  font-size: 8px;
+}
+
+.accentOption[aria-pressed="true"] {
+  border-color: #252521;
+  box-shadow: inset 0 0 0 1px #252521;
+  background: #e6e3d7;
+}
+
+.accentDot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #252521;
+}
+
+.wallpaperOption:focus-visible,
+.accentOption:focus-visible {
+  outline: 2px dashed #252521;
+  outline-offset: 3px;
+}
+
+.wallpaperOption:hover .swatch,
+.accentOption:hover {
+  border-color: #252521;
+  box-shadow: inset 0 0 0 1px #252521;
+}
+
+.toggles {
+  border-top: 1px solid #b4b2a5;
+  padding-top: 5px;
+}
+
+.toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 7px 0;
+  cursor: pointer;
+}
+
+.toggle input {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin: 1px 0 0;
+  border: 1px solid #252521;
+  border-radius: 0;
+  background: #fffef7;
+  box-shadow: inset 1px 1px #aaa99d;
+  cursor: pointer;
+}
+
+.toggle input:checked::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background: #252521;
+  clip-path: polygon(0 0, 25% 0, 50% 35%, 75% 0, 100% 0, 100% 25%, 65% 50%, 100% 75%, 100% 100%, 75% 100%, 50% 65%, 25% 100%, 0 100%, 0 75%, 35% 50%, 0 25%);
+}
+
+.toggle input:focus-visible {
+  outline: 2px dashed #252521;
+  outline-offset: 3px;
+}
+
+.toggle input:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.toggle strong {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.toggle small {
+  display: block;
+  margin-top: 2px;
+  font: 11px/1.3 var(--retro-editor-font, monospace);
+  opacity: .65;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  padding-top: 10px;
+  border-top: 1px solid #b4b2a5;
+  font: 9px/1.4 var(--retro-editor-font, monospace);
+}
+
+.footer > span {
+  font-size: 8px;
+}
+
+@media (max-width: 340px) {
+  .panel {
+    padding: 10px;
+  }
+
+  .accentOption {
+    gap: 3px;
+    padding: 3px;
+    font-size: 7px;
+  }
+}

@@ -1,0 +1,550 @@
+.root {
+  --ink: var(--window-ink, #181817);
+  --paper: var(--window-paper-hi, #fbf8ef);
+  --muted: color-mix(in srgb, var(--ink) 58%, var(--paper));
+  --rule: color-mix(in srgb, var(--ink) 25%, var(--paper));
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  container-type: inline-size;
+}
+
+.root button,
+.root input,
+.root a {
+  color: inherit;
+  font: inherit;
+}
+
+.root button {
+  appearance: none;
+  cursor: pointer;
+}
+
+.root button:disabled {
+  cursor: default;
+  opacity: .4;
+}
+
+.root button:focus-visible,
+.root a:focus-visible,
+.root input:focus-visible {
+  outline: 2px solid var(--ink) !important;
+  outline-offset: 3px;
+}
+
+.header {
+  flex: 0 0 auto;
+  padding: 19px 20px 16px;
+  border-bottom: 1px solid var(--ink);
+  background-image: radial-gradient(var(--rule) .6px, transparent .6px);
+  background-size: 4px 4px;
+}
+
+.headingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.eyebrow {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 1.1px;
+}
+
+.heading {
+  margin: 0;
+  font-family: "Chicago", "Geneva", "Arial", sans-serif;
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.7px;
+}
+
+.cursor {
+  margin-left: 2px;
+}
+
+.workCount {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 27px;
+  line-height: 1;
+  letter-spacing: -2px;
+}
+
+.workCount > span {
+  max-width: 10px;
+  font-size: 7px;
+  line-height: 1.1;
+  letter-spacing: 1px;
+  writing-mode: vertical-rl;
+}
+
+.intro {
+  margin-top: 12px;
+  font-size: 10px;
+}
+
+.scrollArea {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.workSection {
+  padding: 17px 20px 14px;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.filters {
+  display: flex;
+  gap: 3px;
+}
+
+.filter {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 10px !important;
+}
+
+.filter > span {
+  font-size: 8px;
+  opacity: .6;
+}
+
+.filter:hover {
+  border-color: var(--rule);
+}
+
+.selectedFilter {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper) !important;
+}
+
+.viewLabel {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: .4px;
+  white-space: nowrap;
+}
+
+.workList {
+  border: 1px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--rule);
+}
+
+.workItem + .workItem {
+  border-top: 1px solid var(--ink);
+}
+
+.workButton {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.workButton:hover {
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
+}
+
+.workIcon {
+  display: flex;
+  width: 34px;
+  height: 36px;
+  flex: 0 0 34px;
+  align-items: center;
+  justify-content: center;
+}
+
+.workTitle {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workTitle strong {
+  font-family: "Chicago", "Geneva", "Arial", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.workTitle > span {
+  font-size: 9px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+}
+
+.status > span {
+  width: 5px;
+  height: 5px;
+  background: var(--ink);
+}
+
+.chevron {
+  margin-left: 4px;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.workDetail {
+  padding: 0 14px 13px 58px;
+}
+
+.workDetail p {
+  margin: 0 0 13px;
+  font-size: 11px !important;
+  line-height: 1.6 !important;
+}
+
+.detailFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.typeLabel {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: .5px;
+}
+
+.detailLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 0 2px;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  background: transparent;
+  font-size: 10px !important;
+  text-decoration: none;
+}
+
+.detailLink:hover {
+  opacity: .65;
+}
+
+.roleDetail {
+  font-size: 9px;
+}
+
+.statusNote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.statusNote > span {
+  font-size: 12px;
+}
+
+.notesSection {
+  padding: 17px 20px 20px;
+  border-top: 1px dashed var(--rule);
+}
+
+.notesHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.notesHeading h3 {
+  margin: 0;
+  font-family: "Chicago", "Geneva", "Arial", sans-serif;
+  font-size: 16px;
+  letter-spacing: -.2px;
+}
+
+.notesHeading > span {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: .6px;
+}
+
+.notesIntro {
+  margin: 4px 0 12px;
+  color: var(--muted);
+  font-size: 10px !important;
+  line-height: 1.5 !important;
+}
+
+.addForm {
+  display: flex;
+  gap: 6px;
+}
+
+.addForm input,
+.editForm input {
+  min-width: 0;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: transparent;
+  font-size: 10px;
+}
+
+.addForm input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.addButton {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper) !important;
+  font-size: 14px !important;
+}
+
+.addButton > span {
+  font-size: 10px;
+}
+
+.emptyState {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  padding: 19px 7px 15px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.emptyState > span {
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+.emptyState div > span {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+}
+
+.tasks {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.taskLabel {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.taskLabel input {
+  appearance: none;
+  flex: 0 0 13px;
+  width: 13px;
+  height: 13px;
+  margin: 2px 0 0;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.taskLabel input:checked {
+  background: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--paper);
+}
+
+.taskLabel > span {
+  overflow-wrap: anywhere;
+}
+
+.taskDone > span {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.taskActions,
+.editActions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.taskActions button,
+.editActions button {
+  min-height: 28px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 9px;
+}
+
+.taskActions button:hover,
+.editActions button:hover {
+  border-color: var(--ink);
+}
+
+.taskActions .removeButton {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.editForm {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.editForm input {
+  flex: 1 1 160px;
+}
+
+.notesFooter {
+  margin-top: 11px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.6;
+}
+
+.footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 5px 12px;
+  border-top: 1px solid var(--ink);
+  background: color-mix(in srgb, var(--ink) 4%, var(--paper));
+  font-size: 8px;
+  letter-spacing: .4px;
+}
+
+.footer > span:last-child {
+  margin-left: auto;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+
+.footerMark {
+  font-size: 13px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@container (max-width: 380px) {
+  .header {
+    padding: 15px 13px 13px;
+  }
+
+  .heading {
+    font-size: 23px;
+  }
+
+  .workSection,
+  .notesSection {
+    padding-left: 13px;
+    padding-right: 13px;
+  }
+
+  .viewLabel {
+    display: none;
+  }
+
+  .workButton {
+    gap: 8px;
+    padding-left: 9px;
+    padding-right: 9px;
+  }
+
+  .workIcon {
+    width: 28px;
+    flex-basis: 28px;
+  }
+
+  .workDetail {
+    padding-left: 45px;
+  }
+
+  .status {
+    font-size: 8px;
+  }
+
+  .addButton {
+    padding-left: 9px;
+    padding-right: 9px;
+  }
+
+  .addButton > span {
+    display: none;
+  }
+}
