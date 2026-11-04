@@ -82,10 +82,15 @@ function HomeContent() {
   }, []);
 
   // The server and first client render are always the usable flat desktop; phones stay on it by default.
-  const viewMode: ViewMode = !settingsLoaded ? "desktop" : isMobile ? mobileViewMode : isFullscreen ? "desktop" : "model";
+  const [modelFailed, setModelFailed] = useState(false);
+  const viewMode: ViewMode = modelFailed || !settingsLoaded ? "desktop" : isMobile ? mobileViewMode : isFullscreen ? "desktop" : "model";
+  // Allocate WebGL only after the first visit; retain its uploaded resources for instant returns.
+  const [modelVisited, setModelVisited] = useState(false);
+  useEffect(() => { if (viewMode === "model") setModelVisited(true); }, [viewMode]);
 
   const changeViewMode = useCallback(
     (mode: ViewMode) => {
+      if (mode === "model") setModelFailed(false);
       if (isMobile) {
         setMobileViewMode(mode);
         writeStoredSetting(MOBILE_VIEW_MODE_KEY, mode);
@@ -96,6 +101,7 @@ function HomeContent() {
     [isMobile, setFullscreen]
   );
   const enterDesktop = useCallback(() => changeViewMode("desktop"), [changeViewMode]);
+  const modelUnavailable = useCallback(() => {setModelFailed(true);enterDesktop();}, [enterDesktop]);
 
   /*
    * One DesktopOS instance lives for the whole session so open windows and app
@@ -106,6 +112,7 @@ function HomeContent() {
   const homeRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewModeRef = useRef<ViewMode>(viewMode);
+  const screenSlotRef = useRef<HTMLElement | null>(null);
 
   useLayoutEffect(() => {
     viewModeRef.current = viewMode;
@@ -117,10 +124,21 @@ function HomeContent() {
       // DesktopOS re-clamps icons on resize; the available area has just changed.
       window.dispatchEvent(new Event("resize"));
     }
+    if (viewMode === "model" && host && screenSlotRef.current) {
+      screenSlotRef.current.appendChild(host);
+      window.dispatchEvent(new Event("resize"));
+    }
   }, [viewMode]);
 
-  const attachToScreenSlot = useCallback((slot: HTMLElement) => {
+  const attachToScreenSlot = useCallback((slot: HTMLElement, mounted = true) => {
     const host = hostRef.current;
+    if (!mounted) {
+      if (screenSlotRef.current !== slot) return;
+      screenSlotRef.current = null;
+      if (host && homeRef.current) homeRef.current.appendChild(host);
+      return;
+    }
+    screenSlotRef.current = slot;
     // The slot can mount late, after the visitor has already left model mode.
     if (viewModeRef.current !== "model" || !host) return;
     slot.appendChild(host);
@@ -142,14 +160,16 @@ function HomeContent() {
         </div>
       </div>
 
-      {viewMode === "model" && (
+      {!modelFailed && (viewMode === "model" || modelVisited) && (
         <>
-          <MatrixBackground />
-          <ModelErrorBoundary onError={enterDesktop}>
-            <OldMac3D onScreenSlot={attachToScreenSlot} onScreenTap={isMobile ? enterDesktop : undefined} />
+          {viewMode === "model" && <MatrixBackground />}
+          <ModelErrorBoundary onError={modelUnavailable}>
+            <div aria-hidden={viewMode !== "model"} inert={viewMode !== "model"} style={{ position: "fixed", inset: 0, visibility: viewMode === "model" ? "visible" : "hidden", pointerEvents: viewMode === "model" ? "auto" : "none" }}>
+              <OldMac3D active={viewMode === "model"} onScreenSlot={attachToScreenSlot} onScreenTap={isMobile ? enterDesktop : undefined} />
+            </div>
           </ModelErrorBoundary>
           {/* Plain DOM so it works while the model loads, and if WebGL never starts. */}
-          <button
+          {viewMode === "model" && <button
             type="button"
             onClick={enterDesktop}
             style={{
@@ -160,7 +180,7 @@ function HomeContent() {
             }}
           >
             Enter Desktop
-          </button>
+          </button>}
         </>
       )}
     </>

@@ -66,8 +66,8 @@ function HardwareModel({ profile, onReady, onInteractionChange }: { profile: Har
       invalidate();
     };
     const blur=()=>end();
-    window.addEventListener("pointerup",end);window.addEventListener("pointercancel",end);window.addEventListener("blur",blur);
-    return()=>{end();window.removeEventListener("pointerup",end);window.removeEventListener("pointercancel",end);window.removeEventListener("blur",blur);};
+    window.addEventListener("pointerup",end);window.addEventListener("pointercancel",end);window.addEventListener("blur",blur);window.addEventListener("storm-hardware-cancel",blur);
+    return()=>{end();window.removeEventListener("pointerup",end);window.removeEventListener("pointercancel",end);window.removeEventListener("blur",blur);window.removeEventListener("storm-hardware-cancel",blur);};
   },[invalidate]);
   const down=(event:ThreeEvent<PointerEvent>)=>{
     let hit:THREE.Object3D|null=event.object;
@@ -81,12 +81,13 @@ function HardwareModel({ profile, onReady, onInteractionChange }: { profile: Har
     press.current={object:hit,y:hit.position.y,key,pointer:event.pointerId,x:event.clientX,cy:event.clientY,capture};
     hit.position.y-=.012;reportInteraction(latestInteraction.current,true);invalidate();
   };
-  return <primitive object={scene} onPointerDown={down}/>;
+  return <primitive object={scene} dispose={null} onPointerDown={down}/>;
 }
 
-function ScreenSlot({onSlot,onMounted,tapRef,profile}: {onSlot:(slot:HTMLElement)=>void;onMounted:()=>void;tapRef:React.RefObject<(()=>void)|undefined>;profile:HardwareProfile}) {
+function ScreenSlot({onSlot,onMounted,tapRef,profile}: {onSlot:(slot:HTMLElement,mounted?:boolean)=>void;onMounted:()=>void;tapRef:React.RefObject<(()=>void)|undefined>;profile:HardwareProfile}) {
   const slotRef=React.useRef<HTMLDivElement>(null!);
-  React.useLayoutEffect(()=>{onSlot(slotRef.current);onMounted();},[onSlot,onMounted]);
+  React.useLayoutEffect(()=>{const slot=slotRef.current;onSlot(slot);return()=>onSlot(slot,false);},[onSlot]);
+  React.useLayoutEffect(()=>{onMounted();},[onMounted,profile.screen.cssWidth,profile.screen.cssHeight]);
   React.useEffect(()=>{
     const slot=slotRef.current;
     const click=(event:MouseEvent)=>{if(tapRef.current){event.preventDefault();event.stopPropagation();tapRef.current();}};
@@ -98,11 +99,11 @@ function ScreenSlot({onSlot,onMounted,tapRef,profile}: {onSlot:(slot:HTMLElement
   </div>;
 }
 
-function ScreenAnchor({profile,groupRef,portalRef,onSlot,tapRef}: {profile:HardwareProfile;groupRef:React.RefObject<THREE.Group|null>;portalRef:React.RefObject<HTMLDivElement>;onSlot:(slot:HTMLElement)=>void;tapRef:React.RefObject<(()=>void)|undefined>}) {
+function ScreenAnchor({profile,groupRef,portalRef,onSlot,tapRef}: {profile:HardwareProfile;groupRef:React.RefObject<THREE.Group|null>;portalRef:React.RefObject<HTMLDivElement>;onSlot:(slot:HTMLElement,mounted?:boolean)=>void;tapRef:React.RefObject<(()=>void)|undefined>}) {
   const invalidate=useThree(state=>state.invalidate);
-  const requestFrame=React.useCallback(()=>invalidate(),[invalidate]);
+  const requestFrame=React.useCallback(()=>{invalidate();window.dispatchEvent(new Event("resize"));},[invalidate]);
   // This slot is never keyed by hardware. Its DOM host and all app state survive every change.
-  React.useLayoutEffect(()=>{invalidate();window.dispatchEvent(new Event("resize"));},[profile.id,invalidate]);
+  React.useLayoutEffect(()=>{invalidate();},[profile.id,invalidate]);
   return <group ref={groupRef} position={profile.screen.position} rotation={profile.screen.rotation}>
     <Html transform center portal={portalRef} scale={screenScale(profile)} zIndexRange={[100,0]}>
       <ScreenSlot profile={profile} onSlot={onSlot} onMounted={requestFrame} tapRef={tapRef}/>
@@ -123,6 +124,50 @@ function StudioLighting(){
   </>;
 }
 
+function ContextRecovery({onRestore,onRecover,active}:{onRestore:()=>void;onRecover:()=>void;active:boolean}) {
+  const {gl,invalidate}=useThree();
+  React.useEffect(()=>{
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const clear=()=>{clearTimeout(timer);timer=undefined;};
+    const check=()=>{
+      if(!active||document.hidden){clear();return;}
+      if(gl.getContext().isContextLost()) {
+        if(timer===undefined) timer=setTimeout(()=>{timer=undefined;if(gl.getContext().isContextLost())onRecover();},2500);
+      } else invalidate();
+    };
+    const lost=(event:Event)=>{event.preventDefault();check();};
+    const restored=()=>{clear();onRestore();invalidate();};
+    gl.domElement.addEventListener("webglcontextlost",lost);
+    gl.domElement.addEventListener("webglcontextrestored",restored);
+    window.addEventListener("pageshow",check);document.addEventListener("visibilitychange",check);
+    check();
+    return()=>{clear();gl.domElement.removeEventListener("webglcontextlost",lost);gl.domElement.removeEventListener("webglcontextrestored",restored);window.removeEventListener("pageshow",check);document.removeEventListener("visibilitychange",check);};
+  },[gl,invalidate,onRestore,onRecover,active]);
+  return null;
+}
+
+/** A chunky desk switch. Static texture and demand rendering keep it cheap. */
+function DeskSwitch({index,onNext}:{index:number;onNext:()=>void}) {
+  const label=React.useMemo(()=>{
+    const canvas=document.createElement("canvas");canvas.width=384;canvas.height=96;
+    const ctx=canvas.getContext("2d")!;
+    ctx.fillStyle="#252822";ctx.fillRect(0,0,384,96);
+    ctx.fillStyle="#f0cd80";ctx.font="bold 28px monospace";ctx.fillText(`SYSTEM 0${index+1}`,20,39);
+    ctx.fillStyle="#b6baa0";ctx.font="18px monospace";ctx.fillText("PUSH TO SWITCH",20,73);
+    const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.magFilter=THREE.NearestFilter;
+    return texture;
+  },[index]);
+  React.useEffect(()=>()=>label.dispose(),[label]);
+  return <group position={[-.35,-1.43,2.51]}>
+    <mesh castShadow receiveShadow><boxGeometry args={[1.85,.19,.40]}/><meshStandardMaterial color="#b8ac8c" roughness={.8}/></mesh>
+    <mesh position={[-.21,.101,0]} rotation={[-Math.PI/2,0,0]}><planeGeometry args={[1.12,.28]}/><meshBasicMaterial map={label}/></mesh>
+    <mesh position={[.66,.135,0]} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();if(e.delta<7)onNext();}} castShadow>
+      <boxGeometry args={[.30,.12,.28]}/><meshStandardMaterial color="#c65c3c" roughness={.55}/>
+    </mesh>
+    <mesh position={[-.84,.104,0]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.025,8]}/><meshBasicMaterial color="#f8c769"/></mesh>
+  </group>;
+}
+
 function SceneFraming({profile,controlsRef,version}: {profile:HardwareProfile;controlsRef:ControlsRef;version:number}) {
   const {camera,size,invalidate}=useThree();
   React.useEffect(()=>{
@@ -135,18 +180,34 @@ function SceneFraming({profile,controlsRef,version}: {profile:HardwareProfile;co
   return null;
 }
 
-export default function OldMac3D({onScreenSlot,onScreenTap}: {onScreenSlot:(slot:HTMLElement)=>void;onScreenTap?:()=>void}) {
+export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScreenSlot:(slot:HTMLElement,mounted?:boolean)=>void;onScreenTap?:()=>void;active?:boolean}) {
   const isMobile=useIsMobileViewport();
   const [baseProfile,setProfile]=React.useState(()=>hardwareProfile(readStoredSetting(HARDWARE_STORAGE_KEY)));
   const [softCase,setSoftCase]=React.useState(()=>readStoredSetting("storm-mac-soft-case-v1")==="1");
   const profile=React.useMemo(()=>baseProfile.id==="classic"&&softCase?{...baseProfile,asset:"/models/studio-mac-rounded.glb"}:baseProfile,[baseProfile,softCase]);
-  const physics=React.useMemo<DeskWorld>(()=>new Map(deskObstacles(profile.id).map((body,i)=>[`fixed-${i}`,body])),[profile.id]);
+  const physics=React.useMemo<DeskWorld>(()=>new Map([...deskObstacles(profile.id),{x:-.35,z:2.51,halfX:.94,halfZ:.21}].map((body,i)=>[`fixed-${i}`,body])),[profile.id]);
   const [deskVersion,setDeskVersion]=React.useState(0);
   const [loadedAsset,setLoadedAsset]=React.useState("");
   const screenRef=React.useRef<THREE.Group|null>(null);
   const controlsRef=React.useRef<OrbitControlsImpl|null>(null);
   const animRef=React.useRef<CameraAnim|null>(null);
   const getStateRef=React.useRef<(()=>RootState)|null>(null);
+  const [canvasVersion,setCanvasVersion]=React.useState(0);
+  const recoveryAttempts=React.useRef(0);
+  const [contextFailed,setContextFailed]=React.useState(false);
+  const recoverContext=React.useCallback(()=>{
+    animRef.current=null;
+    if(recoveryAttempts.current++===0)setCanvasVersion(v=>v+1);
+    else setContextFailed(true);
+  },[]);
+  const [lightingVersion,setLightingVersion]=React.useState(0);
+  const restoreLighting=React.useCallback(()=>setLightingVersion(v=>v+1),[]);
+  React.useEffect(()=>{
+    if (!active) {
+      animRef.current=null;
+      window.dispatchEvent(new Event("storm-hardware-cancel"));
+    } else getStateRef.current?.().invalidate();
+  },[active]);
   const eventSourceRef=React.useRef<HTMLDivElement>(null!);
   const screenOverlayRef=React.useRef<HTMLDivElement>(null!);
   const tapRef=React.useRef(onScreenTap);
@@ -170,10 +231,12 @@ export default function OldMac3D({onScreenSlot,onScreenTap}: {onScreenSlot:(slot
     animRef.current={startMs:performance.now(),fromPos:state.camera.position.clone(),toPos:target.clone().addScaledVector(normal,distance),fromTarget:controlsRef.current?.target.clone()??target.clone(),toTarget:target};state.invalidate();
   };
   const bounds={minX:profile.bounds[0],maxX:profile.bounds[1],minZ:profile.bounds[2],maxZ:profile.bounds[3]};
+  if(contextFailed)throw new Error("The graphics context could not be restored.");
   return <div className={`r3f-wrap ${styles.stage}`} data-hardware={profile.id}>
     <div ref={eventSourceRef} className={styles.canvas}>
-      <Canvas frameloop="demand" shadows dpr={isMobile?[1,1.5]:[1,2]} eventSource={eventSourceRef} camera={{position:INITIAL_CAMERA,fov:CAMERA_FOV}} onCreated={state=>{getStateRef.current=state.get;}}>
-        <StudioLighting/>
+      <Canvas key={canvasVersion} frameloop={active?"demand":"never"} shadows dpr={isMobile?[1,1.5]:[1,2]} eventSource={eventSourceRef} camera={{position:INITIAL_CAMERA,fov:CAMERA_FOV}} onCreated={state=>{getStateRef.current=state.get;}}>
+        <StudioLighting key={lightingVersion}/>
+        <ContextRecovery onRestore={restoreLighting} onRecover={recoverContext} active={active}/>
         {/* Rebind mesh hit testing per rig; the live screen below stays mounted. */}
         <React.Suspense fallback={null}>
           <HardwareModel key={profile.asset} profile={profile} onReady={ready} onInteractionChange={interaction}/>
@@ -181,11 +244,12 @@ export default function OldMac3D({onScreenSlot,onScreenTap}: {onScreenSlot:(slot
         <mesh receiveShadow position={[.4,-1.59,.2]}>
           <boxGeometry args={[8.4,.10,5.4]}/><meshStandardMaterial color={profile.id==="rgb"?"#292f38":"#aaa18d"} roughness={.7}/>
         </mesh>
+        <DeskSwitch index={index} onNext={()=>cycle(1)}/>
         {profile.keyboard&&<RetroKeyboard key={`${profile.id}-keyboard-${deskVersion}`} position={keyboardStart(profile.id)} tone={profile.id==="rgb"?"modern":"classic"} bounds={{minX:-2.5,maxX:3.3,minZ:-1.9,maxZ:2.3}} physics={physics} onInteractionChange={interaction}/>}
         <RetroMouse key={`${profile.id}-mouse-${deskVersion}`} position={profile.mouse} bounds={bounds} tone={profile.id==="classic"?"classic":"modern"} physics={physics} onInteractionChange={interaction}/>
-        {profile.id==="rgb"&&<><pointLight position={[2.5,.4,.6]} color="#77f7dd" intensity={1.3} distance={2.4}/><pointLight position={[2,-.3,.5]} color="#be91ff" intensity={.8} distance={2}/></>}
+        <pointLight position={[2.5,.4,.6]} color="#77f7dd" intensity={profile.id==="rgb"?1.3:0} distance={2.4}/><pointLight position={[2,-.3,.5]} color="#be91ff" intensity={profile.id==="rgb"?.8:0} distance={2}/>
         <ScreenAnchor profile={profile} groupRef={screenRef} portalRef={screenOverlayRef} onSlot={onScreenSlot} tapRef={tapRef}/>
-        <OrbitControls makeDefault ref={controlsRef} enableDamping dampingFactor={.09} enablePan={false} minDistance={1.5} maxDistance={70} minAzimuthAngle={-Math.PI/3} maxAzimuthAngle={Math.PI/3} minPolarAngle={Math.PI/4} maxPolarAngle={Math.PI/2.02} onStart={()=>{animRef.current=null;}}/>
+        <OrbitControls makeDefault ref={controlsRef} enabled={active} enableDamping dampingFactor={.09} enablePan={false} minDistance={1.5} maxDistance={70} minAzimuthAngle={-Math.PI/3} maxAzimuthAngle={Math.PI/3} minPolarAngle={Math.PI/4} maxPolarAngle={Math.PI/2.02} onStart={()=>{animRef.current=null;}}/>
         {/* The case toggle swaps the model only, so it keeps the current camera view. */}
         <SceneFraming profile={baseProfile} controlsRef={controlsRef} version={deskVersion}/>
         <CameraAnimator controlsRef={controlsRef} animRef={animRef}/>

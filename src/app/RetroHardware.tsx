@@ -136,17 +136,19 @@ function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: numb
     };
     const up = (event: PointerEvent) => { if (event.pointerId === state.current.pointer) finish(false); };
     const cancel = (event: PointerEvent) => { if (event.pointerId === state.current.pointer) finish(true); };
-    const blur = () => finish(true);
+    const blur = () => {state.current.velocityX=state.current.velocityZ=0;finish(true);};
     window.addEventListener("pointermove", move, { passive: false });
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", cancel);
     window.addEventListener("blur", blur);
+    window.addEventListener("storm-hardware-cancel", blur);
     gl.domElement.addEventListener("lostpointercapture", cancel);
     return () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", cancel);
       window.removeEventListener("blur", blur);
+      window.removeEventListener("storm-hardware-cancel", blur);
       gl.domElement.removeEventListener("lostpointercapture", cancel);
       finish(true);
       gl.domElement.style.cursor = "";
@@ -245,7 +247,7 @@ function useHardwareResources(tone: "classic" | "modern" = "classic") {
     const cord = new THREE.MeshStandardMaterial({ color: "#aca28a", roughness: 0.77 });
     const keys = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.64 });
     if(tone === "modern") {
-      cream.color.set("#303845");light.color.set("#495464");side.color.set("#151c24");dark.color.set("#0a1018");cord.color.set("#242b35");keys.color.set("#91dfcd");keys.emissive.set("#294f48");keys.emissiveIntensity=.16;
+      cream.color.set("#303845");light.color.set("#495464");side.color.set("#151c24");dark.color.set("#0a1018");cord.color.set("#242b35");keys.color.set("#ffffff");keys.emissive.set("#333333");keys.emissiveIntensity=.25;
     }
     return { cream, light, side, dark, cord, keys };
   }, [tone]);
@@ -413,14 +415,14 @@ export function RetroKeyboard({
       matrix.scale.set(key.width / 0.142, 1, 1);
       matrix.updateMatrix();
       caps.current!.setMatrixAt(index, matrix.matrix);
-      caps.current!.setColorAt(index, new THREE.Color(key.units > 1 && key.key !== " " ? "#d5cbb2" : "#e9dfc7"));
+      caps.current!.setColorAt(index, tone === "modern" ? new THREE.Color().setHSL((key.x / 2.5 + .5 + key.z * .16) % 1, .9, .64) : new THREE.Color(key.units > 1 && key.key !== " " ? "#d5cbb2" : "#e9dfc7"));
     });
     caps.current.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     caps.current.instanceMatrix.needsUpdate = true;
     if (caps.current.instanceColor) caps.current.instanceColor.needsUpdate = true;
     caps.current.computeBoundingSphere();
     invalidate();
-  }, [invalidate]);
+  }, [invalidate, tone]);
   React.useEffect(() => () => {
     Object.values(geometries).forEach((geometry) => geometry.dispose());
     legends?.geometry.dispose();
@@ -463,6 +465,7 @@ export function RetroKeyboard({
     <>
       <HardwareCable body={groupRef} position={position} rotationY={rotationY} offset={[0.82, 0.068, -0.46]} anchor={[0.63, position[1] + 0.035, -0.42]} material={materials.cord} />
       <group ref={groupRef} position={position} rotation={[0, rotationY, 0]} onPointerOver={hover} onPointerOut={leave} onPointerDown={(event) => begin(event)}>
+        {tone === "modern" && Array.from({length: 12}, (_, i) => <mesh key={i} position={[-1.1 + i * .2, .05, .456]} raycast={NO_RAYCAST}><boxGeometry args={[.19, .025, .018]}/><meshBasicMaterial color={new THREE.Color().setHSL(i / 12, 1, .6)}/></mesh>)}
         <mesh geometry={geometries.base} material={materials.side} position={[0, 0.022, 0]} castShadow receiveShadow />
         <group rotation={[0.065, 0, 0]}>
           <mesh geometry={geometries.deck} material={materials.cream} position={[0, 0.095, 0]} castShadow receiveShadow />
