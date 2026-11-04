@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import styles from "./FinderApp.module.css";
-import { descendants, FINDER_STORAGE_KEY, INITIAL_FILES, MAX_NOTES_LENGTH, MAX_VISITOR_ITEMS, removeVisitorNode, restoreFiles, ROOT_ID, serializeFiles, uniqueName, validName, type FinderNode } from "./finderModel";
+import { createLocalCoordinateMetrics } from "../desktopCoordinates";
+import { folderDepth, MAX_FOLDER_DEPTH } from "../folderTree";
+import { finderMoveError, finderTree, moveFinderNode, descendants, FINDER_STORAGE_KEY, INITIAL_FILES, MAX_NOTES_LENGTH, MAX_VISITOR_ITEMS, removeVisitorNode, restoreFiles, ROOT_ID, serializeFiles, uniqueName, validName, type FinderNode } from "./finderModel";
 
 type Props = { onOpenApp?: (id: string) => void };
 type Filter = "all" | FinderNode["kind"];
@@ -33,8 +35,18 @@ export default function FinderApp({ onOpenApp }: Props) {
   const [nameAction, setNameAction] = useState<NameAction | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const rootRef=useRef<HTMLElement>(null);
+  const ghostRef=useRef<HTMLDivElement>(null);
+  const dragCleanup=useRef<(()=>void)|null>(null);
+  const suppressClick=useRef(false);
+  const [drag,setDrag]=useState<{id:string;x:number;y:number}|null>(null);
+  const [dropId,setDropId]=useState<string|null>(null);
+  const [cutId,setCutId]=useState<string|null>(null);
+  const [undoMoves,setUndoMoves]=useState<{id:string;from:string;to:string}[]>([]);
   const pointerType = useRef("");
   const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(()=>()=>dragCleanup.current?.(),[]);
 
   useEffect(() => {
     try {
@@ -101,7 +113,91 @@ export default function FinderApp({ onOpenApp }: Props) {
     clearTransient();
   }
 
+  function moveFile(id:string,parentId:string) {
+    const error=finderMoveError(nodes,id,parentId);
+    if(error){setNotice(error);return;}
+    const node=nodes.find(item=>item.id===id)!;
+    if(node.parentId===parentId)return;
+    setUndoMoves(previous=>[...previous.slice(-19),{id,from:node.parentId!,to:parentId}]);
+    setNodes(previous=>moveFinderNode(previous,id,parentId));setSelectedId(id);setCutId(null);setNotice(`Moved ${node.name}.`);rootRef.current?.focus({preventScroll:true});
+  }
+
+  function cutSelected() {
+    if(!selected||selected.id===ROOT_ID)return;
+    setCutId(selected.id);setNotice(`Cut ${selected.name}.`);
+  }
+
+  function pasteCut() {
+    if(cutId)moveFile(cutId,folder.id);
+  }
+
+  function undoMove() {
+    const last=undoMoves.at(-1);if(!last)return;
+    setUndoMoves(previous=>previous.slice(0,-1));
+    if(nodes.find(node=>node.id===last.id)?.parentId!==last.to||finderMoveError(nodes,last.id,last.from)){setNotice("That move can't be undone.");return;}
+    setNodes(previous=>moveFinderNode(previous,last.id,last.from));setSelectedId(last.id);setNotice("Move undone.");
+  }
+
+  function startDrag(event:ReactPointerEvent<HTMLButtonElement>,node:FinderNode) {
+    pointerType.current=event.pointerType;suppressClick.current=false;
+    if(event.button!==0||!rootRef.current)return;
+    const element=event.currentTarget, pointer=event.pointerId, x=event.clientX,y=event.clientY;
+    let metrics:ReturnType<typeof createLocalCoordinateMetrics>|null=null;
+    let started=false,frame=0,lastX=x,lastY=y,spring:{id:string;timer:number}|null=null;
+    const clearSpring=()=>{if(spring)clearTimeout(spring.timer);spring=null;};
+    // Hovering a folder opens it, so a file can be carried down any number of levels.
+    const armSpring=(id:string|null)=>{
+      if(spring?.id===id)return;
+      clearSpring();
+      if(id)spring={id,timer:window.setTimeout(()=>{
+        setQuery("");setFilter("all");
+        setNavigation(previous=>previous.entries[previous.index]===id?previous:{entries:[...previous.entries.slice(0,previous.index+1),id],index:previous.index+1});
+      },650)};
+    };
+    const targetAt=(cx:number,cy:number)=>{
+      for(const raw of document.elementsFromPoint(cx,cy)){
+        const element=raw.closest<HTMLElement>("[data-finder-folder]");
+        if(element?.dataset.finderFolder===node.id)continue;
+        if(element&&rootRef.current?.contains(element))return element.dataset.finderFolder??null;
+        if(raw.closest(".window")&&!rootRef.current?.contains(raw))return null;
+      }
+      return null;
+    };
+    const paint=()=>{
+      frame=0;if(!metrics)return;const local=metrics.clientToLocal(lastX,lastY);
+      if(ghostRef.current)ghostRef.current.style.transform=`translate(${local.x-20}px,${local.y-22}px)`;
+      const target=targetAt(lastX,lastY),valid=target&&!finderMoveError(nodes,node.id,target)?target:null;
+      setDropId(valid!==node.parentId?valid:null);
+      armSpring(valid);
+    };
+    const move=(e:globalThis.PointerEvent)=>{
+      if(e.pointerId!==pointer)return;
+      if(!started){
+        if(Math.hypot(e.clientX-x,e.clientY-y)<(e.pointerType==="touch"?9:5))return;
+        if(!rootRef.current)return;
+        started=true;suppressClick.current=true;setSelectedId(node.id);
+        metrics=createLocalCoordinateMetrics(rootRef.current);
+        const local=metrics.clientToLocal(e.clientX,e.clientY);setDrag({id:node.id,x:local.x-20,y:local.y-22});
+        try{element.setPointerCapture(pointer);}catch{}
+      }
+      if(e.cancelable)e.preventDefault();lastX=e.clientX;lastY=e.clientY;
+      if(!frame)frame=requestAnimationFrame(paint);
+    };
+    const cleanup=()=>{
+      cancelAnimationFrame(frame);clearSpring();window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);window.removeEventListener("pointercancel",cancel);window.removeEventListener("blur",blur);window.removeEventListener("keydown",escape);
+      try{element.releasePointerCapture(pointer);}catch{}
+      setDrag(null);setDropId(null);dragCleanup.current=null;
+    };
+    const up=(e:globalThis.PointerEvent)=>{if(e.pointerId!==pointer)return;const target=targetAt(e.clientX,e.clientY);cleanup();if(started&&target)moveFile(node.id,target);};
+    const cancel=(e:globalThis.PointerEvent)=>{if(e.pointerId===pointer)cleanup();};
+    const blur=()=>cleanup();
+    const escape=(e:globalThis.KeyboardEvent)=>{if(e.key==="Escape"){e.preventDefault();e.stopPropagation();cleanup();}};
+    dragCleanup.current?.();dragCleanup.current=cleanup;
+    window.addEventListener("pointermove",move,{passive:false});window.addEventListener("pointerup",up);window.addEventListener("pointercancel",cancel);window.addEventListener("blur",blur);window.addEventListener("keydown",escape);
+  }
+
   function startCreate(kind: "folder" | "text") {
+    if(kind==="folder"&&folderDepth(finderTree(nodes),folder.id)>=MAX_FOLDER_DEPTH){setNotice(`Folders can nest up to ${MAX_FOLDER_DEPTH} levels.`);return;}
     if (nodes.filter(node => !node.protected).length >= MAX_VISITOR_ITEMS) {
       setNotice(`This Mac holds up to ${MAX_VISITOR_ITEMS} visitor items. Delete an item to make room.`);
       return;
@@ -146,6 +242,7 @@ export default function FinderApp({ onOpenApp }: Props) {
   function confirmDelete() {
     if (!pendingDelete || pendingDelete.protected) return;
     const remaining = removeVisitorNode(nodes, pendingDelete.id);
+    if(remaining===nodes){setNotice("Move the portfolio files out of this folder before deleting it.");setDeleteId(null);return;}
     const remainingIds = new Set(remaining.map(node => node.id));
     const target = remainingIds.has(current.id) ? current.id : pendingDelete.parentId ?? ROOT_ID;
     setNodes(remaining);
@@ -157,10 +254,12 @@ export default function FinderApp({ onOpenApp }: Props) {
     setSelectedId(null);
     setNameAction(null);
     setDeleteId(null);
+    if(cutId&&!remainingIds.has(cutId))setCutId(null);
     setNotice(`${pendingDelete.name} deleted.`);
   }
 
   function keyboard(event: KeyboardEvent<HTMLElement>) {
+    suppressClick.current = false;
     const target = event.target as HTMLElement;
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f" && current.kind === "folder") {
       event.preventDefault();
@@ -168,6 +267,12 @@ export default function FinderApp({ onOpenApp }: Props) {
       return;
     }
     if (target.closest("input, textarea, select")) return;
+    if(event.metaKey||event.ctrlKey){
+      const key=event.key.toLowerCase();
+      if(key==="x"&&selected&&selected.id!==ROOT_ID){event.preventDefault();cutSelected();return;}
+      if(key==="v"&&cutId){event.preventDefault();pasteCut();return;}
+      if(key==="z"&&!event.shiftKey){event.preventDefault();undoMove();return;}
+    }
     if (event.altKey && event.key === "ArrowLeft") { event.preventDefault(); travel(-1); }
     else if (event.altKey && event.key === "ArrowRight") { event.preventDefault(); travel(1); }
     else if ((event.key === "Delete" || event.key === "Backspace") && selected && !selected.protected) {
@@ -178,10 +283,11 @@ export default function FinderApp({ onOpenApp }: Props) {
       setNameAction(null);
       setDeleteId(null);
       setSelectedId(null);
+      setCutId(null);
     }
   }
 
-  return <section className={styles.finder} aria-label="Finder file browser" onKeyDown={keyboard}>
+  return <section ref={rootRef} tabIndex={-1} className={styles.finder} aria-label="Finder file browser" onKeyDown={keyboard}>
     <div className={styles.toolbar}>
       <div className={styles.history}>
         <button type="button" title="Back (Alt + Left)" aria-label="Back" disabled={navigation.index === 0} onClick={() => travel(-1)}>←</button>
@@ -197,21 +303,24 @@ export default function FinderApp({ onOpenApp }: Props) {
     <nav className={styles.breadcrumbs} aria-label="File path">
       {path.map((node, index) => <span key={node.id}>
         {index > 0 && <span className={styles.pathSeparator} aria-hidden="true">›</span>}
-        <button type="button" aria-current={node.id === current.id ? "page" : undefined} onClick={() => open(node)}>{node.id === ROOT_ID ? "My Mac" : node.name}</button>
+        <button type="button" aria-current={node.id === current.id ? "page" : undefined} data-finder-folder={node.kind==="folder"?node.id:undefined} className={dropId===node.id?styles.dropTarget:undefined} onClick={() => open(node)}>{node.id === ROOT_ID ? "My Mac" : node.name}</button>
       </span>)}
     </nav>
 
     <div className={styles.body}>
       <aside className={styles.sidebar} aria-label="Favorites">
         <p>FAVORITES</p>
-        {favorites.map(item => <button type="button" key={item.id} className={folder.id === item.id ? styles.activeFavorite : undefined} onClick={() => open(nodes.find(node => node.id === item.id)!)}><Glyph kind={item.kind} small />{item.label}</button>)}
-        <div className={styles.sidebarFoot}>PERSONAL FILES<br /><span>Made to explore.</span></div>
+        {favorites.map(item => <button type="button" key={item.id} data-finder-folder={item.id} className={`${folder.id===item.id?styles.activeFavorite:""} ${dropId===item.id?styles.dropTarget:""}`} onClick={() => open(nodes.find(node => node.id === item.id)!)}><Glyph kind={item.kind} small />{item.label}</button>)}
+
       </aside>
 
       <main className={styles.main}>
         <div className={styles.actions}>
           <button type="button" disabled={!ready} onClick={() => startCreate("folder")}><span aria-hidden="true">＋</span> Folder</button>
           <button type="button" disabled={!ready} onClick={() => startCreate("text")}><span aria-hidden="true">＋</span> Note</button>
+          <button type="button" disabled={!selected||selected.id===ROOT_ID} title="Cut (Ctrl or Cmd + X)" onClick={cutSelected}>Cut</button>
+          <button type="button" disabled={!cutId} title="Paste (Ctrl or Cmd + V)" onClick={pasteCut}>Paste</button>
+          <button type="button" disabled={!undoMoves.length} title="Undo move (Ctrl or Cmd + Z)" onClick={undoMove}>Undo move</button>
           <span className={styles.actionSpacer} />
           {selected && !selected.protected && <>
             <button type="button" onClick={() => { setDeleteId(null); setNameAction({ kind: "rename", name: selected.name }); }}>Rename</button>
@@ -232,7 +341,7 @@ export default function FinderApp({ onOpenApp }: Props) {
 
         {current.kind === "text" ? <article className={styles.reader}>
           <header><span>{current.protected ? "PORTFOLIO DOCUMENT" : "YOUR TEXT FILE"}</span><span>{current.protected ? "Read only" : storageState === "saved" ? "Autosaved" : "Session only"}</span></header>
-          {current.protected ? <div className={styles.readOnlyText} tabIndex={0}>{current.content}</div> : <textarea aria-label={`Edit ${current.name}`} placeholder="A thought starts here…" value={current.content ?? ""} maxLength={MAX_NOTES_LENGTH} spellCheck onChange={event => setNodes(previous => previous.map(node => node.id === current.id ? { ...node, content: event.target.value } : node))} />}
+          {current.protected ? <div className={styles.readOnlyText} tabIndex={0}>{current.content}</div> : <textarea aria-label={`Edit ${current.name}`} placeholder="" value={current.content ?? ""} maxLength={MAX_NOTES_LENGTH} spellCheck onChange={event => setNodes(previous => previous.map(node => node.id === current.id ? { ...node, content: event.target.value } : node))} />}
           <footer><span>{(current.content ?? "").length.toLocaleString()} characters</span><button type="button" onClick={() => open(folder)}>Show in folder ↗</button></footer>
         </article> : <>
           <div className={styles.searchRow}>
@@ -240,20 +349,21 @@ export default function FinderApp({ onOpenApp }: Props) {
             <select aria-label="Filter file type" value={filter} onChange={event => { setFilter(event.target.value as Filter); setSelectedId(null); }}><option value="all">All items</option><option value="folder">Folders</option><option value="text">Documents</option><option value="app">Apps</option></select>
           </div>
           {query.trim() && <p className={styles.searchCaption}>Searching names & contents in {folder.id === ROOT_ID ? "this Mac" : folder.name}</p>}
-          <div className={`${styles.items} ${view === "icons" ? styles.iconGrid : styles.list}`} role="group" aria-label={`${folder.name} items`}>
+          <div data-finder-folder={folder.id} className={`${styles.items} ${view === "icons" ? styles.iconGrid : styles.list} ${dropId===folder.id?styles.dropTarget:""}`} role="group" aria-label={`${folder.name} items`}>
             {view === "list" && items.length > 0 && <div className={styles.listHeader}><span>Name</span><span>Kind</span></div>}
-            {items.map(node => <button type="button" key={node.id} className={`${styles.item} ${selectedId === node.id ? styles.selected : ""}`} aria-label={`${node.name}, ${node.kind === "text" ? "text document" : node.kind}${node.protected ? ", read only" : ""}`} aria-pressed={selectedId === node.id} onPointerDown={event => { pointerType.current = event.pointerType; }} onClick={event => { setSelectedId(node.id); setNameAction(null); setDeleteId(null); if (event.detail === 0 || pointerType.current === "touch" || pointerType.current === "pen") open(node); }} onDoubleClick={() => { if (pointerType.current !== "touch" && pointerType.current !== "pen") open(node); }}>
+            {items.map(node => <button type="button" key={node.id} data-finder-folder={node.kind==="folder"?node.id:undefined} className={`${styles.item} ${selectedId===node.id?styles.selected:""} ${dropId===node.id?styles.dropTarget:""} ${drag?.id===node.id||cutId===node.id?styles.dragSource:""}`} aria-label={`${node.name}, ${node.kind === "text" ? "text document" : node.kind}${node.protected ? ", read only" : ""}`} aria-pressed={selectedId === node.id} onPointerDown={event=>startDrag(event,node)} onClick={event => { if(suppressClick.current){suppressClick.current=false;return;}setSelectedId(node.id); setNameAction(null); setDeleteId(null); if (event.detail === 0 || pointerType.current === "touch" || pointerType.current === "pen") open(node); }} onDoubleClick={() => { if(suppressClick.current)return;if (pointerType.current !== "touch" && pointerType.current !== "pen") open(node); }}>
               <Glyph kind={node.kind} />
               <span className={styles.itemName}>{node.name}{query.trim() && <small>{nodes.find(parent => parent.id === node.parentId)?.name}</small>}</span>
               <span className={styles.itemKind}>{node.kind === "folder" ? "Folder" : node.kind === "app" ? "App ↗" : "Text"}</span>
             </button>)}
-            {items.length === 0 && <div className={styles.empty}><Glyph kind="folder" /><strong>{query || filter !== "all" ? "No matching items" : "Room for a thought."}</strong><p>{query || filter !== "all" ? "Try another search or file type." : "Make a folder or write your first note."}</p>{(query || filter !== "all") && <button type="button" onClick={() => { setQuery(""); setFilter("all"); }}>Clear filters</button>}</div>}
+            {items.length === 0 && <div className={styles.empty}><Glyph kind="folder" /><strong>{query || filter !== "all" ? "No matching items" : "Empty folder"}</strong><p>{query || filter !== "all" ? "Try another search or file type." : "No items."}</p>{(query || filter !== "all") && <button type="button" onClick={() => { setQuery(""); setFilter("all"); }}>Clear filters</button>}</div>}
           </div>
           <div className={styles.selectionBar}><span>{selected ? selected.name : "Click to select · double-click to open"}</span>{selected && <button type="button" onClick={() => open(selected)}>Open ↗</button>}</div>
         </>}
       </main>
     </div>
 
+    {drag&&<div ref={ghostRef} className={styles.dragGhost} style={{transform:`translate(${drag.x}px,${drag.y}px)`}} aria-hidden="true"><Glyph kind={nodes.find(node=>node.id===drag.id)!.kind}/><span>{nodes.find(node=>node.id===drag.id)!.name}</span></div>}
     <footer className={styles.statusBar}>
       <span>{current.kind === "text" ? "Text document" : `${items.length} ${items.length === 1 ? "item" : "items"}`}</span>
       <span className={styles.statusMessage} role="status" aria-live="polite">{notice || (storageState === "session" ? "Storage unavailable · session only" : "Visitor files stay in this browser")}</span>

@@ -330,10 +330,10 @@ export default function SoundLab() {
 
       <div className={styles.footer}>
         <button type="button" disabled={exporting} onClick={() => void exportLoop()}>{exporting ? "Recording…" : "Export .wav ↗"}</button>
-        <button type="button" onClick={() => { setPattern(NOTES.map(() => Array(STEPS).fill(false))); setPreset(null); setMessage("Fresh tape. Tap a few notes to begin."); }}>Clear tape</button>
+        <button type="button" onClick={() => { setPattern(NOTES.map(() => Array(STEPS).fill(false))); setPreset(null); setMessage("Pattern cleared."); }}>Clear tape</button>
       </div>
       <div className={styles.status} role="status">{message}</div>
-      <div className={styles.saveNote}>SAVED ON THIS DEVICE · NO CLOUD, JUST VIBES</div>
+      <div className={styles.saveNote}>Saved on this device</div>
     </section>
   );
 }

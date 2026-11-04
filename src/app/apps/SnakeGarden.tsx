@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
 import styles from "./SnakeGarden.module.css";
+import arcade from "./Arcade.module.css";
+import ArcadeMenu, { handleGameBlur } from "./ArcadeMenu";
 
 type Point = { x: number; y: number };
 type Direction = "up" | "right" | "down" | "left";
@@ -113,7 +115,7 @@ function drawGarden(canvas: HTMLCanvasElement, game: Game) {
 }
 
 export default function SnakeGarden() {
-  const [game, setGame] = useState<Game>(initialGame);
+  const [game, setGame] = useState<Game>(()=>({...initialGame(),status:"running"}));
   const [best, setBest] = useState(0);
   const gameRef = useRef(game);
   const turnsRef = useRef<Direction[]>([]);
@@ -194,11 +196,14 @@ export default function SnakeGarden() {
 
   useEffect(() => {
     const onVisibility = () => { if (document.hidden) pause(); };
+    const onAppFocus = (event: Event) => { if ((event as CustomEvent<{ id: string | null }>).detail?.id !== "snake") pause(); };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("blur", pause);
+    window.addEventListener("storm-app-focus", onAppFocus);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("blur", pause);
+      window.removeEventListener("storm-app-focus", onAppFocus);
     };
   }, [pause]);
 
@@ -246,10 +251,10 @@ export default function SnakeGarden() {
       steer(direction);
       return;
     }
-    if (event.key === "Escape" && gameRef.current.status === "running") {
+    if (event.key === "Escape" && !event.repeat) {
       event.preventDefault();
       event.stopPropagation();
-      pause();
+      togglePause();
       return;
     }
     const isButton = event.target instanceof HTMLElement && !!event.target.closest("button");
@@ -279,35 +284,19 @@ export default function SnakeGarden() {
     steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
   };
 
+  useEffect(()=>{arenaRef.current?.focus({preventScroll:true});},[]);
+
   const active = game.status === "running";
   const paused = game.status === "paused";
-  const finished = game.status === "over" || game.status === "won";
 
   return (
     <section
-      className={styles.game}
+      className={`${arcade.shell} ${styles.game}`}
       aria-label="Snake Garden"
       onKeyDown={onKeyDown}
-      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) pause(); }}
+      onBlur={(event) => handleGameBlur(event, pause, () => arenaRef.current)}
     >
-      <header className={styles.header}>
-        <div className={styles.titleGroup}>
-          <svg className={styles.flower} viewBox="0 0 24 28" aria-hidden="true">
-            <path fill="currentColor" d="M9 0h6v6h6v6h-6v6H9v-6H3V6h6z" />
-            <path fill="#f4f3e9" d="M9 6h6v6H9z" />
-            <path fill="#65774d" d="M10 18h3v10h-3zM4 19h6v5H7v-2H4zm9 2h7v3h-4v2h-3z" />
-          </svg>
-          <div><h1 className={styles.title}>Snake Garden</h1><p className={styles.subtitle}>Small snake. Big appetite.</p></div>
-        </div>
-        <span className={styles.edition}>EST.<br />1984*</span>
-      </header>
-
-      <div className={styles.scorebar}>
-        <div className={styles.counter}><span>SNACKS</span><strong>{String(game.score).padStart(2, "0")}</strong></div>
-        <div className={styles.scoreMessage}><span className={`${styles.statusDot} ${active ? styles.activeDot : ""}`} />{active ? "HAPPILY GROWING" : paused ? "ON A LITTLE BREAK" : finished ? "ANOTHER LITTLE ADVENTURE?" : "YOUR GARDEN AWAITS"}</div>
-        <div className={`${styles.counter} ${styles.best}`}><span>BEST</span><strong>{String(best).padStart(2, "0")}</strong></div>
-      </div>
-
+      <div className={arcade.hud}><span>SCORE <strong>{String(game.score).padStart(2,"0")}</strong></span><span className={arcade.spacer}/><span>BEST <strong>{String(best).padStart(2,"0")}</strong></span><button onClick={togglePause} aria-label="Help and pause">?</button></div>
       <div
         ref={arenaRef}
         className={styles.arena}
@@ -320,35 +309,19 @@ export default function SnakeGarden() {
         onLostPointerCapture={() => { swipeRef.current = null; }}
       >
         <canvas ref={canvasRef} width={BOARD_SIZE} height={BOARD_SIZE} className={styles.canvas} role="img" aria-label={`Pixel garden. Snake length ${game.snake.length}. ${FOOD_NAMES[game.score % FOOD_NAMES.length]} to collect.`} />
-        {!active && (
-          <div className={styles.overlay}>
-            <div className={styles.overlayCard}>
-              <span className={styles.overlaySymbol} aria-hidden="true">{paused ? "Ⅱ" : game.status === "won" ? "✿" : game.status === "over" ? ":')" : "✿"}</span>
-              <h2>{paused ? "Taking a breather." : game.status === "won" ? "A very full garden." : game.status === "over" ? "A wall. A lesson." : "A little room to grow."}</h2>
-              <p>{paused ? "Your snacks will wait for you." : game.status === "won" ? "Every square, a little victory." : game.status === "over" ? `${game.score} ${game.score === 1 ? "snack" : "snacks"} collected. Shall we try again?` : "Find a snack. Take a turn.\nSee how far a little snake can go."}</p>
-              <button className={styles.primaryButton} onClick={() => paused ? togglePause() : start()}>{paused ? "Keep growing" : finished ? "Plant a new game" : "Let’s grow"}<span aria-hidden="true">→</span></button>
-              {!finished && !paused && <span className={styles.startHint}>or press an arrow key</span>}
-            </div>
-          </div>
-        )}
+        {!active&&<ArcadeMenu title={paused?"PAUSED":game.status==="won"?"BOARD CLEARED":"GAME OVER"} controls={paused?["WASD / arrows: turn","Swipe or use D-pad on touch","Collect fruit. Avoid walls and your tail.","Space / Esc: pause"]:[`Score: ${game.score}`]} action={()=>paused?togglePause():start()} label={paused?"Resume":"Play again"} restart={paused?()=>start():undefined}/>}
       </div>
-
-      <div className={styles.controls}>
-        <div className={styles.keyHelp}><span><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd><span className={styles.or}>or</span><b>WASD</b></span><small>to wander · space to pause</small></div>
-        <button className={styles.pauseButton} disabled={!active && !paused} onClick={togglePause} aria-label={paused ? "Resume game" : "Pause game"}>{paused ? "▶ Resume" : "Ⅱ Pause"}</button>
-      </div>
-
       <div className={styles.touchControls} aria-label="Direction controls">
         <button className={styles.up} aria-label="Move up" onClick={() => steer("up")}>↑</button>
         <button className={styles.left} aria-label="Move left" onClick={() => steer("left")}>←</button>
         <span className={styles.padCenter} aria-hidden="true">✿</span>
         <button className={styles.right} aria-label="Move right" onClick={() => steer("right")}>→</button>
         <button className={styles.down} aria-label="Move down" onClick={() => steer("down")}>↓</button>
-        <span className={styles.swipeHint}>a thumb-sized<br />adventure.<br /><b>swipe to steer, too.</b></span>
+
       </div>
 
-      <footer className={styles.footer}><span>GROW SLOW. TURN OFTEN.</span><span>* A STATE OF MIND</span></footer>
-      <span className={styles.srOnly} role="status" aria-live="polite">{game.status === "over" ? `Game over. ${game.score} snacks collected.` : game.status === "won" ? "You filled the garden!" : game.status === "paused" ? "Game paused." : ""}</span>
+
+      <span className={arcade.srOnly} role="status" aria-live="polite">{game.status === "over" ? `Game over. ${game.score} snacks collected.` : game.status === "won" ? "You filled the garden!" : game.status === "paused" ? "Game paused." : ""}</span>
     </section>
   );
 }

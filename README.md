@@ -53,3 +53,12 @@ Regenerate geometry and the manifest with Blender 4.1 or later:
 ```
 
 Optional `--sources <directory>` saves editable `.blend` files. Models use local geometry/materials and no remote textures. Only the selected hardware is loaded; the scene still renders on demand. The three rigs use the same OS with responsive screen sizes rather than separate app implementations.
+
+
+## Retro interactions
+
+The classic Mac defaults to a tapered angular case. **Case: angular / rounded** restores the earlier model instantly; its original GLB is retained. Mouse and keyboard use blockier geometry and collide with each other and the computer. Hardware changes are kept in a separate commit for a complete revert.
+
+Games is a plain folder. Games boot into play/building; **Esc / ?** opens controls and pause/resume. Desktop files keep their artwork while dragging into/out of folders and Trash. New folders and moved subtrees can nest five levels; older deep Finder notes remain readable. Finder also supports cut/paste and undoing moves.
+
+See [interaction notes](docs/retro-interactions.md) for implementation and validation details.

@@ -281,7 +281,7 @@ export default function PixelStudio() {
           }
         });
       }
-      commit({ size: previous.size, pixels }, "A little splash of color.");
+      commit({ size: previous.size, pixels }, "Filled.");
       return;
     }
     const before = current.current;

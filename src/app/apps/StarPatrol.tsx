@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
 import styles from "./StarPatrol.module.css";
+import arcade from "./Arcade.module.css";
+import ArcadeMenu, { handleGameBlur } from "./ArcadeMenu";
 
 type Point = { x: number; y: number };
 type Phase = "briefing" | "playing" | "paused" | "won" | "lost";
@@ -442,7 +444,7 @@ function drawWorld(canvas: HTMLCanvasElement, terrain: HTMLCanvasElement | null,
 
 export default function StarPatrol() {
   const worldRef = useRef<World | null>(null);
-  if (!worldRef.current) worldRef.current = createWorld();
+  if (!worldRef.current) { worldRef.current = createWorld(); worldRef.current.phase = "playing"; worldRef.current.selected = worldRef.current.rangers.map(ranger=>ranger.id); }
   const [view, setView] = useState<View>(() => snapshot(worldRef.current!));
   const [command, setCommand] = useState<Command>("select");
   const commandRef = useRef<Command>("select");
@@ -464,7 +466,7 @@ export default function StarPatrol() {
   }, []);
 
   const start = useCallback(() => {
-    const next = createWorld(); next.phase = "playing";
+    const next = createWorld(); next.phase = "playing"; next.selected = next.rangers.map(ranger=>ranger.id);
     worldRef.current = next; gestureRef.current = null;
     setMode("select"); publish(); redraw();
     battlefieldRef.current?.focus({ preventScroll: true });
@@ -526,22 +528,7 @@ export default function StarPatrol() {
 
   useEffect(() => {
     terrainRef.current = makeTerrain();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const resize = () => {
-      const width = canvas.getBoundingClientRect().width;
-      const ratio = Math.min(window.devicePixelRatio || 1, 3);
-      canvas.width = Math.max(1, Math.round(width * ratio));
-      canvas.height = Math.max(1, Math.round(width * HEIGHT / WIDTH * ratio));
-      redraw();
-    };
-    resize();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", resize);
-      return () => window.removeEventListener("resize", resize);
-    }
-    const observer = new ResizeObserver(resize); observer.observe(canvas);
-    return () => observer.disconnect();
+    redraw(); battlefieldRef.current?.focus({preventScroll:true});
   }, [redraw]);
 
   useEffect(() => {
@@ -638,6 +625,7 @@ export default function StarPatrol() {
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.altKey || event.ctrlKey || event.metaKey || event.repeat) return;
     const key = event.key.toLowerCase();
+    if (key === "escape" && !event.repeat) { event.preventDefault(); event.stopPropagation(); togglePause(); return; }
     const isButton = event.target instanceof HTMLElement && !!event.target.closest("button");
     if (event.code === "Space" && !isButton) {
       event.preventDefault(); event.stopPropagation();
@@ -657,70 +645,23 @@ export default function StarPatrol() {
 
   const playing = view.phase === "playing";
   const paused = view.phase === "paused";
-  const finished = view.phase === "won" || view.phase === "lost";
   const trainingFull = view.squad + view.training >= SQUAD_CAP;
   const canTrain = playing && !trainingFull && view.resources >= TRAIN_COST;
   const missionTime = `${Math.floor(view.elapsed / 60)}:${String(view.elapsed % 60).padStart(2, "0")}`;
 
-  return (
-    <section className={styles.game} aria-label="Star Patrol real-time strategy game" onKeyDown={onKeyDown} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) pause(); }}>
-      <header className={styles.header}>
-        <div className={styles.brand}>
-          <svg viewBox="0 0 28 28" aria-hidden="true"><path fill="currentColor" d="M12 0h4v8h4v4h8v4h-8v4h-4v8h-4v-8H8v-4H0v-4h8V8h4z" /><path fill="#e8ebdc" d="M12 12h4v4h-4z" /></svg>
-          <div><h1>Star Patrol</h1><p>ORBITAL OUTPOST / RELAY 07</p></div>
-        </div>
-        <button className={styles.pause} disabled={!playing && !paused} onClick={togglePause} aria-label={paused ? "Resume mission" : "Pause mission"}>{paused ? "▶" : "Ⅱ"}<span>{paused ? "RESUME" : "PAUSE"}</span></button>
-      </header>
-
-      <div className={styles.hud}>
-        <div className={styles.integrity}><span>RELAY INTEGRITY</span><strong className={view.hp < 250 ? styles.danger : ""}>{Math.ceil(view.hp / RELAY_HP * 100)}<small>%</small></strong><div className={styles.meter}><i style={{ width: `${view.hp / RELAY_HP * 100}%`, backgroundColor: view.hp < 250 ? "#bb6b50" : undefined }} /></div></div>
-        <div><span>SUPPLY</span><strong className={styles.supply}><small>◈</small> {view.resources}</strong><em>salvage + passive income</em></div>
-        <div className={styles.wave}><span>WAVE</span><strong>{String(view.wave || 1).padStart(2, "0")}<small> / 04</small></strong><em>{view.phase === "won" ? "sector secured" : view.incoming ? `incoming in ${Math.max(0, view.waveTimer)}s` : `${view.enemyCount} hostiles`}</em></div>
-      </div>
-
-      <div
-        ref={battlefieldRef} tabIndex={0} role="group"
-        aria-label="Battlefield. Select rangers with a click or drag. Right-click to move or attack. For touch, select Squad, choose Move or Attack, then tap the map."
-        className={`${styles.battlefield} ${command === "select" ? styles.selectCursor : styles.orderCursor}`}
-        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-        onPointerCancel={() => { gestureRef.current = null; redraw(); }}
-        onLostPointerCapture={() => { gestureRef.current = null; }}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          if (!playing) return;
-          focusBoard(); const point = toWorld(event); const target = hitAlien(point);
-          issueOrder(point, target ? "attack" : "move", target);
-        }}
-      >
-        <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} className={styles.canvas} role="img" aria-label={`Outpost battlefield. ${view.squad} rangers, ${view.enemyCount} hostiles. Relay health ${Math.ceil(view.hp / RELAY_HP * 100)} percent.`} />
-        <div className={styles.mapLabel} aria-hidden="true"><span className={playing ? styles.liveDot : ""} />SECTOR 07 <b>·</b> DUSKLINE</div>
-        <div className={styles.clock} aria-hidden="true">{missionTime}</div>
-        {!playing && (
-          <div className={styles.overlay}>
-            <div className={styles.missionCard}>
-              <span className={styles.missionTag}>{paused ? "TACTICAL PAUSE" : view.phase === "won" ? "MISSION COMPLETE" : view.phase === "lost" ? "SIGNAL LOST" : "TRANSMISSION / 007"}</span>
-              <h2>{paused ? "Catch your breath." : view.phase === "won" ? "The relay holds." : view.phase === "lost" ? "We lost the outpost." : <>A small outpost.<br />One last stand.</>}</h2>
-              <p>{paused ? "Your squad is standing by." : finished ? `${view.kills} hostiles repelled · ${missionTime} in the field` : "Command your rangers. Gather salvage.\nSurvive four waves of the skitter swarm."}</p>
-              <button className={styles.deploy} onClick={paused ? togglePause : start}>{paused ? "RESUME MISSION" : finished ? "DEPLOY AGAIN" : "DEPLOY RANGERS"}<span aria-hidden="true">→</span></button>
-              {paused ? <button className={styles.restart} onClick={start}>Restart mission</button> : !finished && <span className={styles.cardFoot}>ORIGINAL PIXEL STRATEGY · NO DOWNLOADS</span>}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className={styles.selectionRow}><span><i />{view.selected ? `${String(view.selected).padStart(2, "0")} RANGERS SELECTED` : "NO RANGERS SELECTED"}</span><b>{view.squad + view.training}/{SQUAD_CAP} <span>SQUAD</span></b></div>
-      <div className={styles.commandBar} role="group" aria-label="Squad commands">
-        <button disabled={!playing} className={command === "select" ? styles.selectedCommand : ""} aria-pressed={command === "select"} onClick={selectAll}><span className={styles.commandIcon}>▦</span><span>Squad<kbd>S</kbd></span></button>
-        <button disabled={!playing || !view.selected} className={command === "move" ? styles.selectedCommand : ""} aria-pressed={command === "move"} onClick={() => setMode("move")}><span className={styles.commandIcon}>↗</span><span>Move<kbd>M</kbd></span></button>
-        <button disabled={!playing || !view.selected} className={command === "attack" ? styles.selectedCommand : ""} aria-pressed={command === "attack"} onClick={() => setMode("attack")}><span className={styles.attackIcon}>⌖</span><span>Attack<kbd>A</kbd></span></button>
-      </div>
-      <div className={styles.supportRow}>
-        <button className={styles.train} disabled={!canTrain} onClick={train}><span>+ Train ranger <b>◈ 45</b></span><small>{trainingFull ? "SQUAD FULL" : view.training ? `${view.training} IN QUEUE` : "3 SEC · R"}</small>{view.training > 0 && <i style={{ width: `${view.trainProgress * 100}%` }} />}</button>
-        <button className={styles.hold} disabled={!playing || !view.selected} onClick={hold}>Hold <kbd>H</kbd></button>
-      </div>
-      <p className={styles.message} role="status" aria-live="polite"><span aria-hidden="true">›</span>{view.message}</p>
-      <footer className={styles.footer}><span className={styles.desktopHelp}>DRAG: SELECT · RIGHT-CLICK: ORDER</span><span className={styles.touchHelp}>SQUAD → MOVE / ATTACK → TAP MAP</span><span>SPACE: PAUSE</span></footer>
-      <div className={styles.legend}><span><i className={styles.friendlyKey} />RANGERS</span><span><i className={styles.enemyKey} />SKITTERS</span><span><i className={styles.salvageKey} />SALVAGE</span><span className={styles.killCount}>{view.kills} REPELLED</span></div>
-    </section>
-  );
+  return <section className={`${arcade.shell} ${styles.game}`} aria-label="Star Patrol real-time strategy game" onKeyDown={onKeyDown} onBlur={event=>handleGameBlur(event,pause,()=>battlefieldRef.current)}>
+    <div className={arcade.hud} aria-label="Mission status"><span>RELAY <strong>{Math.ceil(view.hp/RELAY_HP*100)}%</strong></span><span>SUPPLY <strong>{view.resources}</strong></span><span>WAVE <strong>{view.wave||1}/4</strong></span><span className={arcade.spacer}/><span>{missionTime}</span><button onClick={()=>playing?pause():togglePause()} aria-label="Help and pause">?</button></div>
+    <div ref={battlefieldRef} tabIndex={0} role="group" aria-label="Battlefield. Click or drag to select. Right-click to move or attack. Escape for controls." className={`${arcade.field} ${styles.battlefield} ${command!=="select"?styles.orderCursor:""}`} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={()=>{gestureRef.current=null;redraw();}} onLostPointerCapture={()=>{gestureRef.current=null;}} onContextMenu={event=>{event.preventDefault();if(!playing)return;focusBoard();const point=toWorld(event),target=hitAlien(point);issueOrder(point,target?"attack":"move",target);}}>
+      <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} className={arcade.canvas} role="img" aria-label={`Outpost battlefield. ${view.squad} rangers, ${view.enemyCount} hostiles. Relay health ${Math.ceil(view.hp/RELAY_HP*100)} percent.`}/>
+      {!playing&&<ArcadeMenu title={paused?"PAUSED":view.phase==="won"?"MISSION COMPLETE":"RELAY LOST"} controls={paused?["Click / drag: select rangers","Right-click: move or attack","S: squad   M: move   A: attack","R: train   H: hold   Space: pause","Touch: Squad → Move / Attack → map"]:[`${view.kills} hostiles defeated · ${missionTime}`]} action={paused?togglePause:start} label={paused?"Resume":"Play again"} restart={paused?start:undefined}/>}
+    </div>
+    <div className={arcade.toolbar} role="group" aria-label="Squad commands">
+      <button disabled={!playing} aria-pressed={command==="select"} onClick={selectAll}>Squad <kbd>S</kbd></button>
+      <button disabled={!playing||!view.selected} aria-pressed={command==="move"} onClick={()=>setMode("move")}>Move <kbd>M</kbd></button>
+      <button disabled={!playing||!view.selected} aria-pressed={command==="attack"} onClick={()=>setMode("attack")}>Attack <kbd>A</kbd></button>
+      <button disabled={!playing||!view.selected} onClick={hold}>Hold <kbd>H</kbd></button>
+      <button disabled={!canTrain} onClick={train}>Train · 45 <kbd>R</kbd>{view.training>0?` (${view.training})`:""}</button>
+    </div>
+    <div className={arcade.status} role="status">{view.selected}/{view.squad} selected · {view.enemyCount} hostiles · {view.kills} defeated{trainingFull?" · Squad full":""}</div>
+  </section>;
 }

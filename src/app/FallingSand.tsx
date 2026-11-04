@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import ArcadeMenu from "./apps/ArcadeMenu";
+import arcade from "./apps/Arcade.module.css";
 
 type ParticleType = "empty" | "sand" | "water" | "dirt" | "stone" | "lava";
 
@@ -23,7 +25,9 @@ const BASE_PARTICLE_SIZE = 4; // Base pixels per particle (at 1x scale)
 
 export default function FallingSand() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const shaderCanvasRef = useRef<HTMLCanvasElement>(null);
+  const surfaceRef=useRef<HTMLDivElement>(null);
+  const [paused,setPaused]=useState(false);
+  const pausedRef=useRef(false);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const [selectedType, setSelectedType] = useState<ParticleType>("sand");
   const [isDrawing, setIsDrawing] = useState(false);
@@ -37,6 +41,7 @@ export default function FallingSand() {
   const colsRef = useRef(0);
   const rowsRef = useRef(0);
   const lastFrameTimeRef = useRef(0);
+  const lastRenderTimeRef=useRef(0);
   const fpsHistoryRef = useRef<number[]>([]);
   const lastFPSUpdateRef = useRef(0);
   
@@ -365,116 +370,30 @@ export default function FallingSand() {
     }
   }, [canvasScale]);
 
-  // Apply retro shader effects
-  const applyShader = useCallback(() => {
-    if (!canvasRef.current || !shaderCanvasRef.current) return;
-    const sourceCanvas = canvasRef.current;
-    const shaderCanvas = shaderCanvasRef.current;
-    const ctx = shaderCanvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return;
-
-    // Copy source to shader canvas
-    ctx.drawImage(sourceCanvas, 0, 0);
-
-    // Apply retro effects
-    const imageData = ctx.getImageData(0, 0, shaderCanvas.width, shaderCanvas.height);
-    const data = imageData.data;
-    const width = shaderCanvas.width;
-    const height = shaderCanvas.height;
-
-    // Apply scanlines (every 2nd line for retro CRT effect)
-    for (let y = 0; y < height; y++) {
-      const scanline = y % 2 === 0;
-      if (scanline) {
-        for (let x = 0; x < width; x++) {
-          const idx = (y * width + x) * 4;
-          // Darken scanlines for CRT effect
-          data[idx] = Math.floor(data[idx] * 0.85);
-          data[idx + 1] = Math.floor(data[idx + 1] * 0.85);
-          data[idx + 2] = Math.floor(data[idx + 2] * 0.85);
+  // Physics and drawing share the selected rate; paused scenes do no frame work.
+  const gameLoop = useCallback((currentTime:number)=>{
+    if(pausedRef.current||document.hidden||targetFPS===0)return;
+    const elapsed=currentTime-lastFrameTimeRef.current;
+    const interval=1000/targetFPS;
+    if(elapsed+.25>=interval){
+      const renderedElapsed=currentTime-lastRenderTimeRef.current;
+      if(renderedElapsed>0){
+        fpsHistoryRef.current.push(1000/renderedElapsed);
+        if(fpsHistoryRef.current.length>60)fpsHistoryRef.current.shift();
+        if(currentTime-lastFPSUpdateRef.current>500){
+          setActualFPS(Math.round(fpsHistoryRef.current.reduce((a,b)=>a+b,0)/fpsHistoryRef.current.length));
+          lastFPSUpdateRef.current=currentTime;
         }
       }
+      updatePhysics();render();lastRenderTimeRef.current=currentTime;
+      lastFrameTimeRef.current=elapsed>=interval*2?currentTime:lastFrameTimeRef.current+interval;
     }
-
-    // Add subtle noise/grain for retro feel
-    for (let i = 0; i < data.length; i += 4) {
-      const noise = (Math.random() - 0.5) * 6;
-      data[i] = Math.max(0, Math.min(255, data[i] + noise));
-      data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
-      data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
-    }
-
-    // Add subtle chromatic aberration (red/blue shift)
-    const chromaData = ctx.createImageData(width, height);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const srcIdx = (y * width + x) * 4;
-        const dstIdx = (y * width + x) * 4;
-        
-        // Red channel shifted left, blue shifted right
-        const redX = Math.max(0, Math.min(width - 1, x - 1));
-        const blueX = Math.max(0, Math.min(width - 1, x + 1));
-        const redIdx = (y * width + redX) * 4;
-        const blueIdx = (y * width + blueX) * 4;
-        
-        chromaData.data[dstIdx] = data[redIdx]; // Red
-        chromaData.data[dstIdx + 1] = data[srcIdx + 1]; // Green stays
-        chromaData.data[dstIdx + 2] = data[blueIdx + 2]; // Blue
-        chromaData.data[dstIdx + 3] = data[srcIdx + 3]; // Alpha
-      }
-    }
-
-    ctx.putImageData(chromaData, 0, 0);
-  }, []);
-
-  // Game loop with FPS throttling and actual FPS tracking
-  const gameLoop = useCallback((currentTime: number) => {
-    // Track actual FPS
-    const frameTime = currentTime - lastFrameTimeRef.current;
-    if (frameTime > 0) {
-      const frameFPS = 1000 / frameTime;
-      fpsHistoryRef.current.push(frameFPS);
-      if (fpsHistoryRef.current.length > 60) {
-        fpsHistoryRef.current.shift(); // Keep last 60 frames
-      }
-      
-      // Update FPS display every 500ms
-      if (currentTime - lastFPSUpdateRef.current > 500) {
-        const avgFPS = fpsHistoryRef.current.reduce((a, b) => a + b, 0) / fpsHistoryRef.current.length;
-        setActualFPS(Math.round(avgFPS));
-        lastFPSUpdateRef.current = currentTime;
-      }
-    }
-    
-    if (targetFPS === 0) {
-      // Paused - don't update physics, just render
-      render();
-      applyShader();
-      lastFrameTimeRef.current = currentTime;
-      animationFrameRef.current = requestAnimationFrame(gameLoop);
-      return;
-    }
-
-    const targetFrameTime = 1000 / targetFPS; // milliseconds per frame
-    const elapsed = currentTime - lastFrameTimeRef.current;
-
-    if (elapsed >= targetFrameTime) {
-      updatePhysics();
-      render();
-      applyShader();
-      lastFrameTimeRef.current = currentTime;
-    } else {
-      // Still render even if not updating physics for smooth display
-      render();
-      applyShader();
-    }
-
-    animationFrameRef.current = requestAnimationFrame(gameLoop);
-  }, [updatePhysics, render, applyShader, targetFPS]);
+    animationFrameRef.current=requestAnimationFrame(gameLoop);
+  },[targetFPS,updatePhysics,render]);
 
   // Reinitialize grid when scale changes
   useEffect(() => {
-    if (canvasRef.current && shaderCanvasRef.current) {
+    if (canvasRef.current) {
       initGrid();
       // Render will be called by game loop
     }
@@ -483,7 +402,7 @@ export default function FallingSand() {
   // Handle resize
   useEffect(() => {
     const handleResize = () => {
-      if (!canvasRef.current || !shaderCanvasRef.current) return;
+      if (!canvasRef.current) return;
       const container = canvasRef.current.parentElement;
       if (!container) return;
 
@@ -493,10 +412,8 @@ export default function FallingSand() {
 
       canvasRef.current.width = width;
       canvasRef.current.height = height;
-      shaderCanvasRef.current.width = width;
-      shaderCanvasRef.current.height = height;
 
-      initGrid();
+      initGrid();render();
     };
 
     // Use ResizeObserver for more accurate sizing
@@ -512,18 +429,31 @@ export default function FallingSand() {
     handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [initGrid]);
+  }, [initGrid,render]);
+
+  const pause=useCallback(()=>{pausedRef.current=true;setPaused(true);setIsDrawing(false);},[]);
+  const resume=()=>{pausedRef.current=false;setPaused(false);surfaceRef.current?.focus({preventScroll:true});};
+  useEffect(()=>{
+    const hide=()=>{if(document.hidden)pause();};
+    const focus=(event:Event)=>{if((event as CustomEvent<{id:string|null}>).detail?.id!=="falling-sand")pause();};
+    window.addEventListener("blur",pause);document.addEventListener("visibilitychange",hide);window.addEventListener("storm-app-focus",focus);
+    if(document.hidden)pause();else surfaceRef.current?.focus({preventScroll:true});
+    return()=>{window.removeEventListener("blur",pause);document.removeEventListener("visibilitychange",hide);window.removeEventListener("storm-app-focus",focus);};
+  },[pause]);
 
   // Start game loop after initialization
   useEffect(() => {
+    if(paused||targetFPS===0){setActualFPS(0);render();return;}
     let mounted = true;
-    lastFrameTimeRef.current = performance.now();
+    let retry:ReturnType<typeof setTimeout>|undefined;
+    lastFrameTimeRef.current = lastRenderTimeRef.current = performance.now();
+    fpsHistoryRef.current=[];lastFPSUpdateRef.current=performance.now();
     const startLoop = () => {
-      if (mounted && canvasRef.current && shaderCanvasRef.current && colsRef.current > 0 && rowsRef.current > 0) {
+      if (mounted && canvasRef.current && colsRef.current > 0 && rowsRef.current > 0) {
         gameLoop(performance.now());
       } else if (mounted) {
         // Retry after a short delay if not ready
-        setTimeout(startLoop, 100);
+        retry=setTimeout(startLoop, 100);
       }
     };
     
@@ -531,28 +461,31 @@ export default function FallingSand() {
     
     return () => {
       mounted = false;
+      clearTimeout(retry);
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [gameLoop]);
+  }, [gameLoop, paused, targetFPS, render]);
 
   // Mouse/touch handlers
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       setIsDrawing(true);
       placeParticles(e.clientX, e.clientY, selectedType);
+      if(targetFPS===0)render();
     },
-    [selectedType, placeParticles]
+    [selectedType, placeParticles, targetFPS, render]
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (isDrawing) {
         placeParticles(e.clientX, e.clientY, selectedType);
+      if(targetFPS===0)render();
       }
     },
-    [isDrawing, selectedType, placeParticles]
+    [isDrawing, selectedType, placeParticles, targetFPS, render]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -560,22 +493,22 @@ export default function FallingSand() {
   }, []);
 
   return (
-    <div className="falling-sand-container">
+    <div ref={surfaceRef} tabIndex={0} className={`falling-sand-container ${arcade.shell}`} aria-label="Falling Sand" onKeyDown={event=>{if(event.key==="Escape"&&!event.repeat){event.preventDefault();event.stopPropagation();if(paused)resume();else pause();}}}>
       <div className="falling-sand-game">
         <canvas
           ref={canvasRef}
           className="falling-sand-canvas"
+          aria-label="Particle drawing canvas"
+          onPointerCancel={handlePointerUp}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
           style={{ position: "absolute", top: 0, left: 0 }}
         />
-        <canvas
-          ref={shaderCanvasRef}
-          className="falling-sand-shader"
-          style={{ position: "absolute", top: 0, left: 0 }}
-        />
+        <div className="falling-sand-shader" aria-hidden="true" style={{background:"repeating-linear-gradient(transparent 0 2px,#0002 2px 3px)",position:"absolute",inset:0,pointerEvents:"none"}}/>
+        <div className={arcade.help}><button onClick={pause} aria-label="Help and pause">?</button></div>
+        {paused&&<ArcadeMenu title="PAUSED" controls={["Click / drag: place material","Choose a material and brush size","FPS 0: stop physics · Esc: pause"]} action={resume}/>}
         {/* FPS Counter overlay */}
         <div style={{
           position: "absolute",
@@ -644,6 +577,7 @@ export default function FallingSand() {
           <div className="hud-label">Brush Size:</div>
           <input
             type="range"
+            aria-label="Brush size"
             min="1"
             max="10"
             value={brushSize}
@@ -656,6 +590,7 @@ export default function FallingSand() {
           <div className="hud-label">World Size:</div>
           <input
             type="range"
+            aria-label="World scale"
             min="1"
             max="100"
             value={canvasScale}
@@ -668,6 +603,7 @@ export default function FallingSand() {
           <div className="hud-label">Game Speed:</div>
           <input
             type="range"
+            aria-label="Simulation frame rate"
             min="0"
             max="200"
             value={targetFPS}
@@ -682,7 +618,6 @@ export default function FallingSand() {
             onClick={() => {
               initGrid();
               render();
-              applyShader();
             }}
           >
             Clear

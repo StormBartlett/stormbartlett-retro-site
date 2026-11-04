@@ -350,7 +350,7 @@ export default function FocusTimer() {
         <Garden sessions={state.sessions} />
         <div className={styles.gardenCopy}>
           <strong>{state.sessions.toLocaleString()} {state.sessions === 1 ? "little win" : "little wins"}</strong>
-          <span>{state.sessions === 0 ? "Your focus garden starts here." : state.sessions < 3 ? "A little more grown. Just like you." : "Look at all that quiet progress."}</span>
+          <span>{state.sessions === 0 ? "No sessions yet." : state.sessions < 3 ? "Sessions completed." : "Sessions completed."}</span>
         </div>
       </div>
 

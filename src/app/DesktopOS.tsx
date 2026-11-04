@@ -4,8 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import AppErrorBoundary from "./AppErrorBoundary";
 import dynamic from "next/dynamic";
-import { AppGlyph, AppLauncher, Playground, appComponents, portfolioApps } from "./PortfolioApps";
+import { AppGlyph, AppLauncher, appComponents, portfolioApps } from "./PortfolioApps";
 import { installDesktopSounds } from "./DesktopSounds";
+import { suppressDragClick } from "./dragClicks";
+import { createLocalCoordinateMetrics } from "./desktopCoordinates";
+import { desktopMoveError, FOLDER_STORAGE_KEY, purgeDesktopFolders, restoreDesktopFolders, restoreDesktopIcons, restoreDesktopTrash, type DesktopFolders } from "./desktopFiles";
 import { hydrateDesktopPreferences } from "./apps/desktopPreferences";
 const TiptapEditor = dynamic(() => import("./TiptapEditor"));
 const TodoEditor = dynamic(() => import("./TodoEditor"));
@@ -39,12 +42,7 @@ const WINDOW_CASCADE_SLOTS = 8;
 const DESKTOP_ICON_SIZE = 96;
 const BROWSER_ICON_SIZE = 96;
 const MOBILE_ICON_SIZE = 100;
-type LocalCoordinateMetrics = {
-  rect: DOMRect;
-  width: number;
-  height: number;
-  clientToLocal: (clientX: number, clientY: number) => { x: number; y: number };
-};
+
 const DESKTOP_BIN_POSITION = { x: 392, y: 44 };
 const MOBILE_TOP_ROW_ORDER = ["about", "projects", "playground", "pixel-studio", "activity", "terminal", "skills", "games", "bin"] as const;
 const ICON_STORAGE_KEYS = ["nx-icons", "nx-icons-mobile-portrait", "nx-icons-mobile-landscape"];
@@ -63,100 +61,13 @@ function getSpriteId({ id, label, type }: { id: string; label: string; type?: "f
   return "icon-file";
 }
 
-function getIconSpriteId(icon: Icon) {
-  return getSpriteId(icon);
-}
 
-function solveLinearSystem(matrix: number[][], vector: number[]) {
-  const size = vector.length;
-  const rows = matrix.map((row, index) => [...row, vector[index]]);
 
-  for (let col = 0; col < size; col++) {
-    let pivot = col;
-    for (let row = col + 1; row < size; row++) {
-      if (Math.abs(rows[row][col]) > Math.abs(rows[pivot][col])) pivot = row;
-    }
-    if (Math.abs(rows[pivot][col]) < 1e-9) return null;
-    [rows[col], rows[pivot]] = [rows[pivot], rows[col]];
 
-    const divisor = rows[col][col];
-    for (let i = col; i <= size; i++) rows[col][i] /= divisor;
-
-    for (let row = 0; row < size; row++) {
-      if (row === col) continue;
-      const factor = rows[row][col];
-      for (let i = col; i <= size; i++) rows[row][i] -= factor * rows[col][i];
-    }
-  }
-
-  return rows.map((row) => row[size]);
-}
-
-function createLocalCoordinateMetrics(element: HTMLElement): LocalCoordinateMetrics {
-  const rect = element.getBoundingClientRect();
-  const width = element.clientWidth;
-  const height = element.clientHeight;
-
-  const measurePoint = (x: number, y: number) => {
-    const marker = document.createElement("div");
-    marker.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:1px;height:1px;visibility:hidden;pointer-events:none;`;
-    element.appendChild(marker);
-    const markerRect = marker.getBoundingClientRect();
-    marker.remove();
-    return { x: markerRect.left, y: markerRect.top };
-  };
-
-  const screenPoints = [
-    measurePoint(0, 0),
-    measurePoint(width, 0),
-    measurePoint(0, height),
-    measurePoint(width, height),
-  ];
-  const localPoints = [
-    { x: 0, y: 0 },
-    { x: width, y: 0 },
-    { x: 0, y: height },
-    { x: width, y: height },
-  ];
-
-  const matrix: number[][] = [];
-  const vector: number[] = [];
-  screenPoints.forEach((point, index) => {
-    const local = localPoints[index];
-    matrix.push([point.x, point.y, 1, 0, 0, 0, -local.x * point.x, -local.x * point.y]);
-    vector.push(local.x);
-    matrix.push([0, 0, 0, point.x, point.y, 1, -local.y * point.x, -local.y * point.y]);
-    vector.push(local.y);
-  });
-
-  const solution = solveLinearSystem(matrix, vector);
-  if (!solution) {
-    const scaleX = rect.width / (width || 1);
-    const scaleY = rect.height / (height || 1);
-    return {
-      rect,
-      width,
-      height,
-      clientToLocal: (clientX, clientY) => ({
-        x: (clientX - rect.left) / (scaleX || 1),
-        y: (clientY - rect.top) / (scaleY || 1),
-      }),
-    };
-  }
-
-  const [a, b, c, d, e, f, g, h] = solution;
-  return {
-    rect,
-    width,
-    height,
-    clientToLocal: (clientX, clientY) => {
-      const denominator = g * clientX + h * clientY + 1;
-      return {
-        x: (a * clientX + b * clientY + c) / denominator,
-        y: (d * clientX + e * clientY + f) / denominator,
-      };
-    },
-  };
+function IconArtwork({item,size=48}:{item:{id:string;label:string;app?:string;windowId?:string;type?:"file"|"folder"};size?:number}) {
+  const app=item.app??item.windowId??item.id;
+  const glyph=portfolioApps.find(entry=>entry.id===app)?.glyph??(app==="playground"?"game":undefined);
+  return glyph?<AppGlyph glyph={glyph} size={size}/>:<svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true"><use href={`#${getSpriteId(item)}`}/></svg>;
 }
 
 const baseIcons: Icon[] = [
@@ -171,6 +82,16 @@ const baseIcons: Icon[] = [
   { id: "terminal", label: "Terminal", app: "terminal", x: 272, y: 260 },
   { id: "games", label: "Games", app: "games", x: 392, y: 152, type: "folder" },
 ];
+
+function defaultFolders(): DesktopFolders {
+  return {
+    blog:{label:"Blog",items:[{id:"blog-recursion",label:"Recursive Algorithms.txt",type:"file",x:20,y:20,app:"blog-recursion",windowId:"blog-recursion"},{id:"blog-sorting",label:"Mathematics of Sorting.txt",type:"file",x:120,y:20,app:"blog-sorting",windowId:"blog-sorting"},{id:"blog-graphs",label:"Graph Theory.txt",type:"file",x:220,y:20,app:"blog-graphs",windowId:"blog-graphs"},{id:"test-folder",label:"Test Folder",type:"folder",app:"test-folder",x:20,y:120}]},
+    "test-folder":{label:"Test Folder",items:[]},
+    projects:{label:"Projects",items:[{id:"project-notetime",label:"NoteTime.txt",type:"file",x:20,y:20,app:"project-notetime",windowId:"project-notetime"},{id:"project-fallingsand",label:"FallingSandGame.txt",type:"file",x:120,y:20,app:"project-fallingsand",windowId:"project-fallingsand"}]},
+    games:{label:"Games",items:[...portfolioApps.filter(app=>["star-patrol","balloon-bastion","mossblade","snake"].includes(app.id)),{id:"falling-sand",name:"Falling Sand"}].map((app,i)=>({id:`game-${app.id}`,app:app.id,windowId:app.id,label:app.name,x:20+i%3*110,y:20+Math.floor(i/3)*110}))},
+    playground:{label:"Playground",items:portfolioApps.filter(app=>app.category!=="Games"&&app.id!=="games").map((app,i)=>({id:`cabinet-${app.id}`,app:app.id,windowId:app.id,label:app.name,x:20+i%3*110,y:20+Math.floor(i/3)*110}))},
+  };
+}
 
 function buildMobileTopRowLayout(width: number, isPortrait: boolean) {
   const preferredColumnCount = isPortrait || width < 740 ? 3 : MOBILE_TOP_ROW_ORDER.length;
@@ -317,17 +238,8 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   const initialWindowCascadeBase = isMobile ? mobileWindowCascadeBase : WINDOW_CASCADE_BASE;
   const [icons, setIcons] = useState<Icon[]>(initialIcons);
   const [trash, setTrash] = useState<Icon[]>([]);
-  const [testFolderItems, setTestFolderItems] = useState<BrowserItem[]>([]);
-  const [projectFolderItems, setProjectFolderItems] = useState<BrowserItem[]>([
-    { id: "project-notetime", label: "NoteTime.txt", type: "file", x: 20, y: 20, windowId: "project-notetime" },
-    { id: "project-fallingsand", label: "FallingSandGame.txt", type: "file", x: 120, y: 20, windowId: "project-fallingsand" },
-  ]);
-  const [blogFolderItems, setBlogFolderItems] = useState<BrowserItem[]>([
-    { id: "blog-recursion", label: "Recursive Algorithms.txt", type: "file", x: 20, y: 20, windowId: "blog-recursion" },
-    { id: "blog-sorting", label: "Mathematics of Sorting.txt", type: "file", x: 120, y: 20, windowId: "blog-sorting" },
-    { id: "blog-graphs", label: "Graph Theory.txt", type: "file", x: 220, y: 20, windowId: "blog-graphs" },
-    { id: "test-folder", label: "Test Folder", type: "folder", x: 20, y: 120 },
-  ]);
+  const [folders,setFolders]=useState<DesktopFolders>(defaultFolders);
+  const [fileNotice,setFileNotice]=useState("");
   const [windows, setWindows] = useState<Record<string, Win>>({
     ...Object.fromEntries([...portfolioApps.map(app => app.id), "playground"].map(id => [id, { id, open: false, z: 10 }])),
     about: { id: "about", open: false, z: 11, ...initialWindowCascadeBase },
@@ -372,7 +284,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     const onHardware = (e: Event) => {
       const key = (e as CustomEvent<{ key: string }>).detail?.key;
       if (!key) return;
-      if (key === "Escape") { setLauncherOpen(false); return; }
+      if (key === "Escape") { setLauncherOpen(false); document.activeElement?.dispatchEvent(new KeyboardEvent("keydown",{key,code:"Escape",bubbles:true,cancelable:true})); return; }
       const focused = document.activeElement;
       const active = focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement
         ? focused : lastTextInput?.isConnected ? lastTextInput : focused;
@@ -398,8 +310,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
       const {u,v} = (event as CustomEvent<{u:number;v:number}>).detail ?? {};
       const cursor=hardwareCursorRef.current, desktop=desktopRef.current;
       if(!cursor || !desktop || !Number.isFinite(u) || !Number.isFinite(v)) return;
-      cursor.style.left = `${Math.max(0,Math.min(1,u)) * (desktop.clientWidth - 20)}px`;
-      cursor.style.top = `${Math.max(0,Math.min(1,v)) * (desktop.clientHeight - 24)}px`;
+      cursor.style.transform = `translate(${Math.max(0,Math.min(1,u)) * (desktop.clientWidth - 20)}px,${Math.max(0,Math.min(1,v)) * (desktop.clientHeight - 24)}px)`;
       cursor.style.display="block";
     };
     const onHardwareClick = () => {
@@ -437,7 +348,13 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     source: DragSource;
     items: DragItem[];
     startPositions?: Map<string, { x: number; y: number }>;
+    movePositions?: Map<string, { x: number; y: number }>;
   } | null>(null);
+  const dragGhostRef=useRef<HTMLDivElement>(null);
+  const dragClickCleanupRef=useRef<(()=>void)|null>(null);
+  const dragCleanupRef=useRef<(()=>void)|null>(null);
+  const springRef=useRef<{key:string;timer:number}|null>(null);
+  useEffect(()=>()=>{dragCleanupRef.current?.();dragClickCleanupRef.current?.();if(springRef.current)clearTimeout(springRef.current.timer);},[]);
   const [dragGhost, setDragGhost] = useState<{ item: DragItem; x: number; y: number } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<null | "apple" | "file" | "edit" | "view" | "go" | "window" | "help">(null);
@@ -484,24 +401,15 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   };
 
   useEffect(() => {
-    const saved = desktopStorage.getItem(iconStorageKey);
-    if (saved) {
-      try {
-        const data: unknown = JSON.parse(saved);
-        const parsed = Array.isArray(data) ? data.filter((item): item is Icon => !!item && typeof item.id === "string" && Number.isFinite(item.x) && Number.isFinite(item.y)) : [];
-        const merged = mergeIconsWithDefaults(parsed);
-        setIcons(merged);
-      } catch {
-    setIcons(initialIcons);
-      }
-    } else {
-      setIcons(initialIcons);
-    }
+    const apps=new Set(Object.keys(windows));
+    const restoredFolders=restoreDesktopFolders(desktopStorage.getItem(FOLDER_STORAGE_KEY),folders,apps);
+    setFolders(restoredFolders);
+    for(const id of Object.keys(restoredFolders))setWindows(prev=>prev[id]?prev:{...prev,[id]:{id,open:false,z:10}});
+    const restoredTrash=restoreDesktopTrash(desktopStorage.getItem("nx-trash"),restoredFolders,apps);
+    setTrash(restoredTrash);
+    const otherLayouts=ICON_STORAGE_KEYS.filter(key=>key!==iconStorageKey).map(key=>desktopStorage.getItem(key));
+    setIcons(fitIconsToViewport(restoreDesktopIcons(desktopStorage.getItem(iconStorageKey),otherLayouts,initialIcons,restoredFolders,restoredTrash,apps)));
     setIconsReady(true);
-    const savedTrash = desktopStorage.getItem("nx-trash");
-    if (savedTrash) {
-      try { const items: unknown = JSON.parse(savedTrash); if (Array.isArray(items)) setTrash(items.filter((item): item is Icon => !!item && typeof item.id === "string" && typeof item.app === "string" && typeof item.label === "string" && Number.isFinite(item.x) && Number.isFinite(item.y))); } catch {}
-    }
     const savedTrashPos = desktopStorage.getItem(trashPosStorageKey);
     if (savedTrashPos) {
       try {
@@ -537,6 +445,8 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     setLoadedIconStorageKey(iconStorageKey);
     return () => clearInterval(t);
   }, [binPosStorageKey, iconStorageKey, initialIcons, trashPosStorageKey]);
+
+  useEffect(()=>{if(iconsReady)desktopStorage.setItem(FOLDER_STORAGE_KEY,JSON.stringify(folders));},[folders,iconsReady]);
 
   // On mobile variants, arrange icons into a grid that fits the screen
   useEffect(() => {
@@ -630,16 +540,21 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   // window under the cursor wins, exactly like a native desktop.
   // ============================================================
 
-  const folderRegistry: Record<string, { items: BrowserItem[]; setItems: React.Dispatch<React.SetStateAction<BrowserItem[]>> }> = {
-    blog: { items: blogFolderItems, setItems: setBlogFolderItems },
-    "test-folder": { items: testFolderItems, setItems: setTestFolderItems },
-    projects: { items: projectFolderItems, setItems: setProjectFolderItems },
-  };
-  const folderCounts: Record<string, number> = {
-    blog: blogFolderItems.length,
-    "test-folder": testFolderItems.length,
-    projects: projectFolderItems.length,
-  };
+  const folderRegistry=Object.fromEntries(Object.entries(folders).map(([id,folder])=>[id,{items:folder.items,setItems:(update:React.SetStateAction<BrowserItem[]>)=>setFolders(prev=>({...prev,[id]:{...prev[id],items:typeof update==="function"?update(prev[id]?.items??[]):update}}))}]));
+  const folderCounts=Object.fromEntries(Object.entries(folders).map(([id,folder])=>[id,folder.items.length]));
+  function createFolder(parentId="desktop") {
+    if(Object.keys(folders).length>=150){setFileNotice("Folder limit reached.");return;}
+    const siblings=parentId==="desktop"?icons:folders[parentId]?.items??[];
+    let label="Untitled folder";for(let n=2;siblings.some(item=>item.label.toLowerCase()===label.toLowerCase());n++)label=`Untitled folder ${n}`;
+    const id=`desk-folder-${globalThis.crypto?.randomUUID?.()??`${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+    const next={...folders,[id]:{label,items:[]}};
+    const item:Icon={id,label,app:id,type:"folder",x:20+(siblings.length%3)*110,y:20+Math.floor(siblings.length/3)*110};
+    const error=desktopMoveError(next,[...icons,item],trash,[id],parentId);
+    if(error){setFileNotice(error);return;}
+    setFolders(prev=>({...prev,[id]:{label,items:[]},...(parentId!=="desktop"?{[parentId]:{...prev[parentId],items:[...prev[parentId].items,{...item,windowId:id}]}}:{})}));
+    if(parentId==="desktop")setIcons(prev=>[...prev,{...item,...clampToDesktop(40+icons.length%5*104,60+Math.floor(icons.length/5)*104)}]);
+    setWindows(prev=>({...prev,[id]:{id,open:false,z:10}}));setSelection(new Set([id]));setFileNotice("");
+  }
 
   function resolveDrop(clientX: number, clientY: number): { key: string; el: HTMLElement } | null {
     const st = dragStateRef.current;
@@ -684,9 +599,17 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     return null;
   }
 
-  function updateDropTarget(clientX: number, clientY: number) {
-    if (!dragStateRef.current) return;
-    setDropTarget(resolveDrop(clientX, clientY)?.key ?? null);
+  function updateDropTarget(clientX:number,clientY:number,positions?:Map<string,{x:number;y:number}>) {
+    const st=dragStateRef.current;if(!st)return;
+    if(positions)st.movePositions=positions;
+    const resolved=resolveDrop(clientX,clientY);
+    const folder=resolved?.key.match(/^(?:window|folder):(.*)$/)?.[1];
+    const valid=folder?!desktopMoveError(folders,icons,trash,st.items.map(item=>item.id),folder):true;
+    const key=valid?resolved?.key??null:null;
+    setDropTarget(previous=>previous===key?previous:key);
+    if(springRef.current?.key!==key){if(springRef.current)clearTimeout(springRef.current.timer);springRef.current=null;
+      if(key?.startsWith("folder:")&&folder&&!windows[folder]?.open)springRef.current={key,timer:window.setTimeout(()=>{openWinRef.current(folder);},650)};
+    }
   }
 
   /** Pointer position → local top-left inside a drop zone, icon anchored under the cursor. */
@@ -701,6 +624,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
 
   function finishDrag(clientX: number, clientY: number, didDrag: boolean) {
     const st = dragStateRef.current;
+    if(springRef.current)clearTimeout(springRef.current.timer);springRef.current=null;
     dragStateRef.current = null;
     setDragGhost(null);
     setDropTarget(null);
@@ -719,6 +643,12 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
       return;
     }
     const { key, el } = resolved;
+    const target=key.match(/^(?:window|folder):(.*)$/)?.[1]??(key==="desktop"?"desktop":null);
+    if(target){
+      const error=desktopMoveError(folders,icons,trash,ids,target);
+      if(error){setFileNotice(error);if(st.source.kind==="desktop"&&st.startPositions){const starts=st.startPositions;setIcons(prev=>prev.map(item=>starts.has(item.id)?{...item,...starts.get(item.id)!}:item));}return;}
+    }
+    setFileNotice("");
 
     const removeFromSource = () => {
       if (st.source.kind === "desktop") {
@@ -733,7 +663,11 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     };
 
     if (key === "desktop") {
-      if (st.source.kind === "desktop") return; // already live-moved
+      if (st.source.kind === "desktop") {
+        const positions=st.movePositions;
+        if(positions)setIcons(prev=>prev.map(item=>positions.has(item.id)?{...item,...positions.get(item.id)!}:item));
+        return;
+      }
       const p = clientToDesktop(clientX, clientY);
       const base = p ? clampToDesktop(p.left - 48, p.top - 30) : clampToDesktop(40, 80);
       setIcons((prev) => {
@@ -802,7 +736,8 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
           .map((it, idx) => ({
             id: it.id,
             label: it.label,
-            type: it.type === "folder" ? ("folder" as const) : ("file" as const),
+            type: it.type,
+            app: it.app,
             x: pos ? pos.x + (idx % 3) * 100 : 20 + ((startSlot + idx) % 3) * 100,
             y: pos ? pos.y + Math.floor(idx / 3) * 100 : 20 + Math.floor((startSlot + idx) / 3) * 100,
             windowId: it.type === "folder" ? undefined : it.app,
@@ -815,30 +750,29 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   }
 
   /** Start dragging an item that lives in a folder window or the trash. */
-  function beginItemDrag(e: React.PointerEvent, source: DragSource, item: DragItem) {
-    if (e.button !== 0) return;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    let dragging = false;
-    const move = (ev: PointerEvent) => {
-      if (!dragging) {
-        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5) return;
-        dragging = true;
-        dragStateRef.current = { source, items: [item] };
-      }
-      const p = clientToDesktop(ev.clientX, ev.clientY);
-      if (p) setDragGhost({ item, x: p.left - 48, y: p.top - 30 });
-      updateDropTarget(ev.clientX, ev.clientY);
+  function beginItemDrag(e:React.PointerEvent,source:DragSource,item:DragItem) {
+    if(e.button!==0||!desktopRef.current||dragStateRef.current)return;
+    dragClickCleanupRef.current?.();dragClickCleanupRef.current=null;
+    const element=e.currentTarget as HTMLElement,pointer=e.pointerId,startX=e.clientX,startY=e.clientY;
+    let metrics:ReturnType<typeof createLocalCoordinateMetrics>|null=null;
+    let dragging=false,frame=0,lastX=startX,lastY=startY;
+    const paint=()=>{frame=0;if(!metrics)return;const p=metrics.clientToLocal(lastX,lastY);if(dragGhostRef.current)dragGhostRef.current.style.transform=`translate(${p.x-48}px,${p.y-30}px)`;updateDropTarget(lastX,lastY);};
+    const move=(ev:PointerEvent)=>{
+      if(ev.pointerId!==pointer)return;
+      if(!dragging){if(dragStateRef.current||Math.hypot(ev.clientX-startX,ev.clientY-startY)<(ev.pointerType==="touch"?8:5))return;if(!desktopRef.current)return;dragging=true;metrics=createLocalCoordinateMetrics(desktopRef.current);dragStateRef.current={source,items:[item]};const p=metrics.clientToLocal(ev.clientX,ev.clientY);setDragGhost({item,x:p.x-48,y:p.y-30});try{element.setPointerCapture(pointer);}catch{}}
+      if(ev.cancelable)ev.preventDefault();lastX=ev.clientX;lastY=ev.clientY;if(!frame)frame=requestAnimationFrame(paint);
     };
-    const up = (ev: PointerEvent) => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      finishDrag(ev.clientX, ev.clientY, dragging);
+    const finish=(ev?:PointerEvent,cancelled=false)=>{
+      if(ev&&ev.pointerId!==pointer)return;
+      cancelAnimationFrame(frame);window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);window.removeEventListener("pointercancel",cancel);window.removeEventListener("blur",blur);window.removeEventListener("keydown",escape);
+      try{element.releasePointerCapture(pointer);}catch{}
+      // Suppress the click generated by this drag without altering icon artwork.
+      if(dragging&&!cancelled)dragClickCleanupRef.current=suppressDragClick(element,pointer);
+      if(dragging)finishDrag(ev?.clientX??lastX,ev?.clientY??lastY,!cancelled);dragCleanupRef.current=null;
     };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
+    const up=(ev:PointerEvent)=>finish(ev);const cancel=(ev:PointerEvent)=>finish(ev,true);const blur=()=>finish(undefined,true);const escape=(ev:KeyboardEvent)=>{if(ev.key==="Escape"){ev.preventDefault();if(dragging)dragClickCleanupRef.current=suppressDragClick(element,pointer,true);finish(undefined,true);}};
+    dragCleanupRef.current?.();dragCleanupRef.current=()=>finish(undefined,true);
+    window.addEventListener("pointermove",move,{passive:false});window.addEventListener("pointerup",up);window.addEventListener("pointercancel",cancel);window.addEventListener("blur",blur);window.addEventListener("keydown",escape);
   }
 
   /** Desktop icons live-move; the controller only tracks targets and the drop. */
@@ -994,16 +928,13 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   }
 
   function resetIcons() {
-    // Clear current icons and trash, then restore defaults
-    setIcons(initialIcons);
-    setTrash([]);
+    // Reset positions, not filesystem membership, visitor folders or Trash.
+    const defaults=new Map(initialIcons.map(item=>[item.id,item]));
+    setIcons(list=>list.map((item,index)=>{
+      const position=defaults.get(item.id)??{x:32+(index%4)*120,y:44+Math.floor(index/4)*108};
+      return {...item,...clampToDesktop(position.x,position.y)};
+    }));
     setSelection(new Set());
-    ICON_STORAGE_KEYS.forEach((key) => desktopStorage.removeItem(key));
-    desktopStorage.removeItem("nx-trash");
-    setTrashPos(null);
-    TRASH_POSITION_STORAGE_KEYS.forEach((key) => desktopStorage.removeItem(key));
-    setBinPos(null);
-    BIN_POSITION_STORAGE_KEYS.forEach((key) => desktopStorage.removeItem(key));
   }
 
   function deleteSelectedIcons() {
@@ -1056,6 +987,26 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
       
       return [...newItemsWithPositions, ...prev];
     });
+  }
+
+  /** Folder windows delete into the Trash, which keeps a folder's contents reachable. */
+  function trashFolderItem(folderId: string, item: BrowserItem) {
+    setFolders(prev => prev[folderId] ? { ...prev, [folderId]: { ...prev[folderId], items: prev[folderId].items.filter(entry => entry.id !== item.id) } } : prev);
+    addToTrash([{ id: item.id, label: item.label, app: item.app, type: item.type, x: 0, y: 0 }]);
+  }
+
+  /** Permanent deletion must also leave saved layouts, or another screen size would restore it. */
+  function deletePermanently(ids: string[]) {
+    if (!ids.length) return;
+    setTrash(prev => prev.filter(item => !ids.includes(item.id)));
+    setFolders(prev => purgeDesktopFolders(prev, ids));
+    for (const key of ICON_STORAGE_KEYS) {
+      if (key === iconStorageKey) continue;
+      try {
+        const saved: unknown = JSON.parse(desktopStorage.getItem(key) ?? "null");
+        if (Array.isArray(saved)) desktopStorage.setItem(key, JSON.stringify(saved.filter(item => !ids.includes(item?.id))));
+      } catch { /* A damaged layout is ignored when it is next restored. */ }
+    }
   }
 
   function clampToDesktop(x: number, y: number): { x: number; y: number } {
@@ -1227,7 +1178,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
         if (inter) sel.add(id);
         btn.classList.toggle("is-selected", sel.has(id));
       });
-      setSelection(sel);
+      setSelection(previous => previous.size === sel.size && [...sel].every(id => previous.has(id)) ? previous : sel);
     };
     const up = () => {
       window.removeEventListener("mousemove", move);
@@ -1282,6 +1233,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
               File
             </button>
             <div className="menu-dropdown" role="menu">
+              <button className="menu-entry" role="menuitem" onClick={()=>{createFolder();setOpenMenu(null);}}>New Folder</button>
               <button className="menu-entry" role="menuitem" onClick={() => { openWin("about"); setOpenMenu(null); }}>New About Window</button>
               <button className="menu-entry" role="menuitem" onClick={() => { openWin("skills"); setOpenMenu(null); }}>New Skills Window</button>
               <button className="menu-entry" role="menuitem" onClick={() => { openWin("calculator"); setOpenMenu(null); }}>New Calculator</button>
@@ -1365,12 +1317,12 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
 
       <main id="desktop" className="desktop" ref={desktopRef} data-dropzone="desktop" onContextMenu={onContextMenu} onMouseDown={onDesktopMouseDown}>
         <div ref={hardwareCursorRef} className="hardware-screen-cursor" aria-hidden="true"/>
-        {icons.filter(icon => !isMobile || (MOBILE_TOP_ROW_ORDER as readonly string[]).includes(icon.id)).map((icon) => (
+        {icons.filter(icon => !isMobile || (MOBILE_TOP_ROW_ORDER as readonly string[]).includes(icon.id) || !baseIcons.some(item => item.id === icon.id)).map((icon) => (
           <DesktopIcon
             key={icon.id}
             icon={icon}
             icons={icons}
-            canDrag={iconsReady}
+            canDrag={iconsReady} canStartDrag={()=>!dragStateRef.current}
             setIcons={setIcons}
             selection={selection}
             setSelection={setSelection}
@@ -1385,14 +1337,12 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
         {/* Drag ghost: single overlay following the pointer during item drags */}
         {dragGhost && (
           <div
-            className="drag-ghost-layer"
-            style={{ position: "absolute", left: dragGhost.x, top: dragGhost.y, zIndex: 30000, pointerEvents: "none" }}
+            ref={dragGhostRef} className="drag-ghost-layer"
+            style={{ position: "absolute", left: 0, top: 0, transform:`translate(${dragGhost.x}px,${dragGhost.y}px)`, zIndex: 30000, pointerEvents: "none" }}
           >
             <div className="desktop-icon drag-ghost-icon" style={{ position: "relative", left: 0, top: 0 }}>
               <div className="icon">
-                <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
-                  <use href={`#${getSpriteId({ ...dragGhost.item, type: dragGhost.item.type })}`}></use>
-                </svg>
+                <IconArtwork item={dragGhost.item}/>
               </div>
               <span className="icon-label">{dragGhost.item.label}</span>
             </div>
@@ -1425,45 +1375,56 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             setSelection(nextSel);
             const startX = e.clientX, startY = e.clientY;
             if (!desktopRef.current) return;
-            const desktopMetrics = createLocalCoordinateMetrics(desktopRef.current);
-            const startLocal = desktopMetrics.clientToLocal(startX, startY);
-            
+            const pointer = e.pointerId;
+            let desktopMetrics: ReturnType<typeof createLocalCoordinateMetrics> | null = null;
+            let startLocal = { x: 0, y: 0 };
+            let moved: { x: number; y: number } | null = null;
+
             // Use the stored position as starting point (like DesktopIcon does with icon.x/y)
             const currentPos = binPos || defaultBinPos;
             const sx = currentPos.x;
             const sy = currentPos.y;
             let dragging = false;
-            
+
+            // Moves write to the element; React only hears about the final position.
             const move = (ev: PointerEvent) => {
-              const currentLocal = desktopMetrics.clientToLocal(ev.clientX, ev.clientY);
-              const dx = currentLocal.x - startLocal.x;
-              const dy = currentLocal.y - startLocal.y;
-              const dist = Math.hypot(dx, dy);
-              
+              if (ev.pointerId !== pointer) return;
               if (!dragging) {
-                if (dist < 4) return; // Threshold before starting drag
+                if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 4) return; // Threshold before starting drag
+                if (!desktopRef.current) return;
                 dragging = true;
                 binDragStateRef.current.hasDragged = true;
-                e.preventDefault(); // Only prevent default when actually dragging
-                binRef.current?.setPointerCapture(e.pointerId);
+                desktopMetrics = createLocalCoordinateMetrics(desktopRef.current);
+                startLocal = desktopMetrics.clientToLocal(startX, startY);
+                try { binRef.current?.setPointerCapture(pointer); } catch {}
               }
-              
-              const nx = sx + dx;
-              const ny = sy + dy;
-              const c = clampToDesktop(nx, ny);
-              setBinPos({ x: c.x, y: c.y });
+              if (ev.cancelable) ev.preventDefault();
+              const currentLocal = desktopMetrics!.clientToLocal(ev.clientX, ev.clientY);
+              moved = clampToDesktop(sx + currentLocal.x - startLocal.x, sy + currentLocal.y - startLocal.y);
+              if (binRef.current) { binRef.current.style.left = `${moved.x}px`; binRef.current.style.top = `${moved.y}px`; }
             };
-            
-            const up = () => {
+
+            const finish = (commit: boolean) => {
               window.removeEventListener('pointermove', move);
               window.removeEventListener('pointerup', up);
-              if (dragging) {
-                try { binRef.current?.releasePointerCapture(e.pointerId); } catch {}
-              }
+              window.removeEventListener('pointercancel', cancel);
+              window.removeEventListener('blur', blur);
+              if (dragging) { try { binRef.current?.releasePointerCapture(pointer); } catch {} }
+              if (commit && moved) setBinPos(moved);
+              else if (binRef.current) { binRef.current.style.left = `${sx}px`; binRef.current.style.top = `${sy}px`; }
+              if (dragCleanupRef.current === abort) dragCleanupRef.current = null;
             };
-            
-            window.addEventListener('pointermove', move);
+            const up = (ev: PointerEvent) => { if (ev.pointerId === pointer) finish(true); };
+            const cancel = (ev: PointerEvent) => { if (ev.pointerId === pointer) finish(false); };
+            const blur = () => finish(false);
+            const abort = () => finish(false);
+
+            dragCleanupRef.current?.();
+            dragCleanupRef.current = abort;
+            window.addEventListener('pointermove', move, { passive: false });
             window.addEventListener('pointerup', up);
+            window.addEventListener('pointercancel', cancel);
+            window.addEventListener('blur', blur);
           }}
           onContextMenu={(e) => {
             if (isMobile) return;
@@ -1489,14 +1450,15 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
           <span className="icon-label">Trash</span>
         </button>
 
-        <div className="desktop-signature"><span className="eyebrow">PERSONAL COMPUTER / PERSONAL PORTFOLIO</span><strong>Storm Bartlett<span aria-hidden="true">_</span></strong><span>Software developer. Curious by default.</span><button onClick={() => openWin("playground")}>A small world to explore ↗</button></div>
+        <div className="desktop-signature"><strong>Storm Bartlett</strong><span>Software developer</span></div>
         <nav className="desktop-dock" aria-label="Quick launch">
           {[{id:"finder",label:"Files",glyph:"folder"},{id:"project-tasks",label:"Work",glyph:"tasks"},{id:"games",label:"Games",glyph:"game"},{id:"pixel-studio",label:"Paint",glyph:"paint"},{id:"terminal",label:"Terminal",glyph:"terminal"}].map(app => <button key={app.id} onClick={() => openWin(app.id)} aria-label={`Open ${app.label}`} title={app.label} className={windows[app.id]?.open ? "running" : ""}><AppGlyph glyph={app.glyph} size={28}/><span>{app.label}</span></button>)}
           <button onClick={() => setLauncherOpen(true)} aria-label="All apps"><span className="dock-grid" aria-hidden="true">⊞</span><span>All apps</span></button>
         </nav>
+        {fileNotice&&<div className="file-operation-notice" role="status">{fileNotice}<button onClick={()=>setFileNotice("")} aria-label="Dismiss">×</button></div>}
         {discovered && <button className="secret-badge" onClick={() => setDiscovered(false)}>✦ Secret handshake discovered</button>}
-        {portfolioApps.map(app => { const App = appComponents[app.id]; return <Window key={app.id} id={app.id} title={app.name} windows={windows} frontWin={frontWin} closeWin={closeWin} className={`portfolio-app-window app-${app.id}`}><App onOpenApp={openWin}/></Window>; })}
-        <Window id="playground" title="Playground — Storm’s Software Cabinet" windows={windows} frontWin={frontWin} closeWin={closeWin} className="portfolio-app-window playground-window"><Playground onOpenApp={openWin}/></Window>
+        {portfolioApps.map(app=>{const App=appComponents[app.id];return <Window key={app.id} id={app.id} title={app.name} windows={windows} frontWin={frontWin} closeWin={closeWin} className={`portfolio-app-window app-${app.id}`}>{app.id==="games"?<BlogBrowser folderId="games" items={folders.games.items} windows={windows} openWin={openWin} setNextZ={setNextZ} darkMode={darkMode} beginItemDrag={beginItemDrag} dropTarget={dropTarget} dragSourceId={dragGhost?.item.id??null} folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem}/>:<App onOpenApp={openWin}/>}</Window>;})}
+        {Object.entries(folders).filter(([id])=>!["blog","test-folder","projects","games"].includes(id)).map(([id,folder])=><Window key={id} id={id} title={folder.label} windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window"><BlogBrowser folderId={id} items={folder.items} windows={windows} openWin={openWin} setNextZ={setNextZ} darkMode={darkMode} beginItemDrag={beginItemDrag} dropTarget={dropTarget} dragSourceId={dragGhost?.item.id??null} folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem}/></Window>)}
         {launcherOpen && <AppLauncher initialQuery={hardwareQuery} onOpenApp={openWin} onClose={() => {setLauncherOpen(false);setHardwareQuery("");}}/>}
 
         <Window id="about" title="About Me" windows={windows} frontWin={frontWin} closeWin={closeWin}>
@@ -1526,8 +1488,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
         <Window id="trash" title="Blog" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window">
           <BlogBrowser
             folderId="blog"
-            items={blogFolderItems}
-            setItems={setBlogFolderItems}
+            items={folders.blog.items}
             windows={windows}
             openWin={openWin}
             setNextZ={setNextZ}
@@ -1535,7 +1496,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             beginItemDrag={beginItemDrag}
             dropTarget={dropTarget}
             dragSourceId={dragGhost?.item.id ?? null}
-            folderCounts={folderCounts}
+            folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem}
           />
         </Window>
 
@@ -1544,7 +1505,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             trash={trash}
             restoreIcon={restoreIcon}
             restoreAll={restoreAll}
-            setTrash={setTrash}
+            deletePermanently={deletePermanently}
             trashCtxMenu={trashCtxMenu}
             setTrashCtxMenu={setTrashCtxMenu}
             trashCtxRef={trashCtxRef}
@@ -1570,8 +1531,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
         <Window id="test-folder" title="Test Folder" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window">
           <BlogBrowser
             folderId="test-folder"
-            items={testFolderItems}
-            setItems={setTestFolderItems}
+            items={folders["test-folder"].items}
             windows={windows}
             openWin={openWin}
             setNextZ={setNextZ}
@@ -1579,14 +1539,13 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             beginItemDrag={beginItemDrag}
             dropTarget={dropTarget}
             dragSourceId={dragGhost?.item.id ?? null}
-            folderCounts={folderCounts}
+            folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem}
           />
         </Window>
         <Window id="projects" title="Projects" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window">
           <BlogBrowser
             folderId="projects"
-            items={projectFolderItems}
-            setItems={setProjectFolderItems}
+            items={folders.projects.items}
             windows={windows}
             openWin={openWin}
             setNextZ={setNextZ}
@@ -1594,7 +1553,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             beginItemDrag={beginItemDrag}
             dropTarget={dropTarget}
             dragSourceId={dragGhost?.item.id ?? null}
-            folderCounts={folderCounts}
+            folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem}
           />
         </Window>
         <Window id="project-notetime" title="NoteTime.txt" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window blog-post-window">
@@ -1633,6 +1592,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
                   });
                   setCtxMenu(null);
                 }}>Open</button>
+                <button className="menu-entry" role="menuitem" onClick={()=>{createFolder();setCtxMenu(null);}}>New Folder</button>
                 <button className="menu-entry" role="menuitem" onClick={() => { deleteSelectedIcons(); setCtxMenu(null); }}>Delete</button>
                 <button className="menu-entry" role="menuitem" onClick={() => { setSelection(new Set(icons.map(i => i.id))); setCtxMenu(null); }}>Select All</button>
               </>
@@ -1660,7 +1620,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             {trash.length > 0 && (
               <>
                 <button className="menu-entry" role="menuitem" onClick={() => { restoreAll(); setTrashCtxMenu(null); }}>Put Back All</button>
-                <button className="menu-entry" role="menuitem" onClick={() => { setTrash([]); setTrashCtxMenu(null); }}>Empty Trash</button>
+                <button className="menu-entry" role="menuitem" onClick={() => { deletePermanently(trash.map(item => item.id)); setTrashCtxMenu(null); }}>Empty Trash</button>
               </>
             )}
             {trash.length === 0 && (
@@ -1673,79 +1633,47 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   );
 }
 
-function DesktopIcon({ icon, icons, canDrag, setIcons, selection, setSelection, onDbl, onDragStart, onDragMove, onDragEnd, isDropTarget }: { icon: Icon; icons: Icon[]; canDrag: boolean; setIcons: React.Dispatch<React.SetStateAction<Icon[]>>; selection: Set<string>; setSelection: (s: Set<string>) => void; onDbl: () => void; onDragStart?: (ids: string[]) => void; onDragMove?: (x: number, y: number) => void; onDragEnd?: (x: number, y: number, dragging: boolean) => void; isDropTarget?: boolean; }) {
+function DesktopIcon({ icon, icons, canDrag, canStartDrag, selection, setSelection, onDbl, onDragStart, onDragMove, onDragEnd, isDropTarget }: { icon: Icon; icons: Icon[]; canDrag: boolean; canStartDrag:()=>boolean; setIcons: React.Dispatch<React.SetStateAction<Icon[]>>; selection: Set<string>; setSelection: (s: Set<string>) => void; onDbl: () => void; onDragStart?: (ids: string[]) => void; onDragMove?: (x: number, y: number, positions?:Map<string,{x:number;y:number}>) => void; onDragEnd?: (x: number, y: number, dragging: boolean) => void; isDropTarget?: boolean; }) {
   const ref = useRef<HTMLButtonElement | null>(null);
-  const [burst, setBurst] = useState(false);
-  const down = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    if (!canDrag) return;
-    // prevent touch scrolling while dragging icons
-    e.preventDefault();
-    const nextSel = selection.has(icon.id) ? new Set(selection) : new Set([icon.id]);
-    setSelection(nextSel);
-    didDrag.current = false;
-    const startX = e.clientX, startY = e.clientY;
-    const desktopEl = ref.current?.closest('.desktop') as HTMLElement | null;
-    const desktopMetrics = desktopEl ? createLocalCoordinateMetrics(desktopEl) : null;
-    const startLocal = desktopMetrics?.clientToLocal(startX, startY) ?? { x: startX, y: startY };
-    const desktopCss = desktopEl ? window.getComputedStyle(desktopEl) : null;
-    const desktopCssWidth = desktopCss ? parseFloat(desktopCss.width || "0") : 0;
-    const desktopCssHeight = desktopCss ? parseFloat(desktopCss.height || "0") : 0;
-    const iconSize = desktopEl?.classList.contains("mobile") ? MOBILE_ICON_SIZE : DESKTOP_ICON_SIZE;
-    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
-    const viewportHeight = typeof window !== "undefined" ? window.innerHeight - 28 : 772;
-    const deskWidth = desktopCssWidth || desktopEl?.clientWidth || viewportWidth;
-    const deskHeight = desktopCssHeight || desktopEl?.clientHeight || viewportHeight;
-    const maxX = Math.max(8, deskWidth - iconSize - 8);
-    const maxY = Math.max(0, deskHeight - iconSize - 8);
-    const starts = new Map<string, { x: number; y: number }>();
-    icons.forEach((it) => {
-      if (nextSel.has(it.id)) starts.set(it.id, { x: it.x, y: it.y });
-    });
-    let dragging = false;
-    const move = (ev: PointerEvent) => {
-      const currentLocal = desktopMetrics?.clientToLocal(ev.clientX, ev.clientY) ?? { x: ev.clientX, y: ev.clientY };
-      const dx = currentLocal.x - startLocal.x;
-      const dy = currentLocal.y - startLocal.y;
-      if (!dragging) {
-        const dist = Math.hypot(dx, dy);
-        if (dist < 4) return;
-        dragging = true;
-        didDrag.current = true;
-        try { ref.current?.setPointerCapture(e.pointerId); } catch {}
-        ref.current?.classList.add('dragging');
-        if (onDragStart) onDragStart(Array.from(nextSel));
-      }
-      setIcons((list) => list.map((i) => {
-        if (!nextSel.has(i.id)) return i;
-        const s = starts.get(i.id) || { x: i.x, y: i.y };
-        const nx = Math.min(maxX, Math.max(8, s.x + dx));
-        const ny = Math.min(maxY, Math.max(0, s.y + dy));
-        return { ...i, x: nx, y: ny };
-      }));
-      if (onDragMove) onDragMove(ev.clientX, ev.clientY);
+  const cleanupRef=useRef<(()=>void)|null>(null);
+  useEffect(()=>()=>cleanupRef.current?.(),[]);
+  const down=(e:React.PointerEvent)=>{
+    if(e.button!==0||!canDrag||!canStartDrag())return;e.preventDefault();
+    const nextSel=selection.has(icon.id)?new Set(selection):new Set(e.shiftKey?[...selection,icon.id]:[icon.id]);setSelection(nextSel);didDrag.current=false;
+    const desktop=ref.current?.closest<HTMLElement>(".desktop");if(!desktop)return;
+    const pointer=e.pointerId,startX=e.clientX,startY=e.clientY;
+    let metrics:ReturnType<typeof createLocalCoordinateMetrics>|null=null,start={x:0,y:0};
+    const starts=new Map(icons.filter(item=>nextSel.has(item.id)).map(item=>[item.id,{x:item.x,y:item.y}]));
+    const elements=new Map([...starts.keys()].map(id=>[id,desktop.querySelector<HTMLElement>(`.desktop-icon[data-id="${CSS.escape(id)}"]`)]));
+    let dragging=false,frame=0,lastX=startX,lastY=startY;
+    const paint=()=>{
+      frame=0;if(!metrics)return;const p=metrics.clientToLocal(lastX,lastY),positions=new Map<string,{x:number;y:number}>();
+      for(const [id,origin] of starts){const pos={x:Math.max(8,Math.min(metrics.width-104,origin.x+p.x-start.x)),y:Math.max(0,Math.min(metrics.height-104,origin.y+p.y-start.y))};positions.set(id,pos);const element=elements.get(id);if(element){element.style.left=`${pos.x}px`;element.style.top=`${pos.y}px`;}}
+      onDragMove?.(lastX,lastY,positions);
     };
-    const up = (ev?: PointerEvent) => {
-      window.removeEventListener("pointermove", move as (this: Window, ev: PointerEvent) => void);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      if (dragging) {
-        try { ref.current?.releasePointerCapture(e.pointerId); } catch {}
-        ref.current?.classList.remove('dragging');
-      }
-      if (onDragEnd) onDragEnd(ev?.clientX ?? startX, ev?.clientY ?? startY, dragging);
+    const move=(ev:PointerEvent)=>{
+      if(ev.pointerId!==pointer)return;
+      if(!dragging){if(!canStartDrag()||Math.hypot(ev.clientX-startX,ev.clientY-startY)<(ev.pointerType==="touch"?8:4))return;setSelection(nextSel);dragging=true;didDrag.current=true;metrics=createLocalCoordinateMetrics(desktop);start=metrics.clientToLocal(startX,startY);try{ref.current?.setPointerCapture(pointer);}catch{}for(const element of elements.values())element?.classList.add("dragging");onDragStart?.([...nextSel]);}
+      if(ev.cancelable)ev.preventDefault();lastX=ev.clientX;lastY=ev.clientY;if(!frame)frame=requestAnimationFrame(paint);
     };
-    window.addEventListener("pointermove", move as (this: Window, ev: PointerEvent) => void);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
+    const finish=(ev?:PointerEvent,cancelled=false)=>{
+      if(ev&&ev.pointerId!==pointer)return;
+      cancelAnimationFrame(frame);frame=0;
+      if(dragging&&!cancelled){lastX=ev?.clientX??lastX;lastY=ev?.clientY??lastY;paint();}
+      cancelAnimationFrame(frame);window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);window.removeEventListener("pointercancel",cancel);window.removeEventListener("blur",blur);window.removeEventListener("keydown",escape);
+      for(const [id,element] of elements){element?.classList.remove("dragging");const origin=starts.get(id)!;if(element){element.style.left=`${origin.x}px`;element.style.top=`${origin.y}px`;}}
+      try{ref.current?.releasePointerCapture(pointer);}catch{}
+      if(dragging)onDragEnd?.(ev?.clientX??lastX,ev?.clientY??lastY,!cancelled);cleanupRef.current=null;
+    };
+    const up=(ev:PointerEvent)=>finish(ev);const cancel=(ev:PointerEvent)=>finish(ev,true);const blur=()=>finish(undefined,true);const escape=(ev:KeyboardEvent)=>{if(ev.key==="Escape"){ev.preventDefault();finish(undefined,true);}};
+    cleanupRef.current?.();cleanupRef.current=()=>finish(undefined,true);
+    window.addEventListener("pointermove",move,{passive:false});window.addEventListener("pointerup",up);window.addEventListener("pointercancel",cancel);window.addEventListener("blur",blur);window.addEventListener("keydown",escape);
   };
-  const spriteId = getIconSpriteId(icon);
-  const appGlyph = portfolioApps.find(app => app.id === icon.app)?.glyph ?? (icon.id === "playground" ? "game" : undefined);
   const didDrag = useRef(false);
   return (
-    <button ref={ref} className={`desktop-icon ${selection.has(icon.id) ? "is-selected" : ""} ${burst ? "is-burst" : ""} ${isDropTarget ? "is-over" : ""}`} data-id={icon.id} data-folder={icon.type === "folder" ? "true" : undefined} data-dropzone={icon.type === "folder" ? "ifolder" : undefined} style={{ left: icon.x, top: icon.y, position: "absolute" }} onDoubleClick={onDbl} onPointerDown={down} onClick={(e) => { if (didDrag.current) return; if (e.detail === 0 || matchMedia("(pointer: coarse)").matches) onDbl(); setBurst(true); window.setTimeout(() => setBurst(false), 500); }}>
+    <button ref={ref} className={`desktop-icon ${selection.has(icon.id) ? "is-selected" : ""}  ${isDropTarget ? "is-over" : ""}`} data-id={icon.id} data-folder={icon.type === "folder" ? "true" : undefined} data-dropzone={icon.type === "folder" ? "ifolder" : undefined} style={{ left: icon.x, top: icon.y, position: "absolute" }} onDoubleClick={onDbl} onPointerDown={down} onClick={(e) => { if(e.detail===0){didDrag.current=false;onDbl();return;}if (didDrag.current) { didDrag.current = false; return; } if (matchMedia("(pointer: coarse)").matches) onDbl(); }}>
       <div className="icon">
-        {appGlyph ? <AppGlyph glyph={appGlyph} size={48}/> : <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true"><use href={`#${spriteId}`}/></svg>}
+        <IconArtwork item={icon}/>
       </div>
       <span className="icon-label">{icon.label}</span>
     </button>
@@ -1997,11 +1925,11 @@ function Window({ id, title, windows, frontWin, closeWin, children, className }:
   );
 }
 
-type BrowserItem = { id: string; label: string; type: "file" | "folder"; x: number; y: number; windowId?: string };
+type BrowserItem = { id: string; label: string; type?: "file" | "folder"; app: string; x: number; y: number; windowId?: string };
 
 function TrashBrowser({
   trash,
-  setTrash,
+  deletePermanently,
   restoreIcon,
   restoreAll,
   trashCtxMenu,
@@ -2015,7 +1943,7 @@ function TrashBrowser({
   dragSourceId,
 }: {
   trash: Icon[];
-  setTrash: React.Dispatch<React.SetStateAction<Icon[]>>;
+  deletePermanently: (ids: string[]) => void;
   restoreIcon: (id: string, at?: { x: number; y: number }) => void;
   restoreAll: () => void;
   trashCtxMenu: { x: number; y: number; id: string } | null;
@@ -2079,9 +2007,7 @@ function TrashBrowser({
             onPointerDown={(e) => beginItemDrag(e, { kind: "trash" }, { id: icon.id, label: icon.label, app: icon.app, type: icon.type })}
           >
             <div className="icon">
-              <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
-                <use href={`#${getSpriteId(icon)}`}></use>
-              </svg>
+              <IconArtwork item={icon}/>
             </div>
             <span className="icon-label">{icon.label}</span>
           </button>
@@ -2118,7 +2044,7 @@ function TrashBrowser({
             setSelection(new Set());
           }}>Put Back All</button>
           <button className="menu-entry" role="menuitem" onClick={() => {
-            setTrash(prev => prev.filter(i => i.id !== trashCtxMenu.id));
+            deletePermanently([trashCtxMenu.id]);
             setTrashCtxMenu(null);
             setSelection(new Set());
           }}>Delete Permanently</button>
@@ -2131,7 +2057,6 @@ function TrashBrowser({
 function BlogBrowser({
   folderId,
   items,
-  setItems,
   windows,
   openWin,
   setNextZ,
@@ -2140,10 +2065,11 @@ function BlogBrowser({
   dropTarget,
   dragSourceId,
   folderCounts,
+  onCreateFolder,
+  onDeleteItem,
 }: {
   folderId: string;
   items: BrowserItem[];
-  setItems: React.Dispatch<React.SetStateAction<BrowserItem[]>>;
   windows: Record<string, Win>;
   openWin: (id: string) => void;
   setNextZ: (fn: (z: number) => number) => void;
@@ -2152,6 +2078,8 @@ function BlogBrowser({
   dropTarget: string | null;
   dragSourceId: string | null;
   folderCounts: Record<string, number>;
+  onCreateFolder:(id:string)=>void;
+  onDeleteItem:(folderId:string,item:BrowserItem)=>void;
 }) {
   const browserRef = useRef<HTMLDivElement | null>(null);
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -2170,7 +2098,7 @@ function BlogBrowser({
   }, []);
 
   const openItem = (item: BrowserItem) => {
-    if (item.type === "file" && item.windowId) {
+    if (item.type !== "folder" && item.windowId) {
       if (windows[item.windowId]) openWin(item.windowId);
       setNextZ((z) => z + 1);
     } else if (item.type === "folder") {
@@ -2180,7 +2108,7 @@ function BlogBrowser({
   };
 
   return (
-    <div
+    <><div className="folder-toolbar"><button onClick={()=>onCreateFolder(folderId)}>New folder</button></div><div
       className={`blog-browser ${dropTarget === `window:${folderId}` ? "is-drop-target" : ""}`}
       ref={browserRef}
       data-dropzone="window"
@@ -2215,15 +2143,13 @@ function BlogBrowser({
             beginItemDrag(e, { kind: "folder", folderId }, {
               id: item.id,
               label: item.label,
-              app: item.type === "folder" ? item.id : item.windowId || item.id,
+              app: item.app || item.windowId || item.id,
               type: item.type,
             });
           }}
         >
           <div className="icon">
-            <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
-              <use href={`#${getSpriteId(item)}`}></use>
-            </svg>
+            <IconArtwork item={item}/>
           </div>
           <span className="icon-label">{item.label}</span>
           {item.type === "folder" && (folderCounts[item.id] ?? 0) > 0 && (
@@ -2257,13 +2183,14 @@ function BlogBrowser({
             setBrowserCtxMenu(null);
           }}>Open</button>
           <button className="menu-entry" role="menuitem" onClick={() => {
-            setItems(list => list.filter(i => i.id !== browserCtxMenu.itemId));
+            const item = items.find(i => i.id === browserCtxMenu.itemId);
+            if (item) onDeleteItem(folderId, item);
             setBrowserCtxMenu(null);
             setSelection(new Set());
           }}>Delete</button>
         </div>
       )}
-    </div>
+    </div></>
   );
 }
 
@@ -2449,18 +2376,12 @@ function Calculator() {
   );
 }
 
-function mergeIconsWithDefaults(saved: Icon[]): Icon[] {
-  const byId = new Map(saved.map((i) => [i.id, i] as const));
-  const merged: Icon[] = [];
-  baseIcons.forEach((def) => {
-    const s = byId.get(def.id);
-    merged.push(s && Number.isFinite(s.x) && Number.isFinite(s.y) ? { ...def, x: s.x, y: s.y } : { ...def });
-  });
+function fitIconsToViewport(icons: Icon[]): Icon[] {
   const width = typeof window !== "undefined" ? window.innerWidth : 1280;
   const height = typeof window !== "undefined" ? window.innerHeight : 800;
   const maxX = Math.max(8, width - 140);
   const maxY = Math.max(0, height - 200);
-  return merged.map((i) => ({
+  return icons.map((i) => ({
     ...i,
     x: Math.min(Math.max(8, i.x), maxX),
     y: Math.min(Math.max(0, i.y), maxY),

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./BalloonBastion.module.css";
+import arcade from "./Arcade.module.css";
+import ArcadeMenu, { handleGameBlur } from "./ArcadeMenu";
 
 const WIDTH = 480;
 const HEIGHT = 320;
@@ -272,12 +274,10 @@ function paint(context: CanvasRenderingContext2D, game: Game, ui: UI) {
     const size = shot.kind === "pot" ? 5 : 3; context.fillRect(Math.round(shot.x) - 1, Math.round(shot.y) - 1, size, size);
   }
   if (!ui.reducedMotion) for (const particle of game.particles) { context.fillStyle = particle.color; context.fillRect(Math.round(particle.x), Math.round(particle.y), 3, 3); }
-  if (["paused", "lost", "won"].includes(game.phase)) {
-    context.fillStyle = "rgba(29,35,30,.65)"; context.fillRect(0, 0, WIDTH, HEIGHT);
-    context.fillStyle = "#faf4da"; context.textAlign = "center"; context.font = "bold 24px monospace";
-    context.fillText(game.phase === "paused" ? "TEA BREAK" : game.phase === "won" ? "BASTION SAVED!" : "GATE OVERRUN", WIDTH / 2, HEIGHT / 2 - 7);
-    context.font = "12px monospace";
-    context.fillText(game.phase === "paused" ? "Resume when you’re ready." : game.phase === "won" ? "Twelve rounds. One very happy village." : "A fresh strategy awaits. Try again!", WIDTH / 2, HEIGHT / 2 + 20);
+  // The menu covers game over and help. This only marks a Space pause, which can still build.
+  if (game.phase === "paused") {
+    context.fillStyle = "#faf4da"; context.textAlign = "center"; context.font = "bold 12px monospace";
+    context.fillText("PAUSED", WIDTH / 2, 16);
   }
 }
 
@@ -294,7 +294,8 @@ export default function BalloonBastion() {
   const [kind, setKind] = useState<Kind | null>("pin");
   const [towerId, setTowerId] = useState<number | null>(null);
   const [speed, setSpeed] = useState(1);
-  const [notice, setNotice] = useState("Build on the grass, then send in round one.");
+  const [helpOpen,setHelpOpen]=useState(false);
+  const [notice, setNotice] = useState("Build on grass, then start round 1.");
 
   const draw = useCallback(() => {
     const context = canvasRef.current?.getContext("2d");
@@ -302,15 +303,16 @@ export default function BalloonBastion() {
   }, []);
   const sync = useCallback(() => { setHud(hudFor(gameRef.current)); draw(); }, [draw]);
 
+  const pauseWhileAway = useCallback(() => {
+    if (gameRef.current.phase !== "running") return;
+    gameRef.current.phase = "paused"; setHelpOpen(true); setNotice("Paused."); setHud(hudFor(gameRef.current)); draw();
+  }, [draw]);
+
   useEffect(() => {
+    canvasRef.current?.focus({ preventScroll: true });
     const query = matchMedia("(prefers-reduced-motion: reduce)");
     const updateMotion = () => { uiRef.current.reducedMotion = query.matches; draw(); };
     updateMotion();
-    const pauseWhileAway = () => {
-      if (gameRef.current.phase === "running") {
-        gameRef.current.phase = "paused"; setNotice("Paused while you were away. Your village can wait."); sync();
-      }
-    };
     const onVisibility = () => { if (document.hidden) pauseWhileAway(); };
     const onAppFocus = (event: Event) => {
       const { detail } = event as CustomEvent<{ id: string | null }>;
@@ -318,13 +320,15 @@ export default function BalloonBastion() {
     };
     query.addEventListener("change", updateMotion);
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", pauseWhileAway);
     window.addEventListener("storm-app-focus", onAppFocus);
     return () => {
       query.removeEventListener("change", updateMotion);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", pauseWhileAway);
       window.removeEventListener("storm-app-focus", onAppFocus);
     };
-  }, [draw, sync]);
+  }, [draw, pauseWhileAway]);
 
   useEffect(() => {
     if (hud.phase !== "running") return;
@@ -343,7 +347,7 @@ export default function BalloonBastion() {
       draw();
       if (now - lastHUD >= 100 || game.phase !== "running") { setHud(hudFor(game)); lastHUD = now; }
       if (game.phase === "running") frame = requestAnimationFrame(animate);
-      else setNotice(game.phase === "won" ? "You saved the village! All 12 rounds cleared." : game.phase === "lost" ? "The gate fell. Restart and try a different mix of towers." : `Round ${game.round} clear. Bonus paid! Build, upgrade, then begin the next.`);
+      else setNotice(game.phase === "won" ? "All 12 rounds cleared." : game.phase === "lost" ? "Game over." : `Round ${game.round} clear.`);
     };
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
@@ -353,7 +357,7 @@ export default function BalloonBastion() {
     const nextKind = kind === next ? null : next;
     uiRef.current.kind = nextKind; uiRef.current.towerId = null;
     setKind(nextKind); setTowerId(null);
-    setNotice(nextKind ? `${TYPES[nextKind].name}: ${TYPES[nextKind].note.toLowerCase()}. Tap a clear grass tile to build.` : "Tap a tower to inspect it.");
+    setNotice(nextKind ? `${TYPES[nextKind].name}: ${TYPES[nextKind].note.toLowerCase()}.` : "Select a tower to inspect it.");
     draw();
   };
 
@@ -363,19 +367,19 @@ export default function BalloonBastion() {
     const existing = game.towers.find((tower) => Math.hypot(tower.x - point.x, tower.y - point.y) <= 23);
     if (existing) {
       uiRef.current.towerId = existing.id; uiRef.current.kind = null; uiRef.current.hover = null;
-      setTowerId(existing.id); setKind(null); setNotice(`${TYPES[existing.kind].name}, level ${existing.level}. Ready for orders.`); draw(); return;
+      setTowerId(existing.id); setKind(null); setNotice(`${TYPES[existing.kind].name}, level ${existing.level}.`); draw(); return;
     }
     const selectedKind = uiRef.current.kind;
-    if (!selectedKind) { uiRef.current.towerId = null; setTowerId(null); draw(); setNotice("Choose a tower below, then tap the grass."); return; }
+    if (!selectedKind) { uiRef.current.towerId = null; setTowerId(null); draw(); setNotice("Choose a tower, then select grass."); return; }
     const position = tileCenter(point);
     uiRef.current.hover = position;
-    if (!legalSite(game, position)) { setNotice("That spot is blocked. Try clear grass away from the path."); draw(); return; }
-    if (game.towers.length >= MAX_TOWERS) { setNotice("The village has room for 20 towers. Upgrade or sell one."); return; }
-    if (game.cash < TYPES[selectedKind].cost) { setNotice("A few coins short. Pop balloons or sell a tower first."); return; }
+    if (!legalSite(game, position)) { setNotice("Can't build there."); draw(); return; }
+    if (game.towers.length >= MAX_TOWERS) { setNotice("20 towers maximum."); return; }
+    if (game.cash < TYPES[selectedKind].cost) { setNotice("Not enough coins."); return; }
     const tower: Tower = { ...position, id: game.nextId++, kind: selectedKind, level: 1, cooldown: 0, spent: TYPES[selectedKind].cost, aim: { x: position.x, y: position.y - 20 } };
     game.cash -= tower.spent; game.towers.push(tower);
     uiRef.current.towerId = tower.id; uiRef.current.kind = null; uiRef.current.hover = null;
-    setTowerId(tower.id); setKind(null); setNotice(`${TYPES[selectedKind].name} built. Tap another tower card to keep building.`); sync();
+    setTowerId(tower.id); setKind(null); setNotice(`${TYPES[selectedKind].name} built.`); sync();
   };
 
   const pointerPosition = (event: React.PointerEvent<HTMLCanvasElement>): Point => {
@@ -385,12 +389,12 @@ export default function BalloonBastion() {
 
   const startOrPause = () => {
     const game = gameRef.current;
-    if (game.phase === "running") { game.phase = "paused"; setNotice("Tea break. You can still build and upgrade."); }
-    else if (game.phase === "paused") { game.phase = "running"; setNotice("Back to the bastion!"); }
+    if (game.phase === "running") { game.phase = "paused"; setNotice("Paused. You can still build."); }
+    else if (game.phase === "paused") { game.phase = "running"; setNotice("Resumed."); }
     else if (game.phase === "ready") {
-      if (!game.towers.length) { setNotice("Build at least one tower before opening the gate."); return; }
+      if (!game.towers.length) { setNotice("Build a tower first."); return; }
       game.round += 1; game.spawnLeft = 7 + game.round * 3; game.spawned = 0; game.spawnTimer = 0.35; game.phase = "running";
-      setNotice(`Round ${game.round}: watch the path. You can build during the action.`);
+      setNotice(`Round ${game.round}.`);
     }
     sync();
   };
@@ -399,64 +403,41 @@ export default function BalloonBastion() {
   const selectedStats = selected ? towerStats(selected) : null;
   const ended = hud.phase === "won" || hud.phase === "lost";
 
-  return (
-    <section className={styles.game} aria-label="Balloon Bastion tower defence game">
-      <div className={styles.heading}><div><span className={styles.eyebrow}>THE VILLAGE NEEDS YOU</span><h2>Balloon Bastion</h2></div><span className={styles.edition}>DEFENCE<br />CLUB / 01</span></div>
-      <div className={styles.hud} aria-label="Village status">
-        <div><span>COINS</span><strong>{hud.cash}<small> G</small></strong></div>
-        <div><span>GATE</span><strong className={hud.lives <= 5 ? styles.danger : ""}>{hud.lives}<small> /15</small></strong></div>
-        <div><span>ROUND</span><strong>{hud.round}<small> /12</small></strong></div>
-        <div><span>POPPED</span><strong>{hud.pops}</strong></div>
-      </div>
-
-      <div className={styles.field}>
-        <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} tabIndex={0} aria-label="Battlefield. Choose a tower, then click grass. Keyboard: arrow keys move the building cursor, Enter builds or selects, Escape cancels."
-          onPointerDown={(event) => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); interact(pointerPosition(event)); }}
-          onPointerMove={(event) => { if (event.pointerType === "mouse" && uiRef.current.kind) { uiRef.current.hover = pointerPosition(event); draw(); } }}
-          onPointerLeave={() => { uiRef.current.hover = null; draw(); }}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") { uiRef.current.kind = null; uiRef.current.towerId = null; uiRef.current.hover = null; setKind(null); setTowerId(null); draw(); return; }
-            if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
-              event.preventDefault(); const current = tileCenter(uiRef.current.hover || { x: 180, y: 180 });
-              uiRef.current.hover = tileCenter({ x: current.x + (event.key === "ArrowRight" ? TILE : event.key === "ArrowLeft" ? -TILE : 0), y: current.y + (event.key === "ArrowDown" ? TILE : event.key === "ArrowUp" ? -TILE : 0) }); draw();
-            } else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); interact(uiRef.current.hover || { x: 180, y: 180 }); }
-          }} />
-        <div className={styles.fieldLabel}><span>BASTION HILL</span><span>{hud.phase === "running" || hud.phase === "paused" ? `${hud.remaining} incoming` : hud.phase === "ready" ? "BUILD PHASE" : hud.phase === "won" ? "VILLAGE SAVED" : "TRY A NEW STRATEGY"}</span></div>
-      </div>
-
-      <div className={styles.shop} aria-label="Choose a tower to build">
-        {(Object.keys(TYPES) as Kind[]).map((towerKind) => <button type="button" key={towerKind} aria-pressed={kind === towerKind} disabled={ended} onClick={() => selectKind(towerKind)} title={TYPES[towerKind].note}>
-          <TowerIcon kind={towerKind} /><strong>{TYPES[towerKind].name}</strong><span>{TYPES[towerKind].cost} G</span>
-        </button>)}
-      </div>
-
-      <div className={styles.inspector}>
-        {selected && selectedStats ? <>
-          <div className={styles.towerDescription}><strong>{TYPES[selected.kind].name} <span>LV {selected.level}</span></strong><span>{TYPES[selected.kind].note} · Range {selectedStats.range}</span></div>
-          <div className={styles.towerActions}>
-            <button type="button" disabled={ended || selected.level >= 3 || hud.cash < selectedStats.upgrade} onClick={() => {
-              const game = gameRef.current; const tower = game.towers.find((item) => item.id === towerId); if (!tower || tower.level >= 3) return;
-              const cost = towerStats(tower).upgrade; if (game.cash < cost) return;
-              game.cash -= cost; tower.spent += cost; tower.level += 1; setNotice(`Level ${tower.level}! More range, more power, faster fire.`); sync();
-            }}>{selected.level >= 3 ? "Max level ★" : `Upgrade · ${selectedStats.upgrade} G`}</button>
-            <button type="button" disabled={ended} onClick={() => {
-              const game = gameRef.current; game.cash += selectedStats.sell; game.towers = game.towers.filter((tower) => tower.id !== towerId);
-              uiRef.current.towerId = null; setTowerId(null); setNotice(`Tower sold for ${selectedStats.sell} coins. A new plan begins.`); sync();
-            }}>Sell · {selectedStats.sell} G</button>
-          </div>
-        </> : <div className={styles.buildHint}><strong>{kind ? TYPES[kind].note : "A small village. A big balloon problem."}</strong><span>{kind ? "Tap clear grass to build. The dotted ring shows range." : "Tap a tower to upgrade or sell. All towers target the nearest escapee."}</span></div>}
-      </div>
-
-      <div className={styles.controls}>
-        <button type="button" className={styles.startButton} disabled={ended} onClick={startOrPause}>{hud.phase === "running" ? "Ⅱ Pause" : hud.phase === "paused" ? "▶ Resume" : `▶ Round ${Math.min(12, hud.round + 1)}`}</button>
-        <button type="button" className={styles.speedButton} aria-label={`Game speed ${speed} times. Click to change.`} onClick={() => { const next = speed === 3 ? 1 : speed + 1; speedRef.current = next; setSpeed(next); }}>{speed}×</button>
-        <button type="button" className={styles.restartButton} onClick={() => {
-          gameRef.current = newGame(); uiRef.current.kind = "pin"; uiRef.current.towerId = null; uiRef.current.hover = null;
-          setKind("pin"); setTowerId(null); setNotice("Fresh start. Three Pinwheels, or mix your towers?"); sync();
-        }}>Restart</button>
-      </div>
-      <div className={styles.notice} role="status">{notice}</div>
-      <div className={styles.footnote}>12 ROUNDS · {hud.towerCount}/20 TOWERS · HAND-PIXELLED AT BASTION HILL</div>
-    </section>
-  );
+  const reset=()=>{
+    gameRef.current=newGame();uiRef.current.kind="pin";uiRef.current.towerId=null;uiRef.current.hover=null;
+    setKind("pin");setTowerId(null);setHelpOpen(false);setNotice("Build on grass, then start round 1.");sync();canvasRef.current?.focus({preventScroll:true});
+  };
+  const help=()=>{
+    const game=gameRef.current;
+    if(game.phase==="won"||game.phase==="lost")return;
+    if(helpOpen){if(game.phase==="paused"){game.phase="running";setNotice("Resumed.");}setHelpOpen(false);canvasRef.current?.focus({preventScroll:true});}
+    else {if(game.phase==="running")game.phase="paused";setHelpOpen(true);}
+    sync();
+  };
+  return <section className={`${arcade.shell} ${styles.game}`} aria-label="Balloon Bastion tower defence game" onBlur={event=>handleGameBlur(event,pauseWhileAway,()=>canvasRef.current)} onKeyDownCapture={event=>{
+    if(event.key==="Escape"&&!event.repeat){event.preventDefault();event.stopPropagation();help();return;}
+    if(helpOpen||ended)return;
+    const towerKey=Number(event.key)-1;
+    if(towerKey>=0&&towerKey<3){event.preventDefault();selectKind((Object.keys(TYPES) as Kind[])[towerKey]);}
+    if(event.code==="Space"&&!(event.target instanceof HTMLButtonElement)){event.preventDefault();event.stopPropagation();startOrPause();}
+  }}>
+    <div className={arcade.hud} aria-label="Village status"><span>COINS <strong>{hud.cash}</strong></span><span>LIVES <strong>{hud.lives}</strong></span><span>ROUND <strong>{hud.round}/12</strong></span><span>POPS <strong>{hud.pops}</strong></span><span className={arcade.spacer}/><button onClick={help} aria-label="Help and pause">?</button></div>
+    <div className={arcade.field}>
+      <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} className={arcade.canvas} tabIndex={0} aria-label="Battlefield. Choose a tower, then click grass. Arrows move cursor, Enter builds, Space starts round. Escape for controls."
+        onPointerDown={event=>{event.preventDefault();event.currentTarget.focus({preventScroll:true});interact(pointerPosition(event));}}
+        onPointerMove={event=>{if(event.pointerType==="mouse"&&uiRef.current.kind){uiRef.current.hover=pointerPosition(event);draw();}}}
+        onPointerLeave={()=>{uiRef.current.hover=null;draw();}}
+        onKeyDown={event=>{
+          if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(event.key)){event.preventDefault();const current=tileCenter(uiRef.current.hover||{x:180,y:180});uiRef.current.hover=tileCenter({x:current.x+(event.key==="ArrowRight"?TILE:event.key==="ArrowLeft"?-TILE:0),y:current.y+(event.key==="ArrowDown"?TILE:event.key==="ArrowUp"?-TILE:0)});draw();}
+          else if(event.key==="Enter"){event.preventDefault();interact(uiRef.current.hover||{x:180,y:180});}
+        }}/>
+      {(helpOpen||ended)&&<ArcadeMenu title={ended?hud.phase==="won"?"ALL WAVES CLEARED":"GAME OVER":"PAUSED"} controls={ended?[`${hud.pops} balloons popped`]:["1 / 2 / 3: choose tower","Click grass: build · Click tower: inspect","Arrows + Enter: keyboard building","Space: start / pause wave","Keep balloons away from the exit."]} action={ended?reset:help} label={ended?"Play again":"Resume"} restart={ended?undefined:reset}/>}
+    </div>
+    <div className={`${arcade.toolbar} ${styles.shop}`} aria-label="Choose a tower to build">{(Object.keys(TYPES) as Kind[]).map((towerKind,i)=><button key={towerKind} aria-pressed={kind===towerKind} disabled={ended} onClick={()=>selectKind(towerKind)} title={TYPES[towerKind].note}><TowerIcon kind={towerKind}/><span>{TYPES[towerKind].name} · {TYPES[towerKind].cost}<kbd>{i+1}</kbd></span></button>)}</div>
+    {selected&&selectedStats&&<div className={arcade.toolbar}><span className={styles.towerName}>{TYPES[selected.kind].name} · LV {selected.level}</span><button disabled={ended||selected.level>=3||hud.cash<selectedStats.upgrade} onClick={()=>{
+      const game=gameRef.current,tower=game.towers.find(item=>item.id===towerId);if(!tower||tower.level>=3)return;const cost=towerStats(tower).upgrade;if(game.cash<cost)return;game.cash-=cost;tower.spent+=cost;tower.level++;setNotice(`Level ${tower.level}`);sync();
+    }}>{selected.level>=3?"Max level":`Upgrade · ${selectedStats.upgrade}`}</button><button disabled={ended} onClick={()=>{const game=gameRef.current;game.cash+=selectedStats.sell;game.towers=game.towers.filter(tower=>tower.id!==towerId);uiRef.current.towerId=null;setTowerId(null);setNotice(`Sold · ${selectedStats.sell} coins`);sync();}}>Sell · {selectedStats.sell}</button></div>}
+    <div className={arcade.toolbar}><button disabled={ended||helpOpen} onClick={startOrPause}>{hud.phase==="running"?"Pause":hud.phase==="paused"?"Resume":`Start round ${Math.min(12,hud.round+1)}`}</button><button aria-label={`Game speed ${speed} times. Click to change.`} onClick={()=>{const next=speed===3?1:speed+1;speedRef.current=next;setSpeed(next);}}>{speed}×</button></div>
+    <div className={arcade.status} role="status">{notice}</div>
+  </section>;
 }

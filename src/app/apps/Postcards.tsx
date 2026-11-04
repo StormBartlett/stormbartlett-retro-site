@@ -165,14 +165,14 @@ export default function Postcards() {
   }
 
   return (
-    <section className={styles.app} aria-label="Little Post Office">
+    <section className={styles.app} aria-label="Post Office">
       <header className={styles.header}>
-        <div><span className={styles.eyebrow}>EST. THIS VERY MOMENT</span><h2>Little Post Office</h2></div>
+        <div><span className={styles.eyebrow}></span><h2>Post Office</h2></div>
         <span className={styles.seal} aria-hidden="true">♡<small>25¢</small></span>
       </header>
 
       <div className={styles.preview} role="img" aria-label={`Postcard preview: ${card.scene} scenery, ${card.stamp} stamp. Dear ${card.recipient || "friend"}. ${card.message}`} dangerouslySetInnerHTML={{ __html: svg }} />
-      <div className={styles.previewLabel}><span>YOUR LITTLE WORK OF MAIL</span><span>01 / 01</span></div>
+      <div className={styles.previewLabel}><span>PREVIEW</span><span>01 / 01</span></div>
 
       <fieldset className={styles.fieldset}>
         <legend><span>01</span> Pick a place</legend>
@@ -208,7 +208,7 @@ export default function Postcards() {
         <p className={styles.deviceNote}>Drafts saved on this device only.</p>
         {drafts.length === 0 ? <p className={styles.empty}>Nothing tucked away. Yet.</p> : <ul>{drafts.map((draft) => <li key={draft.id}><button type="button" className={styles.loadDraft} onClick={() => { const { id: _draftId, savedAt: _savedAt, ...savedCard } = draft; void _draftId; void _savedAt; setCard(savedCard); setNotice("Draft opened. Add another little thought."); }}><span className={styles.draftGlyph} aria-hidden="true">{SCENES.find((scene) => scene.id === draft.scene)?.glyph}</span><span><strong>For {draft.recipient.trim() || "a friend"}</strong><small>{draft.message.replace(/\s+/g, " ") || "A blank little hello"}</small></span><span aria-hidden="true">↗</span></button><button type="button" className={styles.deleteDraft} aria-label={`Delete draft for ${draft.recipient || "a friend"}`} onClick={() => removeDraft(draft.id)}>×</button></li>)}</ul>}
       </div>
-      <footer className={styles.footer}>SLOW MAIL. SMALL JOYS. ♡</footer>
+      <footer className={styles.footer}></footer>
     </section>
   );
 }

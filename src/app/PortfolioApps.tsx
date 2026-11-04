@@ -3,21 +3,21 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type ComponentType } from "react";
 
-const loading = () => <div className="app-loading" role="status">Reading floppy disk…</div>;
+const loading = () => <div className="app-loading" role="status">Loading…</div>;
 export const portfolioApps = [
-  { id: "games", name: "Games", description: "A tiny arcade, tucked inside your computer.", glyph: "game", category: "Unwind" },
-  { id: "star-patrol", name: "Star Patrol", description: "Command marines. Hold the alien frontier.", glyph: "terminal", category: "Games" },
-  { id: "balloon-bastion", name: "Balloon Bastion", description: "Build, upgrade, and hold back the balloons.", glyph: "paint", category: "Games" },
-  { id: "mossblade", name: "Mossblade", description: "A small sword. A mossy world. An adventure.", glyph: "plant", category: "Games" },
-  { id: "finder", name: "Finder", description: "A little filesystem. Follow your curiosity.", glyph: "folder", category: "Explore" },
+  { id: "games", name: "Games", description: "Games", glyph: "game", category: "Unwind" },
+  { id: "star-patrol", name: "Star Patrol", description: "Real-time strategy", glyph: "terminal", category: "Games" },
+  { id: "balloon-bastion", name: "Balloon Bastion", description: "Tower defence", glyph: "paint", category: "Games" },
+  { id: "mossblade", name: "Mossblade", description: "Sword adventure", glyph: "plant", category: "Games" },
+  { id: "finder", name: "Finder", description: "Files and folders", glyph: "folder", category: "Explore" },
   { id: "project-tasks", name: "Project Manager", description: "Noteception, UNSW, and the work in progress.", glyph: "tasks", category: "Explore" },
-  { id: "pixel-studio", name: "Pixel Studio", description: "Small canvas. Big pixel energy.", glyph: "paint", category: "Make" },
-  { id: "terminal", name: "Terminal", description: "Take the scenic route through the command line.", glyph: "terminal", category: "Explore" },
-  { id: "sound-lab", name: "Sound Lab", description: "Make a tiny chiptune. Sound starts with you.", glyph: "sound", category: "Make" },
-  { id: "focus-timer", name: "Focus Garden", description: "A quiet timer for a little good work.", glyph: "plant", category: "Unwind" },
-  { id: "snake", name: "Snake Garden", description: "One more strawberry. One more round.", glyph: "snake", category: "Unwind" },
-  { id: "postcards", name: "Post Office", description: "Make a pixel postcard to take with you.", glyph: "mail", category: "Make" },
-  { id: "preferences", name: "Control Panel", description: "Make this little desktop feel like yours.", glyph: "settings", category: "System" },
+  { id: "pixel-studio", name: "Pixel Studio", description: "Pixel editor", glyph: "paint", category: "Make" },
+  { id: "terminal", name: "Terminal", description: "Command line", glyph: "terminal", category: "Explore" },
+  { id: "sound-lab", name: "Sound Lab", description: "Music sequencer", glyph: "sound", category: "Make" },
+  { id: "focus-timer", name: "Focus Garden", description: "Focus timer", glyph: "plant", category: "Unwind" },
+  { id: "snake", name: "Snake Garden", description: "Snake", glyph: "snake", category: "Unwind" },
+  { id: "postcards", name: "Post Office", description: "Postcard editor", glyph: "mail", category: "Make" },
+  { id: "preferences", name: "Control Panel", description: "Desktop settings", glyph: "settings", category: "System" },
 ] as const;
 
 export const appComponents: Record<string, ComponentType<{ onOpenApp?: (id: string) => void }>> = {
@@ -54,10 +54,10 @@ export function AppGlyph({ glyph, size = 32 }: { glyph: string; size?: number })
 export function Playground({ onOpenApp }: { onOpenApp?: (id: string) => void }) {
   const [filter, setFilter] = useState("All");
   return <div className="playground-app">
-    <div className="playground-heading"><span className="eyebrow">STORM’S SOFTWARE CABINET / VOL. 01</span><h1>Made to be played with.</h1><p>A few small things hiding inside a small computer. Open something. Make something. Stay a while.</p></div>
+
     <div className="app-filters" aria-label="Filter apps">{["All", "Explore", "Make", "Unwind", "System"].map(category => <button key={category} aria-pressed={filter === category} onClick={() => setFilter(category)}>{category}</button>)}</div>
-    <div className="app-grid">{portfolioApps.filter(app => app.category !== "Games" && (filter === "All" || app.category === filter)).map(app => <button className="app-card" key={app.id} onClick={() => onOpenApp?.(app.id)}><AppGlyph glyph={app.glyph} size={36}/><span><strong>{app.name}</strong><small>{app.description}</small></span><span aria-hidden="true">↗</span></button>)}</div>
-    <div className="playground-footnote">Handmade for the browser. Your creations stay on this device.</div>
+    <div className="app-grid">{portfolioApps.filter(app => app.category !== "Games" && (filter === "All" || app.category === filter)).map(app => <button className="app-card" key={app.id} onClick={() => onOpenApp?.(app.id)}><AppGlyph glyph={app.glyph} size={36}/><span><strong>{app.name}</strong></span></button>)}</div>
+
   </div>;
 }
 
@@ -66,7 +66,7 @@ export function AppLauncher({ onOpenApp, onClose, initialQuery = "" }: { onOpenA
   const [index, setIndex] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
-  const choices = [{id:"about-portfolio",name:"About Storm",description:"Software developer. Curious by default.",glyph:"tasks"}, {id:"playground",name:"Playground",description:"Browse every little app.",glyph:"game"}, ...portfolioApps].filter(app => `${app.name} ${app.description}`.toLowerCase().includes(query.toLowerCase()));
+  const choices = [{id:"about-portfolio",name:"About Storm",description:"Software developer",glyph:"tasks"}, {id:"playground",name:"Playground",description:"Applications",glyph:"game"}, ...portfolioApps].filter(app => `${app.name} ${app.description}`.toLowerCase().includes(query.toLowerCase()));
   useEffect(() => { previousFocus.current = document.activeElement as HTMLElement; input.current?.focus(); return () => previousFocus.current?.focus(); }, []);
   const launch = (id: string) => { onOpenApp(id); onClose(); };
   return <div className="launcher-backdrop" onPointerDown={e => { if (e.target === e.currentTarget) onClose(); }}>
@@ -77,14 +77,14 @@ export function AppLauncher({ onOpenApp, onClose, initialQuery = "" }: { onOpenA
       if(e.key === "Enter" && e.target === input.current && choices[index]) { e.preventDefault(); launch(choices[index].id); }
       if(e.key === "Tab") { const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('button,input')); const first=items[0],last=items[items.length-1]; if(e.shiftKey && document.activeElement === first){e.preventDefault();last?.focus();} else if(!e.shiftKey && document.activeElement===last){e.preventDefault();first?.focus();} }
     }}>
-      <div className="launcher-search"><span aria-hidden="true">⌕</span><input ref={input} aria-label="Search apps" placeholder="Find something wonderful…" value={query} onChange={e => {setQuery(e.target.value);setIndex(0);}}/><button aria-label="Close app search" onClick={onClose}>Esc</button></div>
-      <div className="launcher-results">{choices.map((app,i) => <button key={app.id} className={i === index ? "active" : ""} onClick={() => launch(app.id)} onMouseEnter={() => setIndex(i)}><AppGlyph glyph={app.glyph}/><span><strong>{app.name}</strong><small>{app.description}</small></span><span aria-hidden="true">↵</span></button>)}{!choices.length && <p>No apps found. Try “paint” or “garden”.</p>}</div>
+      <div className="launcher-search"><span aria-hidden="true">⌕</span><input ref={input} aria-label="Search apps" placeholder="Search apps" value={query} onChange={e => {setQuery(e.target.value);setIndex(0);}}/><button aria-label="Close app search" onClick={onClose}>Esc</button></div>
+      <div className="launcher-results">{choices.map((app,i) => <button key={app.id} className={i === index ? "active" : ""} onClick={() => launch(app.id)} onMouseEnter={() => setIndex(i)}><AppGlyph glyph={app.glyph}/><span><strong>{app.name}</strong></span><span aria-hidden="true">↵</span></button>)}{!choices.length && <p>No apps found. Try “paint” or “garden”.</p>}</div>
       <footer>↑↓ to explore · Enter to open · ⌘ / Ctrl K anywhere</footer>
     </section>
   </div>;
 }
 
 export function Games({ onOpenApp }: { onOpenApp?: (id: string) => void }) {
-  const games = [...portfolioApps.filter(app => ["star-patrol", "balloon-bastion", "mossblade", "snake"].includes(app.id)), {id:"falling-sand",name:"Falling Sand",description:"A tiny sandbox of moving materials.",glyph:"paint"}];
-  return <div className="playground-app games-library"><span className="eyebrow">STORM’S POCKET ARCADE / INSERT CURIOSITY</span><h1>One more round.</h1><p>Original pixels. Little worlds. Keyboard or thumbs.</p><div className="app-grid">{games.map((game,i) => <button className="app-card game-card" key={game.id} onClick={() => onOpenApp?.(game.id)}><span className={`game-cover game-cover-${i}`}><AppGlyph glyph={game.glyph} size={42}/><small>0{i+1}</small></span><span><strong>{game.name}</strong><small>{game.description}</small></span><span aria-hidden="true">▶</span></button>)}</div><p className="playground-footnote">Games pause when the browser tab is hidden. No downloads, no accounts.</p></div>;
+  const games = [...portfolioApps.filter(app => ["star-patrol", "balloon-bastion", "mossblade", "snake"].includes(app.id)), {id:"falling-sand",name:"Falling Sand",glyph:"paint"}];
+  return <div className="games-library" role="group" aria-label="Games">{games.map(game=><button className="game-file" key={game.id} onClick={()=>onOpenApp?.(game.id)}><AppGlyph glyph={game.glyph} size={40}/><span>{game.name}</span></button>)}</div>;
 }

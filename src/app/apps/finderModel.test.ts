@@ -77,3 +77,44 @@ describe("Finder visitor filesystem", () => {
     expect(uniqueName(nodes, ROOT_ID, "text")).toBe("Untitled.txt");
   });
 });
+
+describe("Finder drag moves",()=>{
+  it("moves a folder with descendants without changing any file content",async()=>{
+    const {moveFinderNode}=await import("./finderModel");const nodes=[...INITIAL_FILES,folder,note];
+    const moved=moveFinderNode(nodes,folder.id,ROOT_ID);expect(moved.find(node=>node.id===folder.id)?.parentId).toBe(ROOT_ID);expect(moved.find(node=>node.id===note.id)).toEqual(note);
+    expect(moveFinderNode(nodes,folder.id,folder.id)).toBe(nodes);
+  });
+  it("saves original file placements while keeping original content immutable",async()=>{
+    const {moveFinderNode}=await import("./finderModel");const moved=moveFinderNode([...INITIAL_FILES,folder],"skills-file",folder.id);
+    const restored=restoreFiles(serializeFiles(moved));expect(restored.recovered).toBe(false);expect(restored.nodes.find(node=>node.id==="skills-file")).toEqual({...INITIAL_FILES.find(node=>node.id==="skills-file"),parentId:folder.id});
+    expect(removeVisitorNode(moved,folder.id)).toBe(moved);
+  });
+  const chain=(length:number)=>Array.from({length},(_,i):FinderNode=>({id:`visitor-deep${i}`,parentId:i?`visitor-deep${i-1}`:ROOT_ID,name:`Deep ${i}`,kind:"folder"}));
+  it("keeps notes from an older save that nests deeper than five, across every reload",async()=>{
+    const {finderMoveError,moveFinderNode}=await import("./finderModel");
+    const deep=chain(7),buried:FinderNode={id:"visitor-buried",parentId:"visitor-deep6",name:"Buried.txt",kind:"text",content:"keep me"};
+    const first=restore([...deep,buried]);expect(first.recovered).toBe(false);
+    const second=restoreFiles(serializeFiles(first.nodes));expect(second.recovered).toBe(false);
+    expect(second.nodes.find(node=>node.id===buried.id)?.content).toBe("keep me");
+    expect(finderMoveError(second.nodes,"about-file","notes-folder")).toBeNull();
+    expect(moveFinderNode(second.nodes,buried.id,ROOT_ID).find(node=>node.id===buried.id)?.parentId).toBe(ROOT_ID);
+    expect(finderMoveError(second.nodes,"projects-folder","visitor-deep3")).toMatch(/5 levels/);
+  });
+  it("leaves a visitor Games folder alone once the original has been moved away",async()=>{
+    const {moveFinderNode}=await import("./finderModel");
+    const moved=moveFinderNode(INITIAL_FILES,"games-folder","notes-folder");
+    const own:FinderNode={...folder,id:"visitor-own",parentId:ROOT_ID,name:"Games"};
+    const restored=restoreFiles(serializeFiles([...moved,own]));
+    expect(restored.recovered).toBe(false);expect(restored.nodes.find(node=>node.id===own.id)?.name).toBe("Games");
+  });
+  it("rejects cycles made from original folder placements and keeps stored data out of originals",()=>{
+    const cycle=JSON.stringify({version:2,nodes:[],placements:[{id:"projects-folder",parentId:"noteception-folder"}]});
+    expect(restoreFiles(cycle).recovered).toBe(true);
+    const forged=JSON.stringify({version:2,nodes:[{id:"about-file",parentId:ROOT_ID,name:"About.txt",kind:"text",content:"forged"}],placements:[]});
+    expect(restoreFiles(forged).nodes.find(node=>node.id==="about-file")?.content).not.toBe("forged");
+  });
+  it("checks the destination depth including the dragged subtree",async()=>{
+    const {finderMoveError}=await import("./finderModel");const deep=Array.from({length:4},(_,i)=>({...folder,id:`visitor-depth${i}`,name:`Level ${i+1}`,parentId:i?`visitor-depth${i-1}`:"notes-folder"}));
+    expect(finderMoveError([...INITIAL_FILES,folder,...deep],folder.id,"visitor-depth3")).toMatch(/5 levels/);
+  });
+});

@@ -127,12 +127,12 @@ export default function ProjectTasks({ onOpenApp }: ProjectTasksProps) {
       <header className={styles.header}>
         <div className={styles.headingRow}>
           <div>
-            <div className={styles.eyebrow}>STORM’S WORKSPACE</div>
+
             <h2 className={styles.heading}>Current work<span className={styles.cursor} aria-hidden="true">_</span></h2>
           </div>
           <div className={styles.workCount} aria-label="2 current work items">02<span>ACTIVE</span></div>
         </div>
-        <div className={styles.intro}>A project, a role, and room for your own to-dos.</div>
+
       </header>
 
       <div className={styles.scrollArea}>

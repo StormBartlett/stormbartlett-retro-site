@@ -1,4 +1,5 @@
 .finder {
+  position:relative;
   --finder-paper: #fbfaf6;
   --finder-ink: #282923;
   container-type: inline-size;
@@ -126,3 +127,5 @@
 @media (prefers-reduced-motion: no-preference) {
   .item { transition: background 90ms ease; }
 }
+
+.item{touch-action:none;user-select:none}.dragSource{opacity:.35}.dropTarget{outline:2px solid var(--finder-ink)!important;outline-offset:-3px;background:#dce0d0!important}.dragGhost{position:absolute;left:0;top:0;z-index:200;display:flex;align-items:center;flex-direction:column;gap:6px;width:90px;pointer-events:none;opacity:.85;will-change:transform;font-size:10px}.dragGhost span{background:var(--finder-paper);color:var(--finder-ink);padding:1px 3px;text-align:center;overflow-wrap:anywhere}

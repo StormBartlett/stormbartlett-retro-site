@@ -1,3 +1,4 @@
+import { reparentError, type TreeEntry } from "../folderTree";
 export const FINDER_APP_IDS = ["falling-sand", "calculator", "activity", "todo", "star-patrol", "balloon-bastion", "mossblade", "snake"] as const;
 export type FinderAppId = typeof FINDER_APP_IDS[number];
 
@@ -72,7 +73,7 @@ export function restoreFiles(raw: string | null): { nodes: FinderNode[]; recover
   try {
     if (raw.length > 4_700_000) return fallback;
     const data: unknown = JSON.parse(raw);
-    if (!data || typeof data !== "object" || !("version" in data) || data.version !== 1 || !("nodes" in data) || !Array.isArray(data.nodes) || data.nodes.length > MAX_VISITOR_ITEMS) return fallback;
+    if (!data || typeof data !== "object" || !("version" in data) || (data.version !== 1 && data.version !== 2) || !("nodes" in data) || !Array.isArray(data.nodes) || data.nodes.length > MAX_VISITOR_ITEMS) return fallback;
     const visitors: FinderNode[] = [];
     const usedIds = new Set(INITIAL_FILES.map(node => node.id));
     for (const item of data.nodes as unknown[]) {
@@ -85,14 +86,26 @@ export function restoreFiles(raw: string | null): { nodes: FinderNode[]; recover
     }
     // The Games folder was added to version 1. Keep a visitor's older folder
     // (and all its children) if they already used that name on the root disk.
-    const oldGames = visitors.find(node => node.parentId === ROOT_ID && node.name.toLowerCase() === "games");
+    const oldGames = data.version === 1 ? visitors.find(node => node.parentId === ROOT_ID && node.name.toLowerCase() === "games") : undefined;
     if (oldGames) {
       const rootNames = new Set([...INITIAL_FILES, ...visitors].filter(node => node.parentId === ROOT_ID).map(node => node.name.toLowerCase()));
       let name = "Games (visitor)";
       for (let suffix = 2; rootNames.has(name.toLowerCase()); suffix++) name = `Games (visitor ${suffix})`;
       oldGames.name = name;
     }
-    const all = [...INITIAL_FILES, ...visitors];
+    const all = [...INITIAL_FILES.map(node=>({...node})), ...visitors];
+    if(data.version===2){
+      if(!("placements" in data)||!Array.isArray(data.placements)||data.placements.length>INITIAL_FILES.length)return fallback;
+      const moved=new Set<string>();
+      for(const value of data.placements){
+        if(!value||typeof value!=="object")return fallback;
+        const placement=value as Record<string,unknown>;
+        if(typeof placement.id!=="string"||typeof placement.parentId!=="string"||moved.has(placement.id)||placement.id===ROOT_ID)return fallback;
+        const node=all.find(node=>node.id===placement.id&&node.protected);
+        if(!node)return fallback;
+        moved.add(node.id);node.parentId=placement.parentId;
+      }
+    }
     const byId = new Map(all.map(node => [node.id, node]));
     const names = new Set<string>();
     for (const node of all) {
@@ -100,7 +113,7 @@ export function restoreFiles(raw: string | null): { nodes: FinderNode[]; recover
       if (names.has(nameKey)) return fallback;
       names.add(nameKey);
     }
-    for (const node of visitors) {
+    for (const node of all.filter(node=>node.id!==ROOT_ID)) {
       let parent = byId.get(node.parentId!);
       const seen = new Set([node.id]);
       while (parent && parent.id !== ROOT_ID) {
@@ -110,6 +123,7 @@ export function restoreFiles(raw: string | null): { nodes: FinderNode[]; recover
       }
       if (!parent) return fallback;
     }
+    // Older saves may nest deeper than today's limit. Keep those notes; moves enforce the limit.
     return { nodes: all, recovered: false };
   } catch {
     return fallback;
@@ -117,7 +131,8 @@ export function restoreFiles(raw: string | null): { nodes: FinderNode[]; recover
 }
 
 export function serializeFiles(nodes: FinderNode[]): string {
-  return JSON.stringify({ version: 1, nodes: nodes.filter(node => !node.protected) });
+  const canonical=new Map(INITIAL_FILES.map(node=>[node.id,node.parentId]));
+  return JSON.stringify({ version: 2, nodes: nodes.filter(node => !node.protected), placements:nodes.filter(node=>node.protected&&node.id!==ROOT_ID&&canonical.get(node.id)!==node.parentId).map(node=>({id:node.id,parentId:node.parentId})) });
 }
 
 export function uniqueName(nodes: FinderNode[], parentId: string, kind: "folder" | "text"): string {
@@ -133,6 +148,21 @@ export function uniqueName(nodes: FinderNode[], parentId: string, kind: "folder"
 export function removeVisitorNode(nodes: FinderNode[], id: string): FinderNode[] {
   const node = nodes.find(item => item.id === id);
   if (!node || node.protected) return nodes;
-  const removed = new Set([id, ...descendants(nodes, id).map(item => item.id)]);
+  const children=descendants(nodes,id);
+  if(children.some(node=>node.protected))return nodes;
+  const removed = new Set([id, ...children.map(item => item.id)]);
   return nodes.filter(item => !removed.has(item.id));
+}
+
+export function finderTree(nodes: FinderNode[]): TreeEntry[] {
+  return nodes.map(node=>({id:node.id,parentId:node.parentId,folder:node.kind==="folder"}));
+}
+export function finderMoveError(nodes: FinderNode[],id:string,parentId:string):string|null {
+  const invalid=reparentError(finderTree(nodes),[id],parentId);if(invalid)return invalid;
+  const node=nodes.find(node=>node.id===id)!;
+  if(nodes.some(other=>other.id!==id&&other.parentId===parentId&&other.name.toLowerCase()===node.name.toLowerCase()))return "An item here already has that name.";
+  return null;
+}
+export function moveFinderNode(nodes:FinderNode[],id:string,parentId:string):FinderNode[]{
+  return finderMoveError(nodes,id,parentId)?nodes:nodes.map(node=>node.id===id?{...node,parentId}:node);
 }

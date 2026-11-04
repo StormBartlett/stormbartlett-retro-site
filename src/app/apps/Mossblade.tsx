@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import styles from "./Mossblade.module.css";
+import arcade from "./Arcade.module.css";
+import ArcadeMenu, { handleGameBlur } from "./ArcadeMenu";
 
 type Phase = "ready" | "playing" | "paused" | "won" | "lost";
 type Direction = "up" | "right" | "down" | "left";
@@ -70,7 +72,7 @@ function createGame(): Game {
     stones: STONES.map((stone) => ({ ...stone, taken: false })),
     hearts: [{ x: 14.5 * TILE, y: 10.5 * TILE, taken: false }, { x: 10.5 * TILE, y: 6.5 * TILE, taken: false }],
     particles: [], hitIds: new Set(), queuedAttack: false, time: 0, kills: 0,
-    message: "The clearing is safe. Follow the paths north.", messageTime: 5,
+    message: "Safe zone. Follow the paths north.", messageTime: 5,
   };
 }
 
@@ -164,7 +166,7 @@ function advance(game: Game, held: Set<string>, dt: number, reduced: boolean): "
     if (!stone.taken && distance(player, stone) < 12) {
       stone.taken = true;
       const count = game.stones.filter((item) => item.taken).length;
-      game.message = count === 3 ? "The northern arch is awake. Follow the path north!" : `Sunstone ${count}/3 found. The grove glows a little brighter.`;
+      game.message = count === 3 ? "All sunstones found. Go to the north arch." : `Sunstone ${count}/3 found.`;
       game.messageTime = 5;
       burst(game, stone.x, stone.y - 4, "#ffe6a0", reduced);
     }
@@ -427,12 +429,12 @@ function drawGame(canvas: HTMLCanvasElement, game: Game, reduced: boolean) {
 
 function hudFor(game: Game): Hud {
   const stones = game.stones.filter((stone) => stone.taken).length;
-  return { health: game.player.health, stones, message: game.messageTime > 0 ? game.message : stones === 3 ? "All sunstones found. Return to the northern arch ↑" : distance(game.player, START) <= SAFE_RADIUS ? "The clearing is safe. Follow the paths north." : "Find the golden dots on your map. Swing to clear a path." };
+  return { health: game.player.health, stones, message: game.messageTime > 0 ? game.message : stones === 3 ? "All sunstones found. Go to the north arch." : distance(game.player, START) <= SAFE_RADIUS ? "Safe zone. Follow the paths north." : "Sunstones are the gold dots on the map." };
 }
 
 export default function Mossblade() {
-  const [phase, setPhase] = useState<Phase>("ready");
-  const [hud, setHud] = useState<Hud>({ health: MAX_HEALTH, stones: 0, message: "The clearing is safe. Follow the paths north." });
+  const [phase, setPhase] = useState<Phase>("playing");
+  const [hud, setHud] = useState<Hud>({ health: MAX_HEALTH, stones: 0, message: "Safe zone. Follow the paths north." });
   const [reducedMotion, setReducedMotion] = useState(false);
   const game = useRef<Game>(createGame());
   const held = useRef(new Set<string>());
@@ -503,6 +505,8 @@ export default function Mossblade() {
     return () => window.cancelAnimationFrame(frame);
   }, [phase, reducedMotion, changePhase, syncHud]);
 
+  useEffect(()=>{surface.current?.focus({preventScroll:true});},[]);
+
   const focusGame = () => surface.current?.focus({ preventScroll: true });
   const start = () => {
     game.current = createGame();
@@ -561,53 +565,36 @@ export default function Mossblade() {
 
   return (
     <div
-      className={styles.game}
+      className={`${arcade.shell} ${styles.game}`}
       ref={surface}
       tabIndex={0}
       role="application"
-      aria-label="Mossblade, a small original pixel adventure"
+      aria-label="Mossblade"
       aria-describedby={instructionsId}
       onKeyDown={keyDown}
       onKeyUp={keyUp}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null) && phaseRef.current === "playing") changePhase("paused");
-      }}
+      onBlur={(event) => handleGameBlur(event, () => { if (phaseRef.current === "playing") changePhase("paused"); }, () => surface.current)}
     >
-      <div className={styles.topBar}>
-        <div className={styles.wordmark}><span aria-hidden="true">✦</span> MOSSBLADE<small>THE SLEEPING GROVE</small></div>
-        <button type="button" className={styles.pauseButton} disabled={phase === "ready" || phase === "won" || phase === "lost"} onClick={() => phase === "playing" ? changePhase("paused") : resume()}>{phase === "paused" ? "Resume" : "Pause"}</button>
-      </div>
-      <div className={styles.hud}>
-        <span className={styles.hearts} aria-label={`${hud.health} of ${MAX_HEALTH} hearts`}>
-          {Array.from({ length: MAX_HEALTH }, (_, index) => <span key={index} className={index >= hud.health ? styles.emptyHeart : undefined} aria-hidden="true">♥</span>)}
-        </span>
-        <span className={styles.stoneCount}><span aria-hidden="true">◆</span> {hud.stones}/3 <small>SUNSTONES</small></span>
+      <div className={arcade.hud}>
+        <span className={styles.hearts} aria-label={`${hud.health} of ${MAX_HEALTH} hearts`}>{Array.from({length:MAX_HEALTH},(_,i)=><span key={i} className={i>=hud.health?styles.emptyHeart:undefined} aria-hidden="true">♥</span>)}</span>
+        <span>◆ <strong>{hud.stones}/3</strong></span><span className={arcade.spacer}/>
+        <button onClick={()=>phase==="playing"?changePhase("paused"):resume()} aria-label="Help and pause">?</button>
       </div>
       <div className={styles.viewport} onPointerDown={(event) => { if (event.target === canvas.current) focusGame(); }}>
         <canvas ref={canvas} width={VIEW_W} height={VIEW_H} className={styles.canvas} aria-label="Forest game world. Golden map dots mark sunstones. Your marker is white." />
-        {phase !== "playing" && (
-          <div className={styles.overlay}>
-            <div className={styles.card}>
-              <div className={styles.cardGlyph} aria-hidden="true">{phase === "won" ? "✧" : phase === "lost" ? "❧" : "⚔"}</div>
-              <h2>{phase === "ready" ? "A little courage." : phase === "paused" ? "A moment of quiet." : phase === "won" ? "The grove awakens." : "Rest, little wanderer."}</h2>
-              <p>{phase === "ready" ? "Gather three sunstones. Brave the garden creatures. Open the ancient arch to the north." : phase === "paused" ? "Your adventure is right where you left it." : phase === "won" ? `Three sunstones, a forest full of light. You made it in ${Math.max(1, Math.round(game.current.time))} seconds.` : `${hud.stones}/3 sunstones found. Keep moving, face a creature, then swing. Hearts restore your courage.`}</p>
-              <button type="button" className={styles.primaryButton} onClick={phase === "paused" ? resume : start}>{phase === "ready" ? "Enter the grove →" : phase === "paused" ? "Keep wandering →" : "Wander again →"}</button>
-              {phase === "paused" && <button type="button" className={styles.restartButton} onClick={start}>Start over</button>}
-            </div>
-          </div>
-        )}
+        {phase!=="playing"&&<ArcadeMenu title={phase==="paused"?"PAUSED":phase==="won"?"GROVE CLEARED":"GAME OVER"} controls={phase==="paused"?["WASD / arrows: move","Space / J: swing sword","Find 3 sunstones. Reach the north arch.","Touch: D-pad and sword"]:[`${hud.stones}/3 sunstones`]} action={phase==="paused"?resume:start} label={phase==="paused"?"Resume":"Play again"} restart={phase==="paused"?start:undefined}/>}
       </div>
-      <p className={styles.quest} aria-live="polite">{hud.message}</p>
+      <p className={arcade.status} aria-live="polite">{hud.message}</p>
       <div className={styles.controls}>
         <div className={styles.dpad} aria-label="Movement controls">
           {control("up", "Move up", "↑")}{control("left", "Move left", "←")}
           <span className={styles.dpadCenter} aria-hidden="true">✦</span>
           {control("right", "Move right", "→")}{control("down", "Move down", "↓")}
         </div>
-        <div className={styles.controlHint} id={instructionsId}><span>WASD / arrows</span>move<span>SPACE / J</span>swing<span>P / ESC</span>pause</div>
+        <span className={arcade.srOnly} id={instructionsId}>WASD or arrows move. Space or J swings. Escape opens controls.</span>
         {control("attack", "Swing sword, hold to repeat", "⚔")}
       </div>
-      <div className={styles.footer}>An original pocket adventure <span>NO SAVE · JUST PLAY</span></div>
+
     </div>
   );
 }
