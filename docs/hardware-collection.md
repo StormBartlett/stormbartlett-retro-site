@@ -2,7 +2,7 @@
 
 Three original Blender rigs share the same mounted portfolio desktop:
 
-- **Classic Mac:** rounded ivory case, Boolean-cut CRT recess, glass gasket, floppy drive, rainbow badge, vents, carry handle and feet.
+- **Classic Mac:** angular ivory case, CRT recess, glass gasket, floppy drive, rainbow badge, vents, carry handle and feet. The earlier rounded asset is retained.
 - **Studio Laptop:** aluminium unibody, hinged 16:10 display, mesh key legends, clickable keycaps, search trackpad, speakers and ports.
 - **RTX Workstation:** wide display, glass-sided custom tower, visible triple-fan GPU, RGB intake fans, CPU cooling, memory, power supply and front I/O.
 
@@ -10,11 +10,15 @@ Three original Blender rigs share the same mounted portfolio desktop:
 
 ## Runtime
 
-Only the selected GLB loads, then stays in the loader cache for switching back. Each asset is below 1.3 MB. Materials and lettering are local; there are no remote textures, HDRIs or font fetches for the hardware. Studio reflections use a one-frame, 128px procedural environment. Rendering remains on demand with a 1.5 DPR cap on phones.
+The initial rig loads first. Desktop idle time preloads the three self-contained GLBs (about 3 MB combined); phones start this work after opting into model view. Parsed scenes stay in the loader cache. Background preparation compiles materials, initializes textures, and renders each hidden rig once with all fragments discarded to upload its geometry. Each asset is below 1.3 MB. Hardware lettering and reflections are local, with no remote HDRI or texture requests.
 
-The hardware mesh is keyed per rig so React Three Fiber rebinds hit testing after a model swap. The HTML screen is deliberately unkeyed: its DOM host and all open app state survive. Display sizes are 800×600, 1000×625 and 1120×630; each matches the corresponding physical aperture's aspect ratio. No separate OS implementation is needed.
+All rigs fit around one fixed 800×600 OS aperture. Wider screens retain black margins so the models and desktop keep their original proportions. The camera is framed on initial load or a meaningful viewport change; selecting a rig never reframes it. Manual orbit/zoom remains available. The same HTML host and app windows survive every switch.
 
-The selected rig is saved using the existing protected storage helpers. Reset desk restores peripheral positions and camera framing. Screen zoom uses the active display dimensions. Phones retain the direct desktop exit and use a bottom hardware selector.
+The selected rig is saved using the existing protected storage helpers. A physical red button left of the monitor cycles cases with a 720 ms pixel dissolve. The floating selector, screen-zoom controls and hint strip were removed. The screen tap/desktop exit remains available. CSS3D wrappers use non-scrolling clipping so focusing the physical button cannot shift its projected position.
+
+Seven PC blade groups rotate around their own hubs; housings and RGB rings stay fixed. A single timer requests at most 30 fps for visible fans. Static rigs, hidden model view and reduced-motion mode have no recurring fan timer. Shadow maps update for model transitions and peripheral motion, rather than for every fan frame. The studio keeps a single opted-in renderer alive for fast reopening, with a 1.5 DPR cap on phones.
+
+The fixed-screen implementation is isolated in `3be32d1`. No Blender source or GLB file was changed. See [verification and review](fixed-screen-hardware.md).
 
 ## Validation
 
