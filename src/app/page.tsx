@@ -48,7 +48,8 @@ function ModelLoading() {
 }
 
 // Three.js is only fetched once the visitor is actually in model mode.
-const OldMac3D = dynamic(() => import("./OldMac3D"), { ssr: false, loading: ModelLoading });
+const loadHardware = () => import("./OldMac3D");
+const OldMac3D = dynamic(loadHardware, { ssr: false, loading: ModelLoading });
 
 /** Chunk, WebGL-context and GLB failures all land here and fall back to the flat desktop. */
 class ModelErrorBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
@@ -87,6 +88,13 @@ function HomeContent() {
   // Allocate WebGL only after the first visit; retain its uploaded resources for instant returns.
   const [modelVisited, setModelVisited] = useState(false);
   useEffect(() => { if (viewMode === "model") setModelVisited(true); }, [viewMode]);
+  useEffect(() => {
+    if (!settingsLoaded || isMobile) return;
+    let cancelled = false;
+    const prepare = () => {void loadHardware().then(module => {if (!cancelled) module.preloadHardware();}).catch(() => {});};
+    const timer = window.setTimeout(prepare, 700);
+    return () => {cancelled = true;window.clearTimeout(timer);};
+  }, [settingsLoaded, isMobile]);
 
   const changeViewMode = useCallback(
     (mode: ViewMode) => {

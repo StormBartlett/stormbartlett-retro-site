@@ -132,6 +132,7 @@ function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: numb
       s.lastX = root.position.x = resolved.x;
       s.lastZ = root.position.z = resolved.z;
       s.lastTime = now;
+      gl.shadowMap.needsUpdate = true;
       invalidate();
     };
     const up = (event: PointerEvent) => { if (event.pointerId === state.current.pointer) finish(false); };
@@ -167,6 +168,7 @@ function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: numb
     const z = THREE.MathUtils.clamp(nextZ, b.minZ, b.maxZ);
     const resolved = physics ? moveOnDesk(body.current, x, z, physics.values()) : { x, z, hitX: false, hitZ: false };
     root.position.x = resolved.x; root.position.z = resolved.z;
+    gl.shadowMap.needsUpdate = true;
     // A little energy is returned at the desk boundary; friction settles the object quickly.
     const friction = Math.exp(-6.8 * dt);
     s.velocityX *= !resolved.hitX && nextX === root.position.x ? friction : -0.16;
