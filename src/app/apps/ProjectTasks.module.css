@@ -28,7 +28,7 @@
 .root button {
   appearance: none;
   cursor: pointer;
-  /* Controls use the pixel UI face; notes keep the typewriter face. */
+  /* Controls and labels use the pixel UI face; descriptions keep the typewriter face. */
   font-family: var(--retro-ui-font);
   letter-spacing: .5px;
 }
@@ -60,13 +60,6 @@
   gap: 12px;
 }
 
-.eyebrow {
-  margin-bottom: 4px;
-  color: var(--muted);
-  font-size: 9px;
-  letter-spacing: 1.1px;
-}
-
 .heading {
   margin: 0;
   font-family: var(--retro-ui-font);
@@ -82,24 +75,17 @@
 
 .workCount {
   display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 27px;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--retro-ui-font);
+  font-size: 22px;
   line-height: 1;
-  letter-spacing: -2px;
 }
 
 .workCount > span {
-  max-width: 10px;
-  font-size: 7px;
-  line-height: 1.1;
+  font-size: 9px;
   letter-spacing: 1px;
-  writing-mode: vertical-rl;
-}
-
-.intro {
-  margin-top: 12px;
-  font-size: 10px;
+  opacity: .7;
 }
 
 .scrollArea {
@@ -151,6 +137,15 @@
   border-color: var(--ink);
   background: var(--ink);
   color: var(--paper) !important;
+}
+
+.viewLabel,
+.status,
+.workTitle > span,
+.roleDetail,
+.statusNote,
+.footer {
+  font-family: var(--retro-ui-font);
 }
 
 .viewLabel {
@@ -245,15 +240,9 @@
 .detailFooter {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-.typeLabel {
-  color: var(--muted);
-  font-size: 8px;
-  letter-spacing: .5px;
 }
 
 .detailLink {
@@ -292,189 +281,6 @@
 
 .statusNote > span {
   font-size: 12px;
-}
-
-.notesSection {
-  padding: 17px 20px 20px;
-  border-top: 1px dashed var(--rule);
-}
-
-.notesHeading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.notesHeading h3 {
-  margin: 0;
-  font-family: var(--retro-ui-font);
-  font-size: 16px;
-  letter-spacing: -.2px;
-}
-
-.notesHeading > span {
-  color: var(--muted);
-  font-size: 8px;
-  letter-spacing: .6px;
-}
-
-.notesIntro {
-  margin: 4px 0 12px;
-  color: var(--muted);
-  font-size: 10px !important;
-  line-height: 1.5 !important;
-}
-
-.addForm {
-  display: flex;
-  gap: 6px;
-}
-
-.addForm input,
-.editForm input {
-  min-width: 0;
-  width: 100%;
-  padding: 8px;
-  border: 1px solid var(--ink);
-  border-radius: 0;
-  background: transparent;
-  font-size: 10px;
-}
-
-.addForm input::placeholder {
-  color: var(--muted);
-  opacity: 1;
-}
-
-.addButton {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
-  border: 1px solid var(--ink);
-  background: var(--ink);
-  color: var(--paper) !important;
-  font-size: 14px !important;
-}
-
-.addButton > span {
-  font-size: 10px;
-}
-
-.emptyState {
-  display: flex;
-  gap: 13px;
-  align-items: center;
-  padding: 19px 7px 15px;
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.emptyState > span {
-  font-size: 20px;
-  white-space: nowrap;
-}
-
-.emptyState div > span {
-  display: block;
-  margin-top: 3px;
-  font-size: 9px;
-}
-
-.tasks {
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.task {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--rule);
-}
-
-.taskLabel {
-  display: flex;
-  flex: 1;
-  align-items: flex-start;
-  gap: 8px;
-  min-width: 0;
-  cursor: pointer;
-  font-size: 11px;
-}
-
-.taskLabel input {
-  appearance: none;
-  flex: 0 0 13px;
-  width: 13px;
-  height: 13px;
-  margin: 2px 0 0;
-  border: 1px solid var(--ink);
-  border-radius: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.taskLabel input:checked {
-  background: var(--ink);
-  box-shadow: inset 0 0 0 2px var(--paper);
-}
-
-.taskLabel > span {
-  overflow-wrap: anywhere;
-}
-
-.taskDone > span {
-  color: var(--muted);
-  text-decoration: line-through;
-}
-
-.taskActions,
-.editActions {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.taskActions button,
-.editActions button {
-  min-height: 28px;
-  padding: 3px 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  font-size: 9px;
-}
-
-.taskActions button:hover,
-.editActions button:hover {
-  border-color: var(--ink);
-}
-
-.taskActions .removeButton {
-  font-size: 17px;
-  line-height: 1;
-}
-
-.editForm {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  gap: 5px;
-  min-width: 0;
-}
-
-.editForm input {
-  flex: 1 1 160px;
-}
-
-.notesFooter {
-  margin-top: 11px;
-  color: var(--muted);
-  font-size: 8px;
-  line-height: 1.6;
 }
 
 .footer {
@@ -518,8 +324,7 @@
     font-size: 23px;
   }
 
-  .workSection,
-  .notesSection {
+  .workSection {
     padding-left: 13px;
     padding-right: 13px;
   }
@@ -547,12 +352,4 @@
     font-size: 8px;
   }
 
-  .addButton {
-    padding-left: 9px;
-    padding-right: 9px;
-  }
-
-  .addButton > span {
-    display: none;
-  }
 }

@@ -592,7 +592,7 @@ html,body,#__next{height:100%}
 .dock-grid{font:29px/28px monospace}
 .portfolio-app-window{width:540px;height:490px;max-width:calc(100% - 24px);max-height:calc(100% - 88px);min-height:240px}
 .portfolio-app-window .window-body{padding:0;overflow:auto;min-height:0;flex:1;font-family:var(--retro-editor-font);font-size:13px;line-height:1.5;touch-action:auto}
-.app-pixel-studio{width:540px;height:590px}.app-terminal{width:560px;height:430px}.app-finder{width:650px;height:490px}.app-project-tasks{width:560px;height:500px}.app-preferences{width:420px;height:570px}.app-postcards{width:430px;height:590px}.app-snake{width:430px;height:570px}.app-sound-lab{width:450px;height:620px}.app-focus-timer{width:420px;height:530px}
+.app-pixel-studio{width:540px;height:590px}.app-terminal{width:560px;height:430px}.app-finder{width:650px;height:490px}.app-project-tasks{width:560px;height:430px}.app-preferences{width:420px;height:570px}.app-postcards{width:430px;height:590px}.app-snake{width:430px;height:570px}.app-sound-lab{width:450px;height:620px}.app-focus-timer{width:420px;height:530px}
 .app-loading{padding:32px;text-align:center;font:12px/1.5 var(--retro-editor-font)}
 .playground-app{padding:24px;color:var(--window-ink);min-height:100%}
 .playground-heading h1{font:700 25px/1.2 var(--retro-editor-font);letter-spacing:-1px;margin:8px 0 12px}
