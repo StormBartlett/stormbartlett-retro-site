@@ -5,7 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as React from "react";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { HARDWARE_FX, SWITCH_POSITION, transitionAmount, type TransitionMode } from "./hardwareScene";
+import { addPixelDissolve, HARDWARE_FX, SWITCH_POSITION, transitionAmount, type TransitionMode } from "./hardwareScene";
 import styles from "./HardwareGallery.module.css";
 
 export type SwitchTransition = { from: string; to: string; start: number; mode: TransitionMode; duration: number };
@@ -85,10 +85,12 @@ function useSwordParts() {
   return parts;
 }
 
-export function SwordPedestal({ index, label, isLast, busy, onForward, onPull, onWarm, deskY, oldDeskY, scale, oldScale, transition, cue, reduced, portalRef }: {
+export function SwordPedestal({ index, label, isLast, busy, onForward, onPull, onWarm, deskY, oldDeskY, scale, oldScale, transition, cue, reduced, portalRef, reveal }: {
   index: number; label: string; isLast: boolean; busy: boolean; onForward: () => void; onPull: () => void; onWarm: () => void;
   deskY: number; oldDeskY: number; scale: number; oldScale: number; transition: React.RefObject<SwitchTransition | null>;
   cue: React.RefObject<SwordCue | null>; reduced: boolean; portalRef: React.RefObject<HTMLDivElement>;
+  /** Shared intro reveal: the pedestal materialises with the first computer. */
+  reveal?: { value: number; outgoing?: { value: number } };
 }) {
   const invalidate = useThree(state => state.invalidate);
   const { bladeGeometry, guardGeometry, wraps, runes } = useSwordParts();
@@ -97,6 +99,13 @@ export function SwordPedestal({ index, label, isLast, busy, onForward, onPull, o
   const root = React.useRef<THREE.Group>(null!), sword = React.useRef<THREE.Group>(null!);
   const gem = React.useRef<THREE.MeshStandardMaterial>(null!), rune = React.useRef<THREE.MeshStandardMaterial>(null!), button = React.useRef<THREE.MeshStandardMaterial>(null!);
   const pressed = React.useRef(0);
+  React.useLayoutEffect(() => {
+    if (!reveal) return;
+    root.current.traverse(object => {
+      if (!(object instanceof THREE.Mesh)) return;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) { addPixelDissolve(material, reveal); material.needsUpdate = true; }
+    });
+  }, [reveal]);
   useFrame(() => {
     const now = performance.now(), change = transition.current;
     const t = change ? transitionAmount(now, change.start, reduced, change.duration) : 1;

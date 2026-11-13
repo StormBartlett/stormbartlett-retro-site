@@ -7,6 +7,7 @@ import MatrixBackground from "./MatrixBackground";
 import {
   FullscreenProvider,
   readStoredSetting,
+  MOBILE_MEDIA_QUERY,
   useFullscreen,
   useIsMobileViewport,
   useMediaQuery,
@@ -29,20 +30,13 @@ const CHROME_STYLE: CSSProperties = {
   font: "inherit",
 };
 
+/** Same boot readout the 3D scene shows, so loading reads as one sequence over the rain. */
 function ModelLoading() {
   return (
-    <div
-      role="status"
-      style={{
-        ...CHROME_STYLE,
-        left: "50%",
-        top: "50%",
-        transform: "translate(-50%, -50%)",
-        display: "flex",
-        alignItems: "center",
-      }}
-    >
-      Loading 3D view…
+    <div className="boot-screen" role="status" aria-label="Loading 3D view">
+      <div className="boot-title">STORM OS</div>
+      <div className="boot-bar"><span style={{ width: "12%" }} /></div>
+      <div className="boot-step">Loading 3D view<span className="boot-caret">_</span></div>
     </div>
   );
 }
@@ -50,6 +44,10 @@ function ModelLoading() {
 // Three.js is only fetched once the visitor is actually in model mode.
 const loadHardware = () => import("./OldMac3D");
 const OldMac3D = dynamic(loadHardware, { ssr: false, loading: ModelLoading });
+// Desktop visitors land in 3D: fetch its code with the page rather than after hydration.
+if (typeof window !== "undefined") {
+  try { if (!window.matchMedia(MOBILE_MEDIA_QUERY).matches && window.localStorage.getItem("nx-fullscreen") !== "1") void loadHardware().catch(() => {}); } catch {}
+}
 
 /** Chunk, WebGL-context and GLB failures all land here and fall back to the flat desktop. */
 class ModelErrorBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
@@ -125,6 +123,11 @@ function HomeContent() {
   const screenSlotRef = useRef<HTMLElement | null>(null);
 
   useLayoutEffect(() => {
+    // The pre-hydration boot flag only hides the flat desktop until React decides the view.
+    if (settingsLoaded) delete document.documentElement.dataset.boot;
+  }, [settingsLoaded, viewMode]);
+
+  useLayoutEffect(() => {
     viewModeRef.current = viewMode;
     const home = homeRef.current;
     const host = hostRef.current;
@@ -158,7 +161,7 @@ function HomeContent() {
   return (
     <>
       {/* Hidden while the 3D screen loads; the host is moved out of here once its slot exists. */}
-      <div ref={homeRef} style={{ width: "100%", height: "100%", display: viewMode === "model" ? "none" : "block" }}>
+      <div ref={homeRef} data-flat-home style={{ width: "100%", height: "100%", display: viewMode === "model" ? "none" : "block" }}>
         <div ref={hostRef} style={{ width: "100%", height: "100%" }}>
           <DesktopOS
             embedded

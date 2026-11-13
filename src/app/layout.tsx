@@ -19,8 +19,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Desktop visitors open in the 3D view: skip painting the flat desktop first, and start
+            the default model download alongside the page instead of after the 3D code arrives. */}
+        <script dangerouslySetInnerHTML={{ __html: `try{if(!matchMedia("(max-width: 900px), (pointer: coarse)").matches&&localStorage.getItem("nx-fullscreen")!=="1")document.documentElement.dataset.boot="model"}catch(e){}` }} />
+        <link rel="preload" href="/models/studio-mac.glb" as="fetch" crossOrigin="anonymous" media="(min-width: 901px) and (pointer: fine)" />
         <link rel="icon" href="/favicon.ico?v=2" sizes="any" />
         <link rel="icon" href="/favicon-32x32.png?v=2" type="image/png" sizes="32x32" />
         <link rel="icon" href="/lightning-logo-black.svg?v=2" type="image/svg+xml" />
