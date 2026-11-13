@@ -684,3 +684,31 @@ body{touch-action:auto}.storm-desktop .desktop{touch-action:pan-x pan-y pinch-zo
 .boot-caret{animation:boot-blink 1s steps(1) infinite}
 @keyframes boot-blink{50%{opacity:0}}
 html[data-boot=model] [data-flat-home]{visibility:hidden}
+/* Games is a folder: size it like the other folder windows instead of a full app window. */
+.portfolio-app-window.app-games{width:420px;height:350px}
+.storm-desktop.mobile .portfolio-app-window.app-games{width:min(86%,420px);height:min(350px,calc(100% - 88px))}
+.storm-desktop.mobile-landscape .portfolio-app-window.app-games{width:min(84%,540px)}
+/* App search: a retro dialog in the pixel faces, with an ESC keycap and inverted selection. */
+.app-launcher{background:#f4f1e6;border:2px solid #101010;box-shadow:6px 6px 0 #101010;font:12px/1.4 var(--retro-ui-font);overflow:hidden}
+.launcher-title{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:2px solid #101010;background:repeating-linear-gradient(90deg,#101010 0 1px,transparent 1px 3px) 0 50%/100% 9px no-repeat,#fff}
+.launcher-title>span{padding:2px 8px;background:#fff;border:2px solid #101010;font:11px/1.2 var(--retro-ui-font);letter-spacing:2px;text-transform:uppercase}
+.launcher-search{gap:12px;padding:12px 14px;border-bottom:2px solid #101010}
+.launcher-search .pixel-glass{flex:none;color:#101010}
+.launcher-search input{font:24px/1 var(--font-vt323),var(--retro-ui-font);letter-spacing:1px;color:#101010;padding:4px 0}
+.launcher-search input::placeholder{color:#8a857a;text-transform:uppercase;letter-spacing:2px}
+.launcher-search>button{flex:none;padding:5px 8px;border:2px solid #101010;background:#fffdf6;color:#101010;font:9px/1 var(--retro-ui-font);letter-spacing:1px;text-transform:uppercase;box-shadow:inset -2px -2px 0 #a89c8c,inset 2px 2px 0 #fff,2px 2px 0 #101010;cursor:pointer}
+.launcher-search>button:active{transform:translate(2px,2px);box-shadow:inset -2px -2px 0 #a89c8c,inset 2px 2px 0 #fff}
+.launcher-results>button{border:2px solid transparent;color:#101010;padding:8px 10px}
+.launcher-results>button.active{background:#101010;color:#f4f1e6;border-color:#101010}
+.launcher-results>button.active svg{filter:none}
+.launcher-results strong{font:12px/1.3 var(--retro-ui-font)!important;letter-spacing:1px;text-transform:uppercase}
+.launcher-results>button>span:last-child{font:16px/1 var(--font-vt323),monospace}
+.app-launcher footer{border-top:2px solid #101010;font:16px/1 var(--font-vt323),monospace;letter-spacing:1px;opacity:.8;text-transform:uppercase}
+:root.dark-mode .app-launcher .launcher-results p{color:#101010!important}
+/* Menu bar search: the pixel glass, a touch larger than the old glyph. */
+.storm-desktop .launcher-trigger{display:inline-grid;place-items:center;padding:0 6px;line-height:0}
+.storm-desktop .launcher-trigger .pixel-glass{display:block}
+/* The menu bar keeps its moon in both themes: dark mode fills it, light mode shows it as an outline. */
+:root .theme-toggle-anim .sun{display:none}
+:root:not(.dark-mode) .theme-toggle-anim .moon{opacity:1;transform:rotate(-18deg) scale(.92)}
+:root:not(.dark-mode) .theme-toggle-anim .moon img{filter:invert(1) brightness(.55) drop-shadow(0 0 0 #101010);opacity:.55}

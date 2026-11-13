@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import AppErrorBoundary from "./AppErrorBoundary";
 import dynamic from "next/dynamic";
-import { AppGlyph, AppLauncher, appComponents, portfolioApps } from "./PortfolioApps";
+import { AppGlyph, AppLauncher, appComponents, PixelGlass, portfolioApps } from "./PortfolioApps";
 import { installDesktopSounds } from "./DesktopSounds";
 import { suppressDragClick } from "./dragClicks";
 import { createLocalCoordinateMetrics, settleIcons } from "./desktopCoordinates";
@@ -1368,7 +1368,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
 
         </nav>
         <div className="menubar-right">
-          <button className="launcher-trigger" onClick={() => setLauncherOpen(true)} aria-label="Find an app" title="Find an app (⌘ / Ctrl K)">⌕</button>
+          <button className="launcher-trigger" onClick={() => setLauncherOpen(true)} aria-label="Find an app" title="Find an app (⌘ / Ctrl K)"><PixelGlass size={17}/></button>
           <span className="menu-user">Storm Bartlett</span>
           <button
             className="dark-mode-toggle"

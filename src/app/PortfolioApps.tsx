@@ -63,6 +63,15 @@ export function Playground({ onOpenApp }: { onOpenApp?: (id: string) => void }) 
   </div>;
 }
 
+/** Pixel-art magnifying glass: a chunky lens ring and a stepped handle. */
+export function PixelGlass({ size = 18 }: { size?: number }) {
+  return <svg className="pixel-glass" width={size} height={size} viewBox="0 0 12 12" shapeRendering="crispEdges" aria-hidden="true" fill="currentColor">
+    <path d="M3 0h4v1h1v1h1v1h1v4h-1v1h-1v1h-1v1h-4v-1h-1v-1h-1v-1h-1v-4h1v-1h1v-1h1zM3 2v1h-1v4h1v1h4v-1h1v-4h-1v-1z"/>
+    <path d="M3 3h1v1h-1z" opacity=".55"/>
+    <path d="M8 8h1v1h1v1h1v1h1v1h-2v-1h-1v-1h-1v-1h-1v-1h1z"/>
+  </svg>;
+}
+
 export function AppLauncher({ onOpenApp, onClose, initialQuery = "" }: { onOpenApp: (id: string) => void; onClose: () => void; initialQuery?: string }) {
   const [query, setQuery] = useState(initialQuery);
   const [index, setIndex] = useState(0);
@@ -79,9 +88,10 @@ export function AppLauncher({ onOpenApp, onClose, initialQuery = "" }: { onOpenA
       if(e.key === "Enter" && e.target === input.current && choices[index]) { e.preventDefault(); launch(choices[index].id); }
       if(e.key === "Tab") { const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('button,input')); const first=items[0],last=items[items.length-1]; if(e.shiftKey && document.activeElement === first){e.preventDefault();last?.focus();} else if(!e.shiftKey && document.activeElement===last){e.preventDefault();first?.focus();} }
     }}>
-      <div className="launcher-search"><span aria-hidden="true">⌕</span><input ref={input} aria-label="Search apps" placeholder="Search apps" value={query} onChange={e => {setQuery(e.target.value);setIndex(0);}}/><button aria-label="Close app search" onClick={onClose}>Esc</button></div>
+      <div className="launcher-title" aria-hidden="true"><span>Find app</span></div>
+      <div className="launcher-search"><PixelGlass size={26}/><input ref={input} aria-label="Search apps" placeholder="Search apps" value={query} onChange={e => {setQuery(e.target.value);setIndex(0);}}/><button aria-label="Close app search" onClick={onClose}>Esc</button></div>
       <div className="launcher-results">{choices.map((app,i) => <button key={app.id} className={i === index ? "active" : ""} onClick={() => launch(app.id)} onMouseEnter={() => setIndex(i)}><AppGlyph glyph={app.glyph}/><span><strong>{app.name}</strong></span><span aria-hidden="true">↵</span></button>)}{!choices.length && <p>No apps found. Try “paint” or “garden”.</p>}</div>
-      <footer>↑↓ to explore · Enter to open · ⌘ / Ctrl K anywhere</footer>
+      <footer>↑↓ Move · ↵ Open · ⌘K / Ctrl K</footer>
     </section>
   </div>;
 }

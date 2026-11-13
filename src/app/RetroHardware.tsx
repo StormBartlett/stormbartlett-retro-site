@@ -13,6 +13,8 @@ export type RetroHardwareProps = {
   /** The bottom of the hardware rests at this height. Coordinates are local to its parent. */
   position?: [number, number, number];
   tone?: "classic" | "modern";
+  /** Mouse only: "box" is the one-button desk mouse, "ergo" a sculpted wireless mouse. */
+  shape?: "box" | "ergo";
   physics?: DeskWorld;
   rotationY?: number;
   bounds?: DeskBounds;
@@ -510,7 +512,7 @@ export function RetroKeyboard({
 
 /** A single-button desktop mouse. Clicks emit a scoped event rather than clicking page elements. */
 export function RetroMouse({
-  position = MOUSE_POSITION, rotationY = -0.11, bounds = MOUSE_BOUNDS, onInteractionChange, tone = "classic", physics,
+  position = MOUSE_POSITION, rotationY = -0.11, bounds = MOUSE_BOUNDS, onInteractionChange, tone = "classic", shape = "box", physics,
 }: RetroHardwareProps) {
   const { groupRef, begin, hover, leave } = useDeskDrag(bounds, { width: .444, depth: .636, angle: rotationY }, physics, onInteractionChange);
   const materials = useHardwareResources(tone);
@@ -533,6 +535,17 @@ export function RetroMouse({
     button: roundedSlab(0.364, 0.27, 0.028, 0.003, 0.004),
   }), []);
   React.useEffect(() => () => Object.values(geometries).forEach((geometry) => geometry.dispose()), [geometries]);
+  // Sculpted wireless mouse: right-leaning palm shell, thumb shelf, metal wheels.
+  const ergo = React.useMemo(() => shape !== "ergo" ? null : {
+    sphere: new THREE.SphereGeometry(1, 40, 24),
+    wheel: new THREE.CylinderGeometry(1, 1, 1, 28),
+    sole: roundedSlab(0.33, 0.58, 0.02, 0.01, 0.004),
+    shell: new THREE.MeshStandardMaterial({ color: "#2d3036", roughness: 0.52, metalness: 0.18 }),
+    rubber: new THREE.MeshStandardMaterial({ color: "#1b1d22", roughness: 0.86 }),
+    metal: new THREE.MeshStandardMaterial({ color: "#a3a9b1", roughness: 0.28, metalness: 0.85 }),
+    glow: new THREE.MeshBasicMaterial({ color: "#7df3df", toneMapped: false }),
+  }, [shape]);
+  React.useEffect(() => () => { if (ergo) Object.values(ergo).forEach((item) => item.dispose()); }, [ergo]);
   useFrame((_, delta) => {
     if (!button.current) return;
     const pulse = performance.now() < press.current.until;
@@ -551,7 +564,7 @@ export function RetroMouse({
   const release = () => { press.current.held = false; invalidate(); };
   return (
     <>
-      <HardwareCable body={groupRef} position={position} rotationY={rotationY} offset={[0, 0.07, -0.32]} anchor={[0.91, position[1] + 0.035, -0.19]} material={materials.cord} />
+      {!ergo && <HardwareCable body={groupRef} position={position} rotationY={rotationY} offset={[0, 0.07, -0.32]} anchor={[0.91, position[1] + 0.035, -0.19]} material={materials.cord} />}
       <group
         ref={groupRef} position={position} rotation={[0, rotationY, 0]} onPointerOver={hover} onPointerOut={leave}
         onPointerDown={(event) => {
@@ -566,16 +579,32 @@ export function RetroMouse({
           }
         }}
       >
-        <mesh geometry={geometries.sole} material={materials.dark} position={[0, 0.016, 0]} castShadow receiveShadow />
-        <mesh geometry={geometries.shell} material={materials.cream} position={[0, 0.045, 0]} castShadow receiveShadow />
+        {ergo ? <>
+          <mesh geometry={ergo.sole} material={ergo.rubber} position={[0.01, 0.012, 0.01]} receiveShadow />
+          {/* Palm shell, leaning right, highest toward the back like the hand rests on it. */}
+          <mesh geometry={ergo.sphere} material={ergo.shell} position={[0.025, 0.07, 0.03]} rotation={[0.1, 0, -0.2]} scale={[0.16, 0.115, 0.3]} castShadow receiveShadow />
+          <mesh geometry={ergo.sphere} material={ergo.shell} position={[0.06, 0.06, -0.12]} rotation={[0, 0.1, -0.12]} scale={[0.12, 0.085, 0.18]} castShadow />
+          {/* Thumb shelf on the left, with its side wheel and buttons. */}
+          <mesh geometry={ergo.sphere} material={ergo.rubber} position={[-0.135, 0.04, 0.05]} rotation={[0, 0.18, 0.1]} scale={[0.075, 0.032, 0.21]} castShadow />
+          <mesh geometry={ergo.wheel} material={ergo.metal} position={[-0.125, 0.105, -0.03]} rotation={[0, 0, 0.35]} scale={[0.028, 0.016, 0.028]} raycast={NO_RAYCAST} />
+          {[0.04, 0.085].map((z) => <mesh key={z} geometry={ergo.sphere} material={ergo.rubber} position={[-0.14, 0.098, z]} scale={[0.012, 0.012, 0.02]} raycast={NO_RAYCAST} />)}
+          <mesh geometry={ergo.wheel} material={ergo.glow} position={[0.02, 0.183, 0.04]} rotation={[0.1, 0, -0.2]} scale={[0.008, 0.002, 0.008]} raycast={NO_RAYCAST} />
+        </> : <>
+          <mesh geometry={geometries.sole} material={materials.dark} position={[0, 0.016, 0]} castShadow receiveShadow />
+          <mesh geometry={geometries.shell} material={materials.cream} position={[0, 0.045, 0]} castShadow receiveShadow />
+        </>}
         <group ref={button}>
-          <mesh geometry={geometries.button} material={materials.light} position={[0, 0.13, -0.133]} castShadow receiveShadow />
+          {ergo ? <>
+            {/* Metal scroll wheel in the split between the two buttons. */}
+            <mesh geometry={ergo.wheel} material={ergo.metal} position={[0.03, 0.15, -0.16]} rotation={[0, 0, Math.PI / 2 - 0.2]} scale={[0.04, 0.03, 0.04]} castShadow />
+            <mesh material={ergo.rubber} position={[0.035, 0.155, -0.23]} rotation={[0.35, 0, -0.2]} raycast={NO_RAYCAST}><boxGeometry args={[0.006, 0.012, 0.11]} /></mesh>
+          </> : <mesh geometry={geometries.button} material={materials.light} position={[0, 0.13, -0.133]} castShadow receiveShadow />}
         </group>
-        <mesh position={[0, 0.07, -0.326]} rotation={[Math.PI / 2, 0, 0]} material={materials.side} castShadow><cylinderGeometry args={[0.016, 0.02, 0.06, 10]} /></mesh>
+        {!ergo && <><mesh position={[0, 0.07, -0.326]} rotation={[Math.PI / 2, 0, 0]} material={materials.side} castShadow><cylinderGeometry args={[0.016, 0.02, 0.06, 10]} /></mesh>
         {[-0.018, 0, 0.018].map((z) => <mesh key={z} position={[0, 0.07, -0.347 + z]} material={materials.dark} raycast={NO_RAYCAST}><torusGeometry args={[0.018, 0.002, 5, 10]} /></mesh>)}
         <group position={[-0.067, 0.151, 0.17]} rotation={[-Math.PI / 2, 0, 0]} raycast={NO_RAYCAST}>
           {["#809054", "#c2a455", "#bf805c", "#a76e6e", "#81718c", "#678d99"].map((color, index) => <mesh key={color} position={[0, (index - 2.5) * 0.007, 0]}><planeGeometry args={[0.027, 0.005]} /><meshStandardMaterial color={color} roughness={0.8} /></mesh>)}
-        </group>
+        </group></>}
       </group>
     </>
   );

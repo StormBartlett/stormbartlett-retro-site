@@ -9,7 +9,7 @@ import { reportInteraction, RetroKeyboard, RetroMouse } from "./RetroHardware";
 import type { DeskWorld } from "./deskPhysics";
 import { readStoredSetting, useIsMobileViewport, useMediaQuery, writeStoredSetting } from "./FullscreenContext";
 import { framingDistance, HARDWARE_PROFILES, HARDWARE_STORAGE_KEY, hardwareProfile, keyboardStart, type HardwareProfile } from "./hardwareProfiles";
-import { addPixelDissolve, alignedDeskObstacles, disposeMergedGeometry, mergeStaticMeshes, seamlessCrtBezel, seatSideVents, addMouldedPlastic, DESK_COLORS, DESK_Y, FIXED_FRAMING, PORTRAIT_FRAMING, HARDWARE_FX, prepareFanRotors, quadMatrix3d, rigAlignment, screenFor, switchObstacle, transitionAmount, TRANSITION_MS, WARP_MS, type TransitionMode } from "./hardwareScene";
+import { addPixelDissolve, alignedDeskObstacles, disposeMergedGeometry, mergeStaticMeshes, seamlessCrtBezel, seatSideVents, addMouldedPlastic, DESK_COLORS, DESK_Y, FIXED_FRAMING, PORTRAIT_FRAMING, HARDWARE_FX, prepareFanRotors, quadMatrix3d, rigAlignment, roundedRect, screenFor, switchObstacle, transitionAmount, TRANSITION_MS, WARP_MS, type TransitionMode } from "./hardwareScene";
 import { SwordPedestal, TimeWarpFX, type SwitchTransition, type SwordCue } from "./SwordPedestal";
 import styles from "./HardwareGallery.module.css";
 
@@ -154,31 +154,58 @@ function ScreenSlot({onSlot,onResized,tapRef,screen,reduced,fx,glass}: {onSlot:(
  * context, which iOS Safari composited about 10 px away from the WebGL panel on the wider
  * screens while reporting a correct layout box. Position, size and pixel width ease with
  * the model blend, in step with the 3D rigs.
+ *
+ * The desktop sits beneath the WebGL canvas. A "hole" mesh at the glass writes transparent
+ * pixels, so the desktop shows only where the glass itself is visible: anything in front of
+ * it (the tower when orbiting, the pedestal, a bezel lip) hides it like real geometry. The
+ * hole starts opaque black and fades out once the intro has finished, like a screen powering on.
+ * The pointer layer above the canvas has the same quad cut out, so clicks there reach the desktop.
  */
-function ScreenPin({screen,from,transition,pinRef,reduced,invalidateRef,onSettled}: {screen:ScreenRect;from:ScreenRect;transition:React.RefObject<Transition|null>;pinRef:React.RefObject<HTMLDivElement>;reduced:boolean;invalidateRef:React.RefObject<()=>void>;onSettled:()=>void}) {
+function ScreenPin({screen,from,transition,pinRef,hitRef,reduced,introDone,invalidateRef,onSettled}: {screen:ScreenRect;from:ScreenRect;transition:React.RefObject<Transition|null>;pinRef:React.RefObject<HTMLDivElement>;hitRef:React.RefObject<HTMLDivElement>;reduced:boolean;introDone:boolean;invalidateRef:React.RefObject<()=>void>;onSettled:()=>void}) {
   const {camera,size,invalidate}=useThree();
   React.useLayoutEffect(()=>{invalidateRef.current=invalidate;invalidate();},[invalidate,invalidateRef]);
   React.useEffect(()=>{invalidate();},[size,screen,invalidate]);
-  const scratch=React.useMemo(()=>({center:new THREE.Vector3(),target:new THREE.Vector3(),corner:new THREE.Vector3(),euler:new THREE.Euler(),last:"",settled:0}),[]);
+  const hole=React.useRef<THREE.Mesh>(null!);
+  const material=React.useMemo(()=>new THREE.MeshBasicMaterial({color:0x000000,blending:THREE.NoBlending,toneMapped:false,opacity:1}),[]);
+  // Rounded like the desktop frame, built at the target panel's size and scaled while easing.
+  const geometry=React.useMemo(()=>{
+    const r=screen.radius*screen.width/screen.cssWidth;
+    return new THREE.ShapeGeometry(roundedRect(new THREE.Shape(),screen.width/2,screen.height/2,r) as THREE.Shape,8);
+  },[screen]);
+  React.useEffect(()=>()=>geometry.dispose(),[geometry]);
+  React.useEffect(()=>()=>material.dispose(),[material]);
+  const on=React.useRef({since:introDone?-Infinity:Infinity});
+  React.useEffect(()=>{on.current.since=introDone?performance.now():Infinity;invalidate();},[introDone,invalidate]);
+  const scratch=React.useMemo(()=>({center:new THREE.Vector3(),target:new THREE.Vector3(),corner:new THREE.Vector3(),normal:new THREE.Vector3(),euler:new THREE.Euler(),last:"",clip:"",settled:0}),[]);
   useFrame(()=>{
-    const pin=pinRef.current,frame=pin?.firstElementChild as HTMLElement|null;if(!pin||!frame)return;
+    const pin=pinRef.current,frame=pin?.firstElementChild as HTMLElement|null;if(!pin||!frame||!hole.current)return;
     const change=transition.current,t=change?transitionAmount(performance.now(),change.start,reduced,change.duration):1,lerp=THREE.MathUtils.lerp;
-    const {center,target,corner,euler}=scratch;
+    const {center,target,corner,normal,euler}=scratch;
     center.set(...from.position).lerp(target.set(...screen.position),t);euler.set(...screen.rotation);
     const w=lerp(from.width,screen.width,t)/2,h=lerp(from.height,screen.height,t)/2;
     const cssWidth=Math.round(lerp(from.cssWidth,screen.cssWidth,t)*10)/10,cssHeight=Math.round(lerp(from.cssHeight,screen.cssHeight,t)*10)/10;
+    // The hole sits a hair in front of the panel's own dark glass mesh.
+    normal.set(0,0,1).applyEuler(euler);
+    hole.current.position.copy(center).addScaledVector(normal,.004);hole.current.rotation.copy(euler);
+    hole.current.scale.set(w*2/screen.width,h*2/screen.height,1);
+    // Screen power-on: opaque black until the intro has finished, then fade to the desktop.
+    const lit=reduced?1:THREE.MathUtils.clamp((performance.now()-on.current.since)/450,0,1);
+    hole.current.visible=on.current.since!==Infinity;
+    if(material.opacity!==1-lit){material.opacity=1-lit;if(lit<1)invalidate();}
     camera.updateMatrixWorld();
     const quad=([[-w,h],[w,h],[w,-h],[-w,-h]] as const).map(([x,y])=>{
       corner.set(x,y,0).applyEuler(euler).add(center).project(camera);
       return [(corner.x+1)/2*size.width,(1-corner.y)/2*size.height] as [number,number];
     });
     const transform=quadMatrix3d(cssWidth,cssHeight,quad),key=`${cssWidth}x${cssHeight}${transform}`;
+    const clip=hole.current.visible?`polygon(evenodd,0 0,${size.width}px 0,${size.width}px ${size.height}px,0 ${size.height}px,0 0,${quad.map(([x,y])=>`${x.toFixed(1)}px ${y.toFixed(1)}px`).join(",")},${quad[0][0].toFixed(1)}px ${quad[0][1].toFixed(1)}px,0 0)`:"none";
+    if(clip!==scratch.clip&&hitRef.current){scratch.clip=clip;hitRef.current.style.clipPath=clip;}
     if(key===scratch.last)return;
     scratch.last=key;frame.style.width=`${cssWidth}px`;frame.style.height=`${cssHeight}px`;pin.style.transform=transform;
     // The desktop re-clamps its windows once, at the final size.
     if(t>=1&&cssWidth!==scratch.settled){scratch.settled=cssWidth;queueMicrotask(onSettled);}
   });
-  return null;
+  return <mesh ref={hole} geometry={geometry} material={material} renderOrder={-1} visible={false}/>;
 }
 
 /**
@@ -445,7 +472,7 @@ function ComputerRig({profile,current,previous,transition,onReady,onBoot,interac
     </group>
     {shown&&<>
       {profile.keyboard&&<RetroKeyboard position={keyboard} tone={profile.id==="rgb"?"modern":"classic"} bounds={{minX:-2.5,maxX:3.3,minZ:-1.9,maxZ:2.3}} physics={physics} onInteractionChange={interaction}/>}
-      <RetroMouse position={mouse} bounds={{minX:profile.bounds[0],maxX:profile.bounds[1],minZ:profile.bounds[2],maxZ:profile.bounds[3]}} tone={profile.id==="classic"?"classic":"modern"} physics={physics} onInteractionChange={interaction}/>
+      <RetroMouse position={mouse} bounds={{minX:profile.bounds[0],maxX:profile.bounds[1],minZ:profile.bounds[2],maxZ:profile.bounds[3]}} tone={profile.id==="classic"?"classic":"modern"} shape={profile.id==="rgb"?"ergo":"box"} physics={physics} onInteractionChange={interaction}/>
     </>}
   </group>;
 }
@@ -492,7 +519,7 @@ export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScre
   const [contextFailed,setContextFailed]=React.useState(false);
   const recoveryAttempts=React.useRef(0);
   const controlsRef=React.useRef<OrbitControlsImpl|null>(null);
-  const screenPinRef=React.useRef<HTMLDivElement>(null!),invalidateRef=React.useRef<()=>void>(()=>{});
+  const screenPinRef=React.useRef<HTMLDivElement>(null!),screenLayerRef=React.useRef<HTMLDivElement>(null!),invalidateRef=React.useRef<()=>void>(()=>{});
   const screenResized=React.useCallback(()=>{invalidateRef.current();window.dispatchEvent(new Event("resize"));},[]);
   const eventSourceRef=React.useRef<HTMLDivElement>(null!);
   const screenOverlayRef=React.useRef<HTMLDivElement>(null!);
@@ -576,7 +603,13 @@ export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScre
   const fromScreen=React.useMemo(()=>previous?screenFor(previous):screen,[previous,screen]);
   if(contextFailed)throw new Error("The graphics context could not be restored.");
   return <div className={`r3f-wrap ${styles.stage}`} data-intro={intro} data-hardware={current.id} data-prepared-models={prepared.length} data-transition={previous?transition.current?.mode??"dissolve":"idle"}>
-    <div ref={eventSourceRef} className={styles.canvas}>
+    <div ref={screenLayerRef} className={styles.screenLayer}>
+      {/* Never keyed by hardware: the desktop's DOM host and all app state survive every change. */}
+      <div ref={screenPinRef} className={styles.screenPin}>
+        <ScreenSlot screen={screen} glass={current.id} reduced={reduced} fx={screenFx} onSlot={onScreenSlot} onResized={screenResized} tapRef={tapRef}/>
+      </div>
+    </div>
+    <div className={styles.canvas}>
       <Canvas key={canvasVersion} frameloop={active?"demand":"never"} shadows dpr={isMobile?[1,1.5]:[1,2]} eventSource={eventSourceRef} camera={{position:INITIAL_CAMERA,fov:CAMERA_FOV}} onCreated={state=>{mark("canvas-created");bootStep(1);if(location.search.includes("perf"))Object.assign(window,{__stormThree:state});state.gl.shadowMap.autoUpdate=false;state.gl.shadowMap.needsUpdate=true;}}>
         <StudioLighting key={lightingVersion}/>
         <ContextRecovery onRestore={restoreLighting} onRecover={recoverContext} active={active}/>
@@ -590,19 +623,16 @@ export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScre
         <TimeWarpFX transition={transition} cue={swordCue} reduced={reduced} deskY={DESK_Y} oldDeskY={DESK_Y}/>
         <SharedDesk current={current} previous={previous} transition={transition} reduced={reduced} reveal={introReveal}/>
         <pointLight position={[2.5,.4,.6]} color="#77f7dd" intensity={current.id==="rgb"?1.3:0} distance={2.4}/><pointLight position={[2,-.3,.5]} color="#be91ff" intensity={current.id==="rgb"?.8:0} distance={2}/>
-        <ScreenPin screen={screen} from={fromScreen} transition={transition} pinRef={screenPinRef} reduced={reduced} invalidateRef={invalidateRef} onSettled={screenResized}/>
+        <ScreenPin screen={screen} from={fromScreen} transition={transition} pinRef={screenPinRef} hitRef={eventSourceRef} reduced={reduced} introDone={intro==="done"} invalidateRef={invalidateRef} onSettled={screenResized}/>
         <OrbitControls makeDefault ref={controlsRef} enabled={active} enableDamping dampingFactor={.09} enablePan={false} minDistance={1.5} maxDistance={70} minAzimuthAngle={-Math.PI/3} maxAzimuthAngle={Math.PI/3} minPolarAngle={Math.PI/4} maxPolarAngle={Math.PI/2.02}/>
         <SceneFraming controlsRef={controlsRef}/>
-        <ScreenAlignmentGuard overlayRef={screenOverlayRef} screen={screen} transition={transition}/>
+        <ScreenAlignmentGuard overlayRef={screenLayerRef} screen={screen} transition={transition}/>
         <SceneTicker version={current.asset+intro} moving={moving} spinning={current.id==="rgb"||previous?.id==="rgb"} transition={transition} reduced={reduced} onComplete={complete}/>
       </Canvas>
     </div>
-    <div ref={screenOverlayRef} className={styles.screenOverlay}>
-      {/* Never keyed by hardware: the desktop's DOM host and all app state survive every change. */}
-      <div ref={screenPinRef} className={styles.screenPin}>
-        <ScreenSlot screen={screen} glass={current.id} reduced={reduced} fx={screenFx} onSlot={onScreenSlot} onResized={screenResized} tapRef={tapRef}/>
-      </div>
-    </div>
+    {/* Pointer layer for the 3D scene; ScreenPin cuts the live screen's quad out of it. */}
+    <div ref={eventSourceRef} className={styles.hitLayer}/>
+    <div ref={screenOverlayRef} className={styles.screenOverlay}/>
     {intro!=="done"&&<BootScreen step={boot} leaving={intro==="revealing"}/>}
     <span className={styles.status} role="status">{intro==="loading"?"Loading the 3D desk…":selected!==current.id?"Preparing computer…":notice||`${current.label}. Press the button on the sword's stone to switch computer.`}</span>
   </div>;

@@ -92,7 +92,7 @@
   {
     "id": "rgb",
     "label": "RTX Workstation",
-    "subtitle": "Glass side \u00b7 triple-fan RTX \u00b7 RGB",
+    "subtitle": "Glass side \u00b7 dual RTX \u00b7 RGB",
     "asset": "/models/studio-pc.glb",
     "screen": {
       "position": [

@@ -194,11 +194,17 @@ def pc():
     cube('Side glass',(.693,0,0),(.012,2.22,1.34),'glass',.005,parent=tower)
     for y in (-1.02,1.02):
       for z in (-.59,.59):cyl('Glass standoff',(.705,y,z),.022,.014,'silver',axis='x',parent=tower,verts=12)
-    # Vertical RTX-style triple-fan graphics card, visible through the side glass.
-    cube('RTX card backplate',(.35,-.32,-.02),(.11,.57,1.20),'black',.018,parent=tower)
-    for i in range(3):fan('RTX GPU fan '+str(i),(.425,-.32,-.40+i*.38),.16,'teal',axis='x',parent=tower)
-    text('RTX engraving','GEFORCE RTX',(.46,.02,-.02),.075,'label',parent=tower,rotation=(0,math.pi/2,0))
-    cube('GPU light bar',(.45,-.63,-.02),(.018,.025,1.12),'teal',.006,parent=tower)
+    # Two vertical triple-slot RTX-style cards facing the side glass, each with an RGB edge.
+    for k,(cy,fans,edge) in enumerate(((-.32,'teal','violet'),(.30,'pink','teal'))):
+      card='' if k==0 else ' '+str(k+1)
+      cube('RTX card backplate'+card,(.24,cy,-.02),(.07,.57,1.20),'black',.018,parent=tower)
+      cube('RTX card shroud'+card,(.33,cy,-.02),(.13,.55,1.18),'graphite',.03,parent=tower)
+      for i in range(3):fan('RTX GPU fan '+str(k*3+i),(.415,cy,-.40+i*.38),.16,fans,axis='x',parent=tower)
+      cube('GPU light bar'+card,(.405,cy+.29,-.02),(.03,.022,1.12),edge,.006,parent=tower)
+      cube('GPU end cap'+card,(.33,cy,.585),(.13,.50,.022),edge,.006,parent=tower)
+      text('RTX engraving'+card,'GEFORCE RTX',(.405,cy-.255,-.02),.06,'label',parent=tower,rotation=(0,math.pi/2,0))
+    cube('GPU bridge',(.27,-.01,-.56),(.09,.07,.30),'graphite',.012,parent=tower)
+    cube('GPU bridge light',(.318,-.01,-.56),(.012,.03,.26),'violet',.004,parent=tower)
     # CPU cooling block, two RGB memory sticks, braided coolant tubes.
     cube('CPU coldplate',(-.48,.43,-.05),(.15,.40,.40),'silver',.035,parent=tower)
     fan('CPU pump',(-.375,.43,-.05),.145,'violet',axis='x',parent=tower)
@@ -212,7 +218,7 @@ def pc():
     for x in (.03,.17):cube('Top USB socket',(x,1.26,.39),(.055,.012,.10),'black',.006,parent=tower)
     for x in (-.45,.45):
       for z in (-.5,.5):cube('Case rubber foot',(x,-1.29,z),(.17,.13,.20),'rubber',.016,parent=tower)
-    return dict(id='rgb',label='RTX Workstation',subtitle='Glass side · triple-fan RTX · RGB',asset='/models/studio-pc.glb',screen=dict(position=[-.75,.18,-.337],rotation=[0,0,0],width=3.50,height=1.96875,cssWidth=1120,cssHeight=630,radius=12),framing=dict(target=[.65,-.12,.30],width=7.1,height=4.3,distance=10.2),keyboard=True,mouse=[2.7,-1.54,1.7],bounds=[2.0,3.6,.7,2.4])
+    return dict(id='rgb',label='RTX Workstation',subtitle='Glass side · dual RTX · RGB',asset='/models/studio-pc.glb',screen=dict(position=[-.75,.18,-.337],rotation=[0,0,0],width=3.50,height=1.96875,cssWidth=1120,cssHeight=630,radius=12),framing=dict(target=[.65,-.12,.30],width=7.1,height=4.3,distance=10.2),keyboard=True,mouse=[2.7,-1.54,1.7],bounds=[2.0,3.6,.7,2.4])
 
 profiles=[]
 for factory,name in [(classic,'studio-mac'),(laptop,'studio-laptop'),(pc,'studio-pc')]:
