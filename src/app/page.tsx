@@ -78,7 +78,9 @@ function HomeContent() {
 
   // Runs in the same effect flush as FullscreenProvider's load, so both settings apply in one render.
   useEffect(() => {
-    if (readStoredSetting(MOBILE_VIEW_MODE_KEY) === "model") setMobileViewMode("model");
+    // `?view=model` deep-links phones straight into the 3D desk without changing their saved choice.
+    const linked = new URLSearchParams(window.location.search).get("view") === "model";
+    if (linked || readStoredSetting(MOBILE_VIEW_MODE_KEY) === "model") setMobileViewMode("model");
     setSettingsLoaded(true);
   }, []);
 

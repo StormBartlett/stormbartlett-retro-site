@@ -111,3 +111,38 @@ export function purgeDesktopFolders(folders:DesktopFolders,ids:readonly string[]
   ids.forEach(remove);
   return next;
 }
+
+/** "Name", "Name copy", "Name copy 2"… unique (case-insensitive) among the target's items. */
+export function copyLabel(label:string,taken:readonly {label:string}[]){
+  const used=new Set(taken.map(item=>item.label.toLowerCase()));
+  if(!used.has(label.toLowerCase()))return label;
+  // Copies of copies count up ("copy 2") instead of stacking "copy copy".
+  const base=`${label.replace(/\s+copy(?:\s+\d+)?$/i,"").slice(0,55)} copy`;
+  if(!used.has(base.toLowerCase()))return base;
+  for(let n=2;;n++){const next=`${base} ${n}`;if(!used.has(next.toLowerCase()))return next;}
+}
+
+/**
+ * Deep copies for Paste. Files get new identities pointing at the same app; folders get new
+ * custom folders with copied contents. Only the top-level copies are renamed to stay unique.
+ */
+export function copyFileItems(folders:DesktopFolders,items:readonly FileItem[],targetItems:readonly {label:string}[],newId:()=>string){
+  const added:DesktopFolders={};const taken=[...targetItems];
+  const copyFolder=(sourceId:string,label:string):string=>{
+    const id=`${CUSTOM_FOLDER}${newId()}`;
+    const children=(folders[sourceId]?.items??[]).map(child=>{
+      const copy:FolderItem=child.type==="folder"?{...child,id:"",app:""}:{...child,id:`copy-${newId()}`};
+      if(child.type==="folder"){copy.id=copyFolder(child.id,child.label);copy.app=copy.id;}
+      copy.windowId=copy.type==="folder"?copy.id:child.windowId??child.app;
+      return copy;
+    });
+    added[id]={label,items:children};
+    return id;
+  };
+  const copies=items.map(item=>{
+    const label=copyLabel(item.label,taken);taken.push({label});
+    if(item.type==="folder"){const id=copyFolder(item.id,label);return {...item,id,app:id,label};}
+    return {...item,id:`copy-${newId()}`,label};
+  });
+  return {folders:added,copies};
+}

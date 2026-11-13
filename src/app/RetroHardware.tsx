@@ -6,6 +6,7 @@ import * as React from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import { moveOnDesk, rotatedFootprint, type DeskBody, type DeskWorld } from "./deskPhysics";
+import { applyPlasticFinish, boxProjectUVs } from "./hardwareScene";
 
 export type DeskBounds = { minX: number; maxX: number; minZ: number; maxZ: number };
 export type RetroHardwareProps = {
@@ -237,7 +238,8 @@ function roundedSlab(width: number, depth: number, height: number, radius: numbe
     bevelSize: bevel, bevelThickness: bevel, curveSegments: 2,
   });
   geometry.rotateX(-Math.PI / 2);
-  return geometry;
+  // World-scaled UVs so the classic set shares the Mac case's moulded-plastic grain.
+  return boxProjectUVs(geometry);
 }
 
 function useHardwareResources(tone: "classic" | "modern" = "classic") {
@@ -251,6 +253,8 @@ function useHardwareResources(tone: "classic" | "modern" = "classic") {
     if(tone === "modern") {
       cream.color.set("#303845");light.color.set("#495464");side.color.set("#151c24");dark.color.set("#0a1018");cord.color.set("#242b35");keys.color.set("#ffffff");keys.emissive.set("#333333");keys.emissiveIntensity=.25;
     }
+    // Classic keyboard and mouse match the Mac's ivory plastic texture.
+    if(tone === "classic") [cream, light, side, keys].forEach(applyPlasticFinish);
     return { cream, light, side, dark, cord, keys };
   }, [tone]);
   React.useEffect(() => () => Object.values(resources).forEach((material) => material.dispose()), [resources]);

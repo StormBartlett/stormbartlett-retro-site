@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { MOBILE_MEDIA_QUERY } from "./FullscreenContext";
 
 /**
  * Full-bleed vertical "matrix rain" background.
@@ -95,7 +94,8 @@ function hexToRgb(hex: string) {
 }
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
-const FRAME_INTERVAL_MS = 1000 / 30;
+// Rain advances in whole glyph rows, so 20fps looks the same as 30 while compositing a third less.
+const FRAME_INTERVAL_MS = 1000 / 20;
 // `speed` and `trail` are per-frame values tuned at 60fps; scale them to keep the same look when capped.
 const TUNED_FRAME_MS = 1000 / 60;
 const MAX_FRAME_GAP_MS = 100;
@@ -160,7 +160,8 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
     };
 
     const resize = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, window.matchMedia(MOBILE_MEDIA_QUERY).matches ? 1.5 : 2);
+      // A soft, glowing backdrop does not need Retina pixels; DPR 1 cuts fill and blur work by up to 4x.
+      dpr = 1;
       W = window.innerWidth;
       H = window.innerHeight;
       canvas.width = Math.floor(W * dpr);
@@ -173,6 +174,36 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
       ctx.fillStyle = background;
       ctx.fillRect(0, 0, W, H);
     };
+
+    // Glyphs are rasterized once per hue bucket, then copied. fillText plus shadowBlur per glyph
+    // was the dominant idle cost (about 280 text draws per frame).
+    const HUE_BUCKETS = 18;
+    const pad = glow && glowAmount > 0 ? Math.ceil(glowAmount * 1.5) : 0;
+    type Kind = { cell: number; pad: number; canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; ready: Uint8Array; light: number; glow: boolean; green: string };
+    const makeKind = (light: number, withGlow: boolean, green: string): Kind | null => {
+      const p = withGlow ? pad : 1, cell = fontSize + 2 * p + 2;
+      const c = document.createElement("canvas");
+      c.width = chars.length * cell; c.height = (colorMode === "green" ? 1 : HUE_BUCKETS) * cell;
+      const x = c.getContext("2d");
+      if (!x) return null;
+      x.font = `${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`; x.textBaseline = "top";
+      return { cell, pad: p, canvas: c, ctx: x, ready: new Uint8Array(c.width / cell * (c.height / cell)), light: withGlow ? 75 : light, glow: withGlow, green };
+    };
+    const kinds = { head: makeKind(75, pad > 0, "#cfffe0"), trail: makeKind(50, false, "#37d978"), flick: makeKind(85, false, "#eafff2") };
+    const sprite = (kind: Kind | null, glyph: number, hueDeg: number, x: number, y: number) => {
+      if (!kind) return;
+      const bucket = colorMode === "green" ? 0 : Math.round(hueDeg / (360 / HUE_BUCKETS)) % HUE_BUCKETS;
+      const index = bucket * chars.length + glyph, sx = glyph * kind.cell, sy = bucket * kind.cell;
+      if (!kind.ready[index]) {
+        const hueValue = bucket * (360 / HUE_BUCKETS), k = kind.ctx;
+        k.fillStyle = colorMode === "green" ? kind.green : `hsl(${hueValue}, ${saturation}%, ${kind.light}%)`;
+        if (kind.glow) { k.shadowColor = colorMode === "green" ? "#3dff88" : `hsl(${hueValue}, ${saturation}%, 55%)`; k.shadowBlur = glowAmount; }
+        k.fillText(chars[glyph], sx + kind.pad + 1, sy + kind.pad + 1);
+        kind.ready[index] = 1;
+      }
+      ctx.drawImage(kind.canvas, sx, sy, kind.cell, kind.cell, x - kind.pad - 1, y - kind.pad - 1, kind.cell, kind.cell);
+    };
+    const pick = () => (Math.random() * chars.length) | 0;
 
     const hueFor = (i: number, depth: number, t: number) => {
       let h: number;
@@ -187,18 +218,14 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
     const bg = hexToRgb(background);
     const start = performance.now();
 
-    const font = `${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
-
     const drawStill = () => {
-      ctx.font = font;
       const rows = Math.ceil(H / fontSize);
       for (let i = 0; i < cols; i++) {
         if (!columns[i].active) continue;
         const head = (Math.random() * rows) | 0;
         for (let d = 0; d < 10; d++) {
           ctx.globalAlpha = 0.6 * (1 - d / 10);
-          ctx.fillStyle = colorMode === "green" ? "#37d978" : `hsl(${hueFor(i, head - d, 0)}, ${saturation}%, 50%)`;
-          ctx.fillText(chars[(Math.random() * chars.length) | 0], i * fontSize, (head - d) * fontSize);
+          sprite(kinds.trail, pick(), hueFor(i, head - d, 0), i * fontSize, (head - d) * fontSize);
         }
       }
       ctx.globalAlpha = 1;
@@ -208,7 +235,6 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
       const t = (now - start) / 1000;
       ctx.fillStyle = `rgba(${bg.r},${bg.g},${bg.b},${Math.min(1, trail * frameScale)})`;
       ctx.fillRect(0, 0, W, H);
-      ctx.font = font;
 
       for (let i = 0; i < cols; i++) {
         const c = columns[i];
@@ -222,23 +248,10 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
           c.y++;
           const x = i * fontSize;
           const y = c.y * fontSize;
-          const ch = chars[(Math.random() * chars.length) | 0];
-
-          if (colorMode === "green") ctx.fillStyle = "#cfffe0";
-          else ctx.fillStyle = `hsl(${hueFor(i, c.y, t)}, ${saturation}%, 75%)`;
-
-          if (glow && glowAmount > 0) {
-            ctx.shadowColor =
-              colorMode === "green" ? "#3dff88" : `hsl(${hueFor(i, c.y, t)}, ${saturation}%, 55%)`;
-            ctx.shadowBlur = glowAmount;
-          }
-          ctx.fillText(ch, x, y);
-          ctx.shadowBlur = 0;
-
+          const hueValue = hueFor(i, c.y, t);
+          sprite(kinds.head, pick(), hueValue, x, y);
           // dimmer second glyph so the head reads as a comet
-          if (colorMode === "green") ctx.fillStyle = "#37d978";
-          else ctx.fillStyle = `hsl(${hueFor(i, c.y, t)}, ${saturation}%, 50%)`;
-          ctx.fillText(chars[(Math.random() * chars.length) | 0], x, y - fontSize);
+          sprite(kinds.trail, pick(), hueValue, x, y - fontSize);
 
           if (y > H && Math.random() > 0.975) {
             c.y = Math.floor(Math.random() * -20);
@@ -253,11 +266,7 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
           const i = (Math.random() * cols) | 0;
           const x = i * fontSize;
           const y = ((Math.random() * (H / fontSize)) | 0) * fontSize;
-          ctx.fillStyle =
-            colorMode === "green"
-              ? "#eafff2"
-              : `hsl(${hueFor(i, (y / fontSize) | 0, t)}, ${saturation}%, 85%)`;
-          ctx.fillText(chars[(Math.random() * chars.length) | 0], x, y);
+          sprite(kinds.flick, pick(), hueFor(i, (y / fontSize) | 0, t), x, y);
         }
       }
     };
@@ -273,20 +282,27 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
     }
 
     let lastFrame = 0;
+    let wake: ReturnType<typeof setTimeout> | undefined;
+    // A timer wakes the page only for frames that draw, instead of every display refresh.
+    const schedule = () => {
+      wake = setTimeout(() => { wake = undefined; rafRef.current = requestAnimationFrame(tick); }, Math.max(0, FRAME_INTERVAL_MS - 4));
+    };
     const tick = (now: number) => {
-      rafRef.current = requestAnimationFrame(tick);
+      rafRef.current = null;
       const elapsed = lastFrame ? now - lastFrame : FRAME_INTERVAL_MS;
-      // 1ms tolerance so a 60Hz display lands on every second frame despite timer jitter.
-      if (elapsed < FRAME_INTERVAL_MS - 1) return;
       lastFrame = now;
       draw(now, Math.min(elapsed, MAX_FRAME_GAP_MS) / TUNED_FRAME_MS);
+      schedule();
+    };
+    const stop = () => {
+      clearTimeout(wake); wake = undefined;
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     };
 
     const onVisibility = () => {
-      if (document.hidden) {
-        if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      } else if (rafRef.current == null) {
+      if (document.hidden) stop();
+      else if (rafRef.current == null && wake === undefined) {
         lastFrame = 0;
         rafRef.current = requestAnimationFrame(tick);
       }
@@ -298,8 +314,7 @@ export default function MatrixBackground(props: MatrixBackgroundProps) {
     if (!document.hidden) rafRef.current = requestAnimationFrame(tick);
 
     return () => {
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
+      stop();
       window.removeEventListener("resize", resize);
       document.removeEventListener("visibilitychange", onVisibility);
     };

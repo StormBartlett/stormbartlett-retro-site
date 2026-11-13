@@ -8,7 +8,7 @@ import { AppGlyph, AppLauncher, appComponents, portfolioApps } from "./Portfolio
 import { installDesktopSounds } from "./DesktopSounds";
 import { suppressDragClick } from "./dragClicks";
 import { createLocalCoordinateMetrics } from "./desktopCoordinates";
-import { desktopMoveError, FOLDER_STORAGE_KEY, purgeDesktopFolders, restoreDesktopFolders, restoreDesktopIcons, restoreDesktopTrash, type DesktopFolders } from "./desktopFiles";
+import { copyFileItems, desktopMoveError, FOLDER_STORAGE_KEY, purgeDesktopFolders, restoreDesktopFolders, restoreDesktopIcons, restoreDesktopTrash, type DesktopFolders } from "./desktopFiles";
 import { hydrateDesktopPreferences } from "./apps/desktopPreferences";
 const TiptapEditor = dynamic(() => import("./TiptapEditor"));
 const TodoEditor = dynamic(() => import("./TodoEditor"));
@@ -261,6 +261,20 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   });
   const [nextZ, setNextZ] = useState(11);
   const [launcherOpen, setLauncherOpen] = useState(false);
+  // Auto-hiding dock: pointer hot zone or keyboard focus reveal it (CSS); touch uses the handle.
+  const [dockShown, setDockShown] = useState(false);
+  const dockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hideDockSoon = (ms = 1600) => { clearTimeout(dockTimer.current); dockTimer.current = setTimeout(() => setDockShown(false), ms); };
+  const showDock = () => { setDockShown(true); hideDockSoon(3500); };
+  useEffect(() => () => clearTimeout(dockTimer.current), []);
+  // Google Fonts fetch each face on first use, so a menu's bold or editor face swapped in late.
+  // Request every face the UI uses up front.
+  useEffect(() => {
+    if (typeof document === "undefined" || !document.fonts) return;
+    for (const face of ['400 12px "Silkscreen"', '700 12px "Silkscreen"', '400 12px "Courier Prime"', '700 12px "Courier Prime"', '400 16px "VT323"']) {
+      void document.fonts.load(face, "AZaz09 .,").catch(() => {});
+    }
+  }, []);
   const [hardwareQuery, setHardwareQuery] = useState("");
   const hardwareCursorRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => { if(!modelScreen && hardwareCursorRef.current) hardwareCursorRef.current.style.display = "none"; }, [modelScreen]);
@@ -556,6 +570,47 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     setWindows(prev=>({...prev,[id]:{id,open:false,z:10}}));setSelection(new Set([id]));setFileNotice("");
   }
 
+  /** Copy/Cut/Paste. The clipboard lives in memory only and is empty after a reload. */
+  type ClipEntry={item:Icon;from:string};
+  const [clipboard,setClipboard]=useState<{mode:"copy"|"cut";entries:ClipEntry[]}|null>(null);
+  function clip(mode:"copy"|"cut",entries:ClipEntry[]){
+    if(!entries.length)return;
+    setClipboard({mode,entries});
+    setFileNotice(`${entries.length===1?`“${entries[0].item.label}”`:`${entries.length} items`} ${mode==="cut"?"cut":"copied"}.`);
+  }
+  const clipDesktopSelection=(mode:"copy"|"cut")=>clip(mode,icons.filter(icon=>selection.has(icon.id)).map(item=>({item,from:"desktop"})));
+  function placeIn(target:string,items:Icon[]){
+    if(target==="desktop"){setIcons(prev=>[...prev,...items.map((item,i)=>({...item,...clampToDesktop(40+(prev.length+i)%5*104,60+Math.floor((prev.length+i)/5)*104)}))]);setSelection(new Set(items.map(item=>item.id)));return;}
+    setFolders(prev=>prev[target]?{...prev,[target]:{...prev[target],items:[...prev[target].items,...items.map((item,i)=>{const n=prev[target].items.length+i;return {...item,x:20+n%3*110,y:20+Math.floor(n/3)*110,windowId:item.type==="folder"?item.id:item.app};})]}}:prev);
+  }
+  function pasteInto(target:string){
+    if(!clipboard)return;
+    if(clipboard.mode==="cut"){
+      // Only items still where they were cut from; an emptied cut is simply dropped.
+      const live=clipboard.entries.filter(({item,from})=>from==="desktop"?icons.some(icon=>icon.id===item.id):folders[from]?.items.some(entry=>entry.id===item.id));
+      const moving=live.filter(entry=>entry.from!==target);
+      if(!moving.length){setClipboard(null);return;}
+      const error=desktopMoveError(folders,icons,trash,moving.map(entry=>entry.item.id),target);
+      if(error){setFileNotice(error);return;}
+      const ids=new Set(moving.map(entry=>entry.item.id));
+      setIcons(prev=>prev.filter(icon=>!ids.has(icon.id)));
+      setFolders(prev=>Object.fromEntries(Object.entries(prev).map(([id,folder])=>[id,folder.items.some(item=>ids.has(item.id))?{...folder,items:folder.items.filter(item=>!ids.has(item.id))}:folder])));
+      placeIn(target,moving.map(({item})=>({id:item.id,label:item.label,app:item.app,type:item.type,x:0,y:0})));
+      setClipboard(null);setFileNotice("");return;
+    }
+    const targetItems=target==="desktop"?icons:folders[target]?.items??[];
+    const newId=()=>globalThis.crypto?.randomUUID?.()??`${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const {folders:added,copies}=copyFileItems(folders,clipboard.entries.map(entry=>entry.item),targetItems,newId);
+    if(Object.keys(folders).length+Object.keys(added).length>150){setFileNotice("Folder limit reached.");return;}
+    if(target!=="desktop"&&!folders[target])return;
+    setFolders(prev=>({...prev,...added}));
+    setWindows(prev=>({...prev,...Object.fromEntries(Object.keys(added).map(id=>[id,{id,open:false,z:10}]))}));
+    placeIn(target,copies.map(item=>({id:item.id,label:item.label,app:item.app,type:item.type,x:0,y:0})));
+    setFileNotice("");
+  }
+  const clipRef=useRef({clipDesktopSelection,pasteInto});
+  clipRef.current.clipDesktopSelection=clipDesktopSelection;clipRef.current.pasteInto=pasteInto;
+
   function resolveDrop(clientX: number, clientY: number): { key: string; el: HTMLElement } | null {
     const st = dragStateRef.current;
     if (!st) return null;
@@ -814,6 +869,13 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
         setOpenMenu(null);
         setCtxMenu(null);
       }
+      // Desktop file shortcuts, only when no field, editor or window has focus.
+      const active=document.activeElement as HTMLElement|null;
+      if(active&&(active.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)||active.closest(".window")))return;
+      if(!(e.metaKey||e.ctrlKey)||e.altKey)return;
+      const key=e.key.toLowerCase();
+      if(key==="c"||key==="x"){clipRef.current.clipDesktopSelection(key==="c"?"copy":"cut");e.preventDefault();}
+      else if(key==="v"){clipRef.current.pasteInto("desktop");e.preventDefault();}
     };
     window.addEventListener("pointerdown", onDown);
     window.addEventListener("keydown", onKey);
@@ -1247,7 +1309,10 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
                 Edit
               </button>
               <div className="menu-dropdown" role="menu">
-                <a className="menu-entry" role="menuitem" href="mailto:stormbartlett@icloud.com" onClick={() => setOpenMenu(null)}>Email Storm…</a>
+                <button className="menu-entry" role="menuitem" disabled={selection.size===0} onClick={() => { clipDesktopSelection("cut"); setOpenMenu(null); }}>Cut</button>
+                <button className="menu-entry" role="menuitem" disabled={selection.size===0} onClick={() => { clipDesktopSelection("copy"); setOpenMenu(null); }}>Copy</button>
+                <button className="menu-entry" role="menuitem" disabled={!clipboard} onClick={() => { pasteInto("desktop"); setOpenMenu(null); }}>Paste</button>
+                <button className="menu-entry" role="menuitem" onClick={() => { setSelection(new Set(icons.map(i => i.id))); setOpenMenu(null); }}>Select All</button>
               </div>
             </div>
           )}
@@ -1260,7 +1325,6 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
               <a className="menu-entry" role="menuitem" href="https://github.com/stormbartlett" target="_blank" rel="noopener noreferrer" onClick={() => setOpenMenu(null)}>GitHub</a>
               <a className="menu-entry" role="menuitem" href="https://www.linkedin.com/in/stormbartlett/" target="_blank" rel="noopener noreferrer" onClick={() => setOpenMenu(null)}>LinkedIn</a>
               <a className="menu-entry" role="menuitem" href="https://www.youtube.com/@stormbartlett64" target="_blank" rel="noopener noreferrer" onClick={() => setOpenMenu(null)}>YouTube</a>
-              {/* <a className="menu-entry" role="menuitem" href="/Storm_Bartlett_Resume.pdf" target="_blank" rel="noopener noreferrer" onClick={() => setOpenMenu(null)}>Resume</a> */}
             </div>
           </div>
 
@@ -1451,14 +1515,16 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
         </button>
 
         <div className="desktop-signature"><strong>Storm Bartlett</strong><span>Software developer</span></div>
-        <nav className="desktop-dock" aria-label="Quick launch">
-          {[{id:"finder",label:"Files",glyph:"folder"},{id:"project-tasks",label:"Work",glyph:"tasks"},{id:"games",label:"Games",glyph:"game"},{id:"pixel-studio",label:"Paint",glyph:"paint"},{id:"terminal",label:"Terminal",glyph:"terminal"}].map(app => <button key={app.id} onClick={() => openWin(app.id)} aria-label={`Open ${app.label}`} title={app.label} className={windows[app.id]?.open ? "running" : ""}><AppGlyph glyph={app.glyph} size={28}/><span>{app.label}</span></button>)}
-          <button onClick={() => setLauncherOpen(true)} aria-label="All apps"><span className="dock-grid" aria-hidden="true">⊞</span><span>All apps</span></button>
+        <div className="dock-hotzone" aria-hidden="true" />
+        <button type="button" className={`dock-handle${dockShown ? " is-hidden" : ""}`} aria-label="Show dock" onClick={showDock}><span aria-hidden="true" /></button>
+        <nav className={`desktop-dock${dockShown ? " dock-shown" : ""}`} aria-label="Quick launch" onPointerEnter={() => clearTimeout(dockTimer.current)} onPointerLeave={() => { if (dockShown) hideDockSoon(); }}>
+          {[{id:"finder",label:"Files",glyph:"folder"},{id:"project-tasks",label:"Work",glyph:"tasks"},{id:"games",label:"Games",glyph:"game"},{id:"pixel-studio",label:"Paint",glyph:"paint"},{id:"terminal",label:"Terminal",glyph:"terminal"}].map(app => <button key={app.id} onClick={() => { openWin(app.id); hideDockSoon(500); }} aria-label={`Open ${app.label}`} title={app.label} className={windows[app.id]?.open ? "running" : ""}><AppGlyph glyph={app.glyph} size={28}/><span>{app.label}</span></button>)}
+          <button onClick={() => { setLauncherOpen(true); hideDockSoon(500); }} aria-label="All apps"><span className="dock-grid" aria-hidden="true">⊞</span><span>All apps</span></button>
         </nav>
         {fileNotice&&<div className="file-operation-notice" role="status">{fileNotice}<button onClick={()=>setFileNotice("")} aria-label="Dismiss">×</button></div>}
         {discovered && <button className="secret-badge" onClick={() => setDiscovered(false)}>✦ Secret handshake discovered</button>}
-        {portfolioApps.map(app=>{const App=appComponents[app.id];return <Window key={app.id} id={app.id} title={app.name} windows={windows} frontWin={frontWin} closeWin={closeWin} className={`portfolio-app-window app-${app.id}`}>{app.id==="games"?<BlogBrowser folderId="games" items={folders.games.items} windows={windows} openWin={openWin} setNextZ={setNextZ} darkMode={darkMode} beginItemDrag={beginItemDrag} dropTarget={dropTarget} dragSourceId={dragGhost?.item.id??null} folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem}/>:<App onOpenApp={openWin}/>}</Window>;})}
-        {Object.entries(folders).filter(([id])=>!["blog","test-folder","projects","games"].includes(id)).map(([id,folder])=><Window key={id} id={id} title={folder.label} windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window"><BlogBrowser folderId={id} items={folder.items} windows={windows} openWin={openWin} setNextZ={setNextZ} darkMode={darkMode} beginItemDrag={beginItemDrag} dropTarget={dropTarget} dragSourceId={dragGhost?.item.id??null} folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem}/></Window>)}
+        {portfolioApps.map(app=>{const App=appComponents[app.id];return <Window key={app.id} id={app.id} title={app.name} windows={windows} frontWin={frontWin} closeWin={closeWin} className={`portfolio-app-window app-${app.id}`}>{app.id==="games"?<BlogBrowser folderId="games" items={folders.games.items} windows={windows} openWin={openWin} setNextZ={setNextZ} darkMode={darkMode} beginItemDrag={beginItemDrag} dropTarget={dropTarget} dragSourceId={dragGhost?.item.id??null} folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem} onClip={(mode,folderId,items)=>clip(mode,items.map(item=>({item:{id:item.id,label:item.label,app:item.app||item.windowId||item.id,type:item.type,x:0,y:0},from:folderId})))} onPaste={pasteInto} canPaste={!!clipboard}/>:<App onOpenApp={openWin}/>}</Window>;})}
+        {Object.entries(folders).filter(([id])=>!["blog","test-folder","projects","games"].includes(id)).map(([id,folder])=><Window key={id} id={id} title={folder.label} windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window"><BlogBrowser folderId={id} items={folder.items} windows={windows} openWin={openWin} setNextZ={setNextZ} darkMode={darkMode} beginItemDrag={beginItemDrag} dropTarget={dropTarget} dragSourceId={dragGhost?.item.id??null} folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem} onClip={(mode,folderId,items)=>clip(mode,items.map(item=>({item:{id:item.id,label:item.label,app:item.app||item.windowId||item.id,type:item.type,x:0,y:0},from:folderId})))} onPaste={pasteInto} canPaste={!!clipboard}/></Window>)}
         {launcherOpen && <AppLauncher initialQuery={hardwareQuery} onOpenApp={openWin} onClose={() => {setLauncherOpen(false);setHardwareQuery("");}}/>}
 
         <Window id="about" title="About Me" windows={windows} frontWin={frontWin} closeWin={closeWin}>
@@ -1496,7 +1562,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             beginItemDrag={beginItemDrag}
             dropTarget={dropTarget}
             dragSourceId={dragGhost?.item.id ?? null}
-            folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem}
+            folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem} onClip={(mode,folderId,items)=>clip(mode,items.map(item=>({item:{id:item.id,label:item.label,app:item.app||item.windowId||item.id,type:item.type,x:0,y:0},from:folderId})))} onPaste={pasteInto} canPaste={!!clipboard}
           />
         </Window>
 
@@ -1539,7 +1605,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             beginItemDrag={beginItemDrag}
             dropTarget={dropTarget}
             dragSourceId={dragGhost?.item.id ?? null}
-            folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem}
+            folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem} onClip={(mode,folderId,items)=>clip(mode,items.map(item=>({item:{id:item.id,label:item.label,app:item.app||item.windowId||item.id,type:item.type,x:0,y:0},from:folderId})))} onPaste={pasteInto} canPaste={!!clipboard}
           />
         </Window>
         <Window id="projects" title="Projects" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window">
@@ -1553,7 +1619,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             beginItemDrag={beginItemDrag}
             dropTarget={dropTarget}
             dragSourceId={dragGhost?.item.id ?? null}
-            folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem}
+            folderCounts={folderCounts} onCreateFolder={createFolder} onDeleteItem={trashFolderItem} onClip={(mode,folderId,items)=>clip(mode,items.map(item=>({item:{id:item.id,label:item.label,app:item.app||item.windowId||item.id,type:item.type,x:0,y:0},from:folderId})))} onPaste={pasteInto} canPaste={!!clipboard}
           />
         </Window>
         <Window id="project-notetime" title="NoteTime.txt" windows={windows} frontWin={frontWin} closeWin={closeWin} className="blog-window blog-post-window">
@@ -1581,7 +1647,11 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
             role="menu"
           >
             {ctxMenu.restricted ? (
-              <button className="menu-entry" role="menuitem" onClick={() => { setSelection(new Set(icons.map(i => i.id))); setCtxMenu(null); }}>Select All</button>
+              <>
+                <button className="menu-entry" role="menuitem" onClick={()=>{createFolder();setCtxMenu(null);}}>New Folder</button>
+                <button className="menu-entry" role="menuitem" disabled={!clipboard} onClick={()=>{pasteInto("desktop");setCtxMenu(null);}}>Paste</button>
+                <button className="menu-entry" role="menuitem" onClick={() => { setSelection(new Set(icons.map(i => i.id))); setCtxMenu(null); }}>Select All</button>
+              </>
             ) : (
               <>
                 <button className="menu-entry" role="menuitem" onClick={() => {
@@ -1592,8 +1662,9 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
                   });
                   setCtxMenu(null);
                 }}>Open</button>
-                <button className="menu-entry" role="menuitem" onClick={()=>{createFolder();setCtxMenu(null);}}>New Folder</button>
-                <button className="menu-entry" role="menuitem" onClick={() => { deleteSelectedIcons(); setCtxMenu(null); }}>Delete</button>
+                <button className="menu-entry" role="menuitem" onClick={()=>{clipDesktopSelection("copy");setCtxMenu(null);}}>Copy</button>
+                <button className="menu-entry" role="menuitem" onClick={()=>{clipDesktopSelection("cut");setCtxMenu(null);}}>Cut</button>
+                <button className="menu-entry" role="menuitem" onClick={() => { deleteSelectedIcons(); setCtxMenu(null); }}>Move to Trash</button>
                 <button className="menu-entry" role="menuitem" onClick={() => { setSelection(new Set(icons.map(i => i.id))); setCtxMenu(null); }}>Select All</button>
               </>
             )}
@@ -2067,6 +2138,9 @@ function BlogBrowser({
   folderCounts,
   onCreateFolder,
   onDeleteItem,
+  onClip,
+  onPaste,
+  canPaste,
 }: {
   folderId: string;
   items: BrowserItem[];
@@ -2080,10 +2154,13 @@ function BlogBrowser({
   folderCounts: Record<string, number>;
   onCreateFolder:(id:string)=>void;
   onDeleteItem:(folderId:string,item:BrowserItem)=>void;
+  onClip:(mode:"copy"|"cut",folderId:string,items:BrowserItem[])=>void;
+  onPaste:(folderId:string)=>void;
+  canPaste:boolean;
 }) {
   const browserRef = useRef<HTMLDivElement | null>(null);
   const [selection, setSelection] = useState<Set<string>>(new Set());
-  const [browserCtxMenu, setBrowserCtxMenu] = useState<{ x: number; y: number; itemId: string } | null>(null);
+  const [browserCtxMenu, setBrowserCtxMenu] = useState<{ x: number; y: number; itemId: string | null } | null>(null);
   const browserCtxMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Close browser context menu when clicking outside
@@ -2108,13 +2185,21 @@ function BlogBrowser({
   };
 
   return (
-    <><div className="folder-toolbar"><button onClick={()=>onCreateFolder(folderId)}>New folder</button></div><div
+    <><div
       className={`blog-browser ${dropTarget === `window:${folderId}` ? "is-drop-target" : ""}`}
       ref={browserRef}
       data-dropzone="window"
       data-folder-id={folderId}
       onPointerDown={(e) => {
         if (e.target === browserRef.current) setSelection(new Set());
+      }}
+      onContextMenu={(e) => {
+        // Empty space: New Folder and Paste. Items handle their own menu.
+        if (e.target !== browserRef.current) return;
+        e.preventDefault(); e.stopPropagation();
+        const rect = browserRef.current.getBoundingClientRect();
+        setSelection(new Set());
+        setBrowserCtxMenu({ x: e.clientX - rect.left + browserRef.current.scrollLeft, y: e.clientY - rect.top + browserRef.current.scrollTop, itemId: null });
       }}
     >
       {items.map((item) => (
@@ -2177,17 +2262,24 @@ function BlogBrowser({
           }}
           role="menu"
         >
+          {browserCtxMenu.itemId === null ? <>
+            <button className="menu-entry" role="menuitem" onClick={() => { onCreateFolder(folderId); setBrowserCtxMenu(null); }}>New Folder</button>
+            <button className="menu-entry" role="menuitem" disabled={!canPaste} onClick={() => { onPaste(folderId); setBrowserCtxMenu(null); }}>Paste</button>
+          </> : <>
           <button className="menu-entry" role="menuitem" onClick={() => {
             const item = items.find(i => i.id === browserCtxMenu.itemId);
             if (item) openItem(item);
             setBrowserCtxMenu(null);
           }}>Open</button>
+          <button className="menu-entry" role="menuitem" onClick={() => { onClip("copy", folderId, items.filter(i => selection.has(i.id) || i.id === browserCtxMenu.itemId)); setBrowserCtxMenu(null); }}>Copy</button>
+          <button className="menu-entry" role="menuitem" onClick={() => { onClip("cut", folderId, items.filter(i => selection.has(i.id) || i.id === browserCtxMenu.itemId)); setBrowserCtxMenu(null); }}>Cut</button>
           <button className="menu-entry" role="menuitem" onClick={() => {
-            const item = items.find(i => i.id === browserCtxMenu.itemId);
-            if (item) onDeleteItem(folderId, item);
+            const targets = items.filter(i => selection.has(i.id) || i.id === browserCtxMenu.itemId);
+            targets.forEach(item => onDeleteItem(folderId, item));
             setBrowserCtxMenu(null);
             setSelection(new Set());
-          }}>Delete</button>
+          }}>Move to Trash</button>
+          </>}
         </div>
       )}
     </div></>
@@ -2211,7 +2303,6 @@ function AboutPortfolioContent() {
         <div className="about-portfolio-copy">
           <div>Storm Bartlett</div>
           <div>Builder.</div>
-          <div>Forever Curious.</div>
         </div>
       </div>
       <div className="about-portfolio-rule" aria-hidden="true" />
@@ -2223,8 +2314,6 @@ function AboutPortfolioContent() {
           </li>
         ))}
       </ul>
-      <div className="about-portfolio-rule" aria-hidden="true" />
-      <div className="about-portfolio-location">New South Wales, Australia</div>
     </div>
   );
 }

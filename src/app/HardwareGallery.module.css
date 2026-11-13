@@ -1,6 +1,12 @@
 .stage{isolation:isolate;background:radial-gradient(ellipse at 50% 55%,#22272b44,transparent 65%)}
-.canvas,.screenOverlay{position:absolute;inset:0}.screenOverlay{pointer-events:none}
-.switchHit{display:grid;place-items:center;width:72px;height:84px;padding:34px 0 0;border:0;border-radius:0;background:transparent;color:#3d1d12;font:bold 10px/25px monospace;cursor:pointer;touch-action:manipulation;user-select:none}.switchHit:focus-visible{outline:2px dashed #fff4c6;outline-offset:3px}.switchHit:active{background:#0002}
+.canvas,.screenOverlay{position:absolute;inset:0}.screenOverlay{pointer-events:none;transform-origin:0 0}
+/* Transparent hit areas over the pedestal's real button and the sword's grip. */
+.switchHit,.swordHit{display:block;padding:0;border:0;border-radius:6px;background:transparent;cursor:pointer;touch-action:none;user-select:none;-webkit-tap-highlight-color:transparent}
+.switchHit{width:34px;height:30px}
+.swordHit{width:24px;height:44px;cursor:grab}
+.swordHit:active{cursor:grabbing}
+.switchHit:focus-visible,.swordHit:focus-visible{outline:2px dashed #fff4c6;outline-offset:2px}
+.switchHit:active{background:#0002}
 .status{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;pointer-events:none}
 
 /* CSS3D focus must not scroll its perspective wrapper. */
