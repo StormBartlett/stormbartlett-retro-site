@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import { AppGlyph, AppLauncher, appComponents, portfolioApps } from "./PortfolioApps";
 import { installDesktopSounds } from "./DesktopSounds";
 import { suppressDragClick } from "./dragClicks";
-import { createLocalCoordinateMetrics } from "./desktopCoordinates";
+import { createLocalCoordinateMetrics, settleIcons } from "./desktopCoordinates";
 import { copyFileItems, desktopMoveError, FOLDER_STORAGE_KEY, purgeDesktopFolders, restoreDesktopFolders, restoreDesktopIcons, restoreDesktopTrash, type DesktopFolders } from "./desktopFiles";
 import { hydrateDesktopPreferences } from "./apps/desktopPreferences";
 const TiptapEditor = dynamic(() => import("./TiptapEditor"));
@@ -422,7 +422,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     const restoredTrash=restoreDesktopTrash(desktopStorage.getItem("nx-trash"),restoredFolders,apps);
     setTrash(restoredTrash);
     const otherLayouts=ICON_STORAGE_KEYS.filter(key=>key!==iconStorageKey).map(key=>desktopStorage.getItem(key));
-    setIcons(fitIconsToViewport(restoreDesktopIcons(desktopStorage.getItem(iconStorageKey),otherLayouts,initialIcons,restoredFolders,restoredTrash,apps)));
+    setIcons(settleOnDesktop(fitIconsToViewport(restoreDesktopIcons(desktopStorage.getItem(iconStorageKey),otherLayouts,initialIcons,restoredFolders,restoredTrash,apps))));
     setIconsReady(true);
     const savedTrashPos = desktopStorage.getItem(trashPosStorageKey);
     if (savedTrashPos) {
@@ -1122,6 +1122,23 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
 
   // Drag-to-trash disabled
 
+  /** Saved layouts come from other screen sizes (full window, wider RTX panel); fit and de-overlap them. */
+  function settleOnDesktop<T extends Icon>(list: T[]): T[] {
+    const area = getDesktopSize();
+    if (area.width < 120 || area.height < 120) return list;
+    const binSpot = binPos ?? getDefaultBinPosition();
+    return settleIcons(list, area, binSpot ? [binSpot] : [], isMobile ? MOBILE_ICON_SIZE : DESKTOP_ICON_SIZE);
+  }
+  const settleRef = useRef(settleOnDesktop); settleRef.current = settleOnDesktop;
+  useEffect(() => {
+    if (!iconsReady) return;
+    let frame = 0;
+    const settle = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => setIcons(prev => settleRef.current(prev))); };
+    settle();
+    window.addEventListener("resize", settle); window.addEventListener("orientationchange", settle);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", settle); window.removeEventListener("orientationchange", settle); };
+  }, [iconsReady]);
+
   function arrangeIcons() {
     setIcons((list) => {
       if (isMobile) {
@@ -1136,7 +1153,8 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
       const rowHeight = isMobile ? 126 : 96;
       const startX = isMobile ? 28 : 40;
       const startY = 64;
-      const usableHeight = typeof window !== "undefined" ? Math.max(200, window.innerHeight - 160) : 600;
+      // The desktop area, not the browser window: in 3D it is the screen inside the model.
+      const usableHeight = Math.max(200, getDesktopSize().height - startY - 24);
       const perColumn = Math.max(1, Math.floor(usableHeight / rowHeight));
       const sorted = [...list].sort((a, b) => a.label.localeCompare(b.label));
       return sorted.map((icon, idx) => {

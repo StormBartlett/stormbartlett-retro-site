@@ -97,3 +97,34 @@ export function createLocalCoordinateMetrics(element: HTMLElement): LocalCoordin
   };
 }
 
+
+/**
+ * Keep icons inside the visible desktop and off each other. Icons already in a free, visible
+ * spot stay exactly where the visitor put them; only clipped or colliding ones move, each to
+ * the nearest free grid cell. Returns the same array when nothing needed to move.
+ */
+export function settleIcons<T extends { id: string; x: number; y: number }>(
+  icons: readonly T[], area: { width: number; height: number }, fixed: readonly { x: number; y: number }[] = [], size = 96, gap = 8,
+): T[] {
+  const maxX = Math.max(8, area.width - size - 8), maxY = Math.max(8, area.height - size - 8), step = size + gap, near = size * .8;
+  const placed = fixed.map(point => ({ ...point }));
+  const blocked = (x: number, y: number) => placed.some(point => Math.abs(point.x - x) < near && Math.abs(point.y - y) < near);
+  let changed = false;
+  const result = icons.map(icon => {
+    let x = Math.min(Math.max(8, icon.x), maxX), y = Math.min(Math.max(8, icon.y), maxY);
+    if (blocked(x, y)) {
+      let best: { x: number; y: number } | null = null, distance = Infinity;
+      for (let gx = 16; gx <= maxX; gx += step) for (let gy = 8; gy <= maxY; gy += step) {
+        if (blocked(gx, gy)) continue;
+        const d = (gx - x) ** 2 + (gy - y) ** 2;
+        if (d < distance) { distance = d; best = { x: gx, y: gy }; }
+      }
+      if (best) ({ x, y } = best);
+    }
+    placed.push({ x, y });
+    if (x === icon.x && y === icon.y) return icon;
+    changed = true;
+    return { ...icon, x, y };
+  });
+  return changed ? result : icons as T[];
+}
