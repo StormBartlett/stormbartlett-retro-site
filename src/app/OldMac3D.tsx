@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
-import { Html, OrbitControls, useGLTF } from "@react-three/drei";
+import { OrbitControls, useGLTF } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as React from "react";
 import * as THREE from "three";
@@ -9,7 +9,7 @@ import { reportInteraction, RetroKeyboard, RetroMouse } from "./RetroHardware";
 import type { DeskWorld } from "./deskPhysics";
 import { readStoredSetting, useIsMobileViewport, useMediaQuery, writeStoredSetting } from "./FullscreenContext";
 import { framingDistance, HARDWARE_PROFILES, HARDWARE_STORAGE_KEY, hardwareProfile, keyboardStart, type HardwareProfile } from "./hardwareProfiles";
-import { addPixelDissolve, alignedDeskObstacles, disposeMergedGeometry, mergeStaticMeshes, seamlessCrtBezel, addMouldedPlastic, DESK_COLORS, DESK_Y, FIXED_FRAMING, HARDWARE_FX, prepareFanRotors, rigAlignment, SCREEN_SCALE, screenFor, switchObstacle, transitionAmount, TRANSITION_MS, WARP_MS, type TransitionMode } from "./hardwareScene";
+import { addPixelDissolve, alignedDeskObstacles, disposeMergedGeometry, mergeStaticMeshes, seamlessCrtBezel, seatSideVents, addMouldedPlastic, DESK_COLORS, DESK_Y, FIXED_FRAMING, PORTRAIT_FRAMING, HARDWARE_FX, prepareFanRotors, quadMatrix3d, rigAlignment, screenFor, switchObstacle, transitionAmount, TRANSITION_MS, WARP_MS, type TransitionMode } from "./hardwareScene";
 import { SwordPedestal, TimeWarpFX, type SwitchTransition, type SwordCue } from "./SwordPedestal";
 import styles from "./HardwareGallery.module.css";
 
@@ -64,7 +64,7 @@ function HardwareModel({ profile, onReady, onLoaded, onInteractionChange, enable
       object.material=Array.isArray(object.material)?object.material.map(copy):copy(object.material);
     }});
     // Ivory case and bezel get a moulded-plastic stipple; one tiny shared normal map.
-    if(profile.id==="classic"){seamlessCrtBezel(scene);addMouldedPlastic(scene,/^ivory$/i);}
+    if(profile.id==="classic"){seamlessCrtBezel(scene);seatSideVents(scene);addMouldedPlastic(scene,/^ivory$/i);}
     const rotors=prepareFanRotors(scene);mergeStaticMeshes(scene);
     return {scene,materials,rotors};
   },[cached,reveal,profile.id]);
@@ -132,46 +132,53 @@ type ScreenRect=ReturnType<typeof screenFor>;
 
 function ScreenSlot({onSlot,onResized,tapRef,screen,reduced,fx,glass}: {onSlot:(slot:HTMLElement,mounted?:boolean)=>void;onResized:()=>void;tapRef:React.RefObject<(()=>void)|undefined>;screen:ScreenRect;reduced:boolean;fx:ScreenFx;glass:string}) {
   const slotRef=React.useRef<HTMLDivElement>(null!),frameRef=React.useRef<HTMLDivElement>(null!);
+  // ScreenPin owns the frame's size from here on; this only covers the first paint.
+  React.useLayoutEffect(()=>{const frame=frameRef.current;if(!frame.style.width){frame.style.width=`${screen.cssWidth}px`;frame.style.height=`${screen.cssHeight}px`;}onResized();},[]);// eslint-disable-line react-hooks/exhaustive-deps
   React.useLayoutEffect(()=>{const slot=slotRef.current;onSlot(slot);return()=>onSlot(slot,false);},[onSlot]);
-  React.useLayoutEffect(()=>{onResized();},[onResized,screen.cssHeight]);
-  React.useEffect(()=>{
-    // Width eases with the model blend; the desktop re-clamps once at the final size.
-    const frame=frameRef.current,done=(event:TransitionEvent)=>{if(event.target===frame&&event.propertyName==="width")onResized();};
-    frame.addEventListener("transitionend",done);return()=>frame.removeEventListener("transitionend",done);
-  },[onResized]);
-  React.useLayoutEffect(()=>{if(reduced)onResized();},[reduced,screen.cssWidth,onResized]);
   React.useEffect(()=>{
     const slot=slotRef.current;
     const click=(event:MouseEvent)=>{if(tapRef.current){event.preventDefault();event.stopPropagation();tapRef.current();}};
     slot.addEventListener("click",click,true);return()=>slot.removeEventListener("click",click,true);
   },[tapRef]);
-  const {cssWidth,cssHeight,radius}=screen;
   const duration=fx?.duration??TRANSITION_MS;
-  const ease=reduced?"none":`width ${duration}ms cubic-bezier(.45,0,.55,1), border-radius ${duration}ms ease`;
-  return <div ref={frameRef} className="model-screen-html" data-glass={glass} data-world={[...screen.position,screen.width,screen.height].map(v=>v.toFixed(4)).join(",")} style={{width:cssWidth,height:cssHeight,position:"relative",pointerEvents:"auto",borderRadius:radius,overflow:"hidden",transition:ease}}>
+  return <div ref={frameRef} className="model-screen-html" data-glass={glass} data-world={[...screen.position,screen.width,screen.height].map(v=>v.toFixed(4)).join(",")} style={{position:"relative",pointerEvents:"auto",borderRadius:screen.radius,overflow:"hidden",transition:reduced?"none":`border-radius ${duration}ms ease`}}>
     <div ref={slotRef} className="embedded-screen model-screen" style={{width:"100%",height:"100%",position:"relative"}}/>
     <div aria-hidden className="model-screen-glass"/>
     {fx&&!reduced&&<div key={fx.start} aria-hidden className={`model-screen-fx model-screen-fx-${fx.mode}`} style={{animationDuration:`${fx.duration}ms`}}/>}
   </div>;
 }
 
-function ScreenAnchor({screen,from,transition,glass,groupRef,portalRef,onSlot,tapRef,reduced,fx}: {screen:ScreenRect;from:ScreenRect;transition:React.RefObject<Transition|null>;glass:string;groupRef:React.RefObject<THREE.Group|null>;portalRef:React.RefObject<HTMLDivElement>;onSlot:(slot:HTMLElement,mounted?:boolean)=>void;tapRef:React.RefObject<(()=>void)|undefined>;reduced:boolean;fx:ScreenFx}) {
-  const invalidate=useThree(state=>state.invalidate);
-  // The desktop rides with each panel: position and size ease with the model blend.
+/**
+ * Pins the live desktop onto the panel with one projective matrix3d per frame: its four
+ * corners land exactly on the projected corners of the glass. There is no CSS perspective
+ * context, which iOS Safari composited about 10 px away from the WebGL panel on the wider
+ * screens while reporting a correct layout box. Position, size and pixel width ease with
+ * the model blend, in step with the 3D rigs.
+ */
+function ScreenPin({screen,from,transition,pinRef,reduced,invalidateRef,onSettled}: {screen:ScreenRect;from:ScreenRect;transition:React.RefObject<Transition|null>;pinRef:React.RefObject<HTMLDivElement>;reduced:boolean;invalidateRef:React.RefObject<()=>void>;onSettled:()=>void}) {
+  const {camera,size,invalidate}=useThree();
+  React.useLayoutEffect(()=>{invalidateRef.current=invalidate;invalidate();},[invalidate,invalidateRef]);
+  React.useEffect(()=>{invalidate();},[size,screen,invalidate]);
+  const scratch=React.useMemo(()=>({center:new THREE.Vector3(),target:new THREE.Vector3(),corner:new THREE.Vector3(),euler:new THREE.Euler(),last:"",settled:0}),[]);
   useFrame(()=>{
-    const group=groupRef.current;if(!group)return;
-    const change=transition.current,t=change?transitionAmount(performance.now(),change.start,reduced,change.duration):1;
-    group.position.set(...from.position).lerp(new THREE.Vector3(...screen.position),t);
-    group.scale.setScalar(THREE.MathUtils.lerp(from.zoom,screen.zoom,t));
-  },-1);
-  const requestFrame=React.useCallback(()=>{invalidate();window.dispatchEvent(new Event("resize"));},[invalidate]);
-  // This slot is never keyed by hardware. Its DOM host and all app state survive every change.
-  React.useLayoutEffect(()=>{invalidate();},[invalidate]);
-  return <group ref={groupRef} position={screen.position} rotation={screen.rotation} scale={screen.zoom}>
-    <Html transform center wrapperClass={styles.htmlPortal} portal={portalRef} scale={SCREEN_SCALE} zIndexRange={[100,0]}>
-      <ScreenSlot screen={screen} glass={glass} reduced={reduced} fx={fx} onSlot={onSlot} onResized={requestFrame} tapRef={tapRef}/>
-    </Html>
-  </group>;
+    const pin=pinRef.current,frame=pin?.firstElementChild as HTMLElement|null;if(!pin||!frame)return;
+    const change=transition.current,t=change?transitionAmount(performance.now(),change.start,reduced,change.duration):1,lerp=THREE.MathUtils.lerp;
+    const {center,target,corner,euler}=scratch;
+    center.set(...from.position).lerp(target.set(...screen.position),t);euler.set(...screen.rotation);
+    const w=lerp(from.width,screen.width,t)/2,h=lerp(from.height,screen.height,t)/2;
+    const cssWidth=Math.round(lerp(from.cssWidth,screen.cssWidth,t)*10)/10,cssHeight=Math.round(lerp(from.cssHeight,screen.cssHeight,t)*10)/10;
+    camera.updateMatrixWorld();
+    const quad=([[-w,h],[w,h],[w,-h],[-w,-h]] as const).map(([x,y])=>{
+      corner.set(x,y,0).applyEuler(euler).add(center).project(camera);
+      return [(corner.x+1)/2*size.width,(1-corner.y)/2*size.height] as [number,number];
+    });
+    const transform=quadMatrix3d(cssWidth,cssHeight,quad),key=`${cssWidth}x${cssHeight}${transform}`;
+    if(key===scratch.last)return;
+    scratch.last=key;frame.style.width=`${cssWidth}px`;frame.style.height=`${cssHeight}px`;pin.style.transform=transform;
+    // The desktop re-clamps its windows once, at the final size.
+    if(t>=1&&cssWidth!==scratch.settled){scratch.settled=cssWidth;queueMicrotask(onSettled);}
+  });
+  return null;
 }
 
 /**
@@ -259,10 +266,10 @@ function SceneFraming({controlsRef}: {controlsRef:ControlsRef}) {
   const {camera,size,invalidate}=useThree();
   const aspect=Math.round(size.width/Math.max(1,size.height)*10)/10;
   React.useEffect(()=>{
-    // Portrait phones fit the pedestal-to-tower span rather than the whole desk.
-    const profile={framing:aspect<1?{...FIXED_FRAMING,width:5.15}:FIXED_FRAMING} as HardwareProfile;
-    const distance=framingDistance(profile,aspect,(camera as THREE.PerspectiveCamera).fov);
-    const [x,y,z]=FIXED_FRAMING.target;
+    // Portrait phones fit the pedestal-to-mouse span rather than the whole desk.
+    const framing=aspect<1?PORTRAIT_FRAMING:FIXED_FRAMING;
+    const distance=framingDistance({framing} as HardwareProfile,aspect,(camera as THREE.PerspectiveCamera).fov);
+    const [x,y,z]=framing.target;
     camera.position.set(x+Math.sin(.16)*distance,y+distance*.22,z+Math.cos(.16)*distance);
     controlsRef.current?.target.set(x,y,z);controlsRef.current?.update();camera.lookAt(x,y,z);invalidate();
   },[camera,aspect,controlsRef,invalidate]);
@@ -318,9 +325,14 @@ export function BootScreen({step,leaving=false}:{step:number;leaving?:boolean}) 
  */
 function ScreenAlignmentGuard({overlayRef,screen,transition}:{overlayRef:React.RefObject<HTMLDivElement>;screen:ScreenRect;transition:React.RefObject<Transition|null>}) {
   const {camera,gl,size,setSize,invalidate}=useThree();
+  const retry=React.useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
+  const checkRef=React.useRef<()=>void>(()=>{});
   const check=React.useCallback(()=>{
     const overlay=overlayRef.current,frame=overlay?.querySelector<HTMLElement>(".model-screen-html");
-    if(!overlay||!frame||transition.current)return;
+    if(!overlay||!frame)return;
+    // A correction measured for the previous computer is wrong for the next one:
+    // clear it while the screen moves, then measure again once it has settled.
+    if(transition.current){overlay.style.transform="";clearTimeout(retry.current);retry.current=setTimeout(()=>requestAnimationFrame(()=>checkRef.current()),120);return;}
     const canvas=gl.domElement.getBoundingClientRect();
     if(canvas.width<2||canvas.height<2)return;
     if(Math.abs(canvas.width-size.width)>1||Math.abs(canvas.height-size.height)>1){setSize(canvas.width,canvas.height,canvas.top,canvas.left);invalidate();return;}
@@ -339,6 +351,7 @@ function ScreenAlignmentGuard({overlayRef,screen,transition}:{overlayRef:React.R
     overlay.dataset.alignDrift=drift.toFixed(2);
     if(drift>1.5)overlay.style.transform=`translate(${dx}px,${dy}px) scale(${k})`;
   },[overlayRef,gl,size,setSize,camera,screen,transition,invalidate]);
+  React.useLayoutEffect(()=>{checkRef.current=check;},[check]);
   React.useEffect(()=>{
     let timer:ReturnType<typeof setTimeout>|undefined;
     const later=()=>{clearTimeout(timer);timer=setTimeout(()=>requestAnimationFrame(check),160);};
@@ -347,7 +360,7 @@ function ScreenAlignmentGuard({overlayRef,screen,transition}:{overlayRef:React.R
     window.addEventListener("resize",later);window.addEventListener("orientationchange",later);window.addEventListener("pageshow",later);
     vv?.addEventListener("resize",later);vv?.addEventListener("scroll",later);
     const frame=overlayRef.current?.querySelector(".model-screen-html");frame?.addEventListener("transitionend",later);
-    return()=>{clearTimeout(timer);window.removeEventListener("resize",later);window.removeEventListener("orientationchange",later);window.removeEventListener("pageshow",later);vv?.removeEventListener("resize",later);vv?.removeEventListener("scroll",later);frame?.removeEventListener("transitionend",later);};
+    return()=>{clearTimeout(timer);clearTimeout(retry.current);window.removeEventListener("resize",later);window.removeEventListener("orientationchange",later);window.removeEventListener("pageshow",later);vv?.removeEventListener("resize",later);vv?.removeEventListener("scroll",later);frame?.removeEventListener("transitionend",later);};
   },[check,overlayRef]);
   return null;
 }
@@ -479,7 +492,8 @@ export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScre
   const [contextFailed,setContextFailed]=React.useState(false);
   const recoveryAttempts=React.useRef(0);
   const controlsRef=React.useRef<OrbitControlsImpl|null>(null);
-  const screenRef=React.useRef<THREE.Group|null>(null);
+  const screenPinRef=React.useRef<HTMLDivElement>(null!),invalidateRef=React.useRef<()=>void>(()=>{});
+  const screenResized=React.useCallback(()=>{invalidateRef.current();window.dispatchEvent(new Event("resize"));},[]);
   const eventSourceRef=React.useRef<HTMLDivElement>(null!);
   const screenOverlayRef=React.useRef<HTMLDivElement>(null!);
   const tapRef=React.useRef(onScreenTap);
@@ -576,14 +590,19 @@ export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScre
         <TimeWarpFX transition={transition} cue={swordCue} reduced={reduced} deskY={DESK_Y} oldDeskY={DESK_Y}/>
         <SharedDesk current={current} previous={previous} transition={transition} reduced={reduced} reveal={introReveal}/>
         <pointLight position={[2.5,.4,.6]} color="#77f7dd" intensity={current.id==="rgb"?1.3:0} distance={2.4}/><pointLight position={[2,-.3,.5]} color="#be91ff" intensity={current.id==="rgb"?.8:0} distance={2}/>
-        <ScreenAnchor screen={screen} from={fromScreen} transition={transition} glass={current.id} reduced={reduced} fx={screenFx} groupRef={screenRef} portalRef={screenOverlayRef} onSlot={onScreenSlot} tapRef={tapRef}/>
+        <ScreenPin screen={screen} from={fromScreen} transition={transition} pinRef={screenPinRef} reduced={reduced} invalidateRef={invalidateRef} onSettled={screenResized}/>
         <OrbitControls makeDefault ref={controlsRef} enabled={active} enableDamping dampingFactor={.09} enablePan={false} minDistance={1.5} maxDistance={70} minAzimuthAngle={-Math.PI/3} maxAzimuthAngle={Math.PI/3} minPolarAngle={Math.PI/4} maxPolarAngle={Math.PI/2.02}/>
         <SceneFraming controlsRef={controlsRef}/>
         <ScreenAlignmentGuard overlayRef={screenOverlayRef} screen={screen} transition={transition}/>
         <SceneTicker version={current.asset+intro} moving={moving} spinning={current.id==="rgb"||previous?.id==="rgb"} transition={transition} reduced={reduced} onComplete={complete}/>
       </Canvas>
     </div>
-    <div ref={screenOverlayRef} className={styles.screenOverlay}/>
+    <div ref={screenOverlayRef} className={styles.screenOverlay}>
+      {/* Never keyed by hardware: the desktop's DOM host and all app state survive every change. */}
+      <div ref={screenPinRef} className={styles.screenPin}>
+        <ScreenSlot screen={screen} glass={current.id} reduced={reduced} fx={screenFx} onSlot={onScreenSlot} onResized={screenResized} tapRef={tapRef}/>
+      </div>
+    </div>
     {intro!=="done"&&<BootScreen step={boot} leaving={intro==="revealing"}/>}
     <span className={styles.status} role="status">{intro==="loading"?"Loading the 3D desk…":selected!==current.id?"Preparing computer…":notice||`${current.label}. Press the button on the sword's stone to switch computer.`}</span>
   </div>;

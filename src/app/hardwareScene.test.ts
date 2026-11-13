@@ -2,7 +2,7 @@ import {describe,it,expect} from "vitest";
 import * as THREE from "three";
 import {HARDWARE_PROFILES,keyboardStart} from "./hardwareProfiles";
 import {rotatedFootprint} from "./deskPhysics";
-import {alignedDeskObstacles,roundedRect,seamlessCrtBezel,DESK_Y,FIXED_SCREEN,mergeStaticMeshes,prepareFanRotors,rigAlignment,SCREEN_SCALE,screenFor,SWITCH_POSITION,switchObstacle,transitionAmount,TRANSITION_MS,WARP_MS} from "./hardwareScene";
+import {alignedDeskObstacles,roundedRect,seamlessCrtBezel,seatSideVents,quadMatrix3d,DESK_Y,FIXED_SCREEN,mergeStaticMeshes,prepareFanRotors,rigAlignment,SCREEN_SCALE,screenFor,SWITCH_POSITION,switchObstacle,transitionAmount,TRANSITION_MS,WARP_MS} from "./hardwareScene";
 import {cueActive,swordPose} from "./SwordPedestal";
 
 describe("fixed hardware stage",()=>{
@@ -103,6 +103,35 @@ describe("fixed hardware stage",()=>{
     expect(first()).toBe(bezel);expect(bezel.material).toBe(ivory);
     // The aperture still clears the glass: the screen's center is open.
     expect(new THREE.Raycaster(new THREE.Vector3(0,.43,1),down).intersectObject(bezel)).toHaveLength(0);
+  });
+
+  it("seats the Mac's side vents flush on both tapered walls",()=>{
+    const root=new THREE.Group(),ink=new THREE.MeshStandardMaterial();
+    // A case whose walls lean in toward the back, like the Mac's shell.
+    const wall=(side:number)=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(2,2),ink);m.position.set(side*1.1,.6,-.5);m.rotation.y=side*(Math.PI/2+.066);m.name="Angular Plus shell";return m;};
+    root.add(wall(-1),wall(1));
+    const vents=[-1,1].map(side=>{const v=new THREE.Mesh(new THREE.BoxGeometry(.011,.027,.11),ink);v.name="Side ventilation";v.position.set(side*1.09,.6,-.5);root.add(v);return v;});
+    expect(seatSideVents(root)).toBe(2);
+    for(const vent of vents){
+      const side=Math.sign(vent.position.x),wallMesh=root.children[side<0?0:1] as THREE.Mesh;
+      // Both ends of the slot stand the same small distance off the wall.
+      const plane=new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(0,0,1).applyQuaternion(wallMesh.quaternion),wallMesh.position);
+      const ends=[-.055,.055].map(z=>new THREE.Vector3(side*.0055,0,z).applyMatrix4(vent.matrixWorld));
+      const gaps=ends.map(p=>Math.abs(plane.distanceToPoint(p)));
+      expect(Math.abs(gaps[0]-gaps[1])).toBeLessThan(1e-6);expect(gaps[0]).toBeCloseTo(.002,4);
+    }
+    // Mirror-image placement on the two sides.
+    expect(vents[0].position.x).toBeCloseTo(-vents[1].position.x,6);expect(vents[0].position.z).toBeCloseTo(vents[1].position.z,6);
+  });
+
+  it("pins an element's corners exactly onto a projected quad",()=>{
+    const quad:[number,number][]=[[69.2,302],[237.6,298.5],[240.1,404.2],[70.4,401.3]];
+    const css=quadMatrix3d(1067,600,quad);
+    const v=css.slice(9,-1).split(",").map(Number),m=new THREE.Matrix4().fromArray(v);
+    const corners=[[0,0],[1067,0],[1067,600],[0,600]];
+    corners.forEach(([x,y],i)=>{const p=new THREE.Vector4(x,y,0,1).applyMatrix4(m);expect(p.x/p.w).toBeCloseTo(quad[i][0],4);expect(p.y/p.w).toBeCloseTo(quad[i][1],4);});
+    // A plain rectangle stays affine.
+    expect(quadMatrix3d(100,50,[[10,20],[60,20],[60,45],[10,45]])).toBe("matrix3d(0.5,0,0,0,0,0.5,0,0,0,0,1,0,10,20,0,1)");
   });
 
   it("only lifts the sword for a pull, and settles it back by the end of the warp",()=>{

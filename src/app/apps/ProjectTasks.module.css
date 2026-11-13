@@ -28,6 +28,9 @@
 .root button {
   appearance: none;
   cursor: pointer;
+  /* Controls use the pixel UI face; notes keep the typewriter face. */
+  font-family: var(--retro-ui-font);
+  letter-spacing: .5px;
 }
 
 .root button:disabled {
@@ -262,7 +265,12 @@
   border-bottom: 1px solid var(--ink);
   background: transparent;
   font-size: 10px !important;
+  letter-spacing: .5px;
   text-decoration: none;
+}
+
+.root .detailLink {
+  font-family: var(--retro-ui-font);
 }
 
 .detailLink:hover {

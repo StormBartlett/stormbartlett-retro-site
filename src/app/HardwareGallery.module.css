@@ -1,5 +1,7 @@
 .stage{isolation:isolate;background:radial-gradient(ellipse at 50% 55%,#22272b44,transparent 65%)}
 .canvas,.screenOverlay{position:absolute;inset:0}.screenOverlay{pointer-events:none;transform-origin:0 0}
+/* Corner-pinned live screen: ScreenPin writes a projective matrix3d each rendered frame. */
+.screenPin{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;pointer-events:none}
 /* Transparent hit areas over the pedestal's real button and the sword's grip. */
 .switchHit,.swordHit{display:block;padding:0;border:0;border-radius:6px;background:transparent;cursor:pointer;touch-action:none;user-select:none;-webkit-tap-highlight-color:transparent}
 .switchHit{width:34px;height:30px}

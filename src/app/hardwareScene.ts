@@ -34,6 +34,8 @@ export function screenFor(profile: HardwareProfile) {
   };
 }
 export const FIXED_FRAMING = { target: [.45, -.15, .35] as [number, number, number], width: 6.2, height: 4.1, distance: 9.5 };
+/** Portrait phones: centred on the pedestal (x −2.4) to RTX mouse (x 4.1) span, with a small margin. */
+export const PORTRAIT_FRAMING = { ...FIXED_FRAMING, target: [.85, -.15, .35] as [number, number, number], width: 6.9 };
 /** Sword pedestal, left of the widest monitor, on the shared desk. */
 export const SWITCH_POSITION: [number, number, number] = [-1.95, DESK_Y, .55];
 export const PEDESTAL_RADIUS = .34;
@@ -189,6 +191,43 @@ export function seamlessCrtBezel(root: THREE.Object3D) {
   return true;
 }
 
+/**
+ * The Mac's side vent slots are straight boxes, but its walls taper toward the
+ * back and top, so one end of a slot sank into the plastic. Seat every slot on
+ * the wall it belongs to: follow the wall's surface normal and stand proud of it
+ * by the same small amount on both sides.
+ */
+export function seatSideVents(root: THREE.Object3D, proud = .002) {
+  root.updateMatrixWorld(true);
+  const vents: THREE.Mesh[] = [], walls: THREE.Mesh[] = [];
+  root.traverse(object => {
+    if (!(object instanceof THREE.Mesh)) return;
+    (/side.ventilation/i.test(object.name) ? vents : walls).push(object);
+  });
+  const raycaster = new THREE.Raycaster(), center = new THREE.Vector3(), normal = new THREE.Vector3();
+  const outward = new THREE.Vector3(), parentQuat = new THREE.Quaternion(), worldQuat = new THREE.Quaternion();
+  let seated = 0;
+  for (const vent of vents) {
+    if (!vent.parent) continue;
+    vent.geometry.computeBoundingBox();
+    const half = (vent.geometry.boundingBox!.max.x - vent.geometry.boundingBox!.min.x) / 2;
+    vent.getWorldPosition(center);
+    const side = Math.sign(center.x) || 1;
+    raycaster.set(center.clone().setX(center.x + side), outward.set(-side, 0, 0));
+    const hit = raycaster.intersectObjects(walls, false).find(h => h.face);
+    if (!hit?.face) continue;
+    normal.copy(hit.face.normal).transformDirection(hit.object.matrixWorld);
+    if (normal.x * side < 0) normal.negate();
+    worldQuat.setFromUnitVectors(outward.set(side, 0, 0), normal);
+    vent.parent.getWorldQuaternion(parentQuat);
+    vent.quaternion.copy(parentQuat.invert().multiply(worldQuat));
+    vent.position.copy(vent.parent.worldToLocal(hit.point.clone().addScaledVector(normal, proud - half)));
+    vent.updateMatrixWorld(true);
+    seated++;
+  }
+  return seated;
+}
+
 /** Box-projected UVs so tiling textures keep one world scale on any face. */
 export function boxProjectUVs(geometry: THREE.BufferGeometry, tilesPerUnit = 7) {
   const position = geometry.getAttribute("position");
@@ -303,4 +342,27 @@ export function addPixelDissolve(material: THREE.Material, reveal: {value:number
     `);
   };
   material.customProgramCacheKey = () => "storm-pixel-dissolve-v3";
+}
+
+/**
+ * CSS matrix3d that maps a w×h element (transform-origin 0 0) onto a quad
+ * [top-left, top-right, bottom-right, bottom-left] in its parent's pixels: a
+ * single projective transform, with no perspective context for the browser to
+ * composite (and mis-place) separately from the WebGL canvas.
+ */
+export function quadMatrix3d(w: number, h: number, quad: [number, number][]) {
+  const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = quad;
+  // Unit square → quad (Heckbert's projective mapping).
+  const sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3;
+  let g = 0, k = 0;
+  if (Math.abs(sx) > 1e-9 || Math.abs(sy) > 1e-9) {
+    const dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2, den = dx1 * dy2 - dx2 * dy1;
+    g = (sx * dy2 - dx2 * sy) / den; k = (dx1 * sy - sx * dy1) / den;
+  }
+  const a = x1 - x0 + g * x1, b = x3 - x0 + k * x3, d = y1 - y0 + g * y1, e = y3 - y0 + k * y3;
+  // Pre-scale element pixels to the unit square.
+  const m = [a / w, d / w, g / w, b / h, e / h, k / h, x0, y0, 1];
+  // [m0 m3 m6; m1 m4 m7; m2 m5 m8] as a column-major 4×4 with z passed through.
+  const values = [m[0], m[1], 0, m[2], m[3], m[4], 0, m[5], 0, 0, 1, 0, m[6], m[7], 0, m[8]];
+  return `matrix3d(${values.map(v => +v.toPrecision(12)).join(",")})`;
 }

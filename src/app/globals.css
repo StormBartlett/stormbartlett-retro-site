@@ -180,7 +180,7 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .model-screen-html[data-glass=classic] .model-screen-glass{box-shadow:inset 0 0 0 2px rgba(0,0,0,.6),inset 0 0 26px 6px rgba(0,0,0,.55),inset 0 0 110px 26px rgba(0,0,0,.2);background:radial-gradient(ellipse 62% 46% at 28% 16%,rgba(255,255,255,.11),rgba(255,255,255,.03) 55%,transparent 72%),radial-gradient(ellipse 120% 110% at 50% 50%,transparent 58%,rgba(0,0,0,.26) 100%)}
 /* The CRT's 40px glass corners clip the menu bar's ends; inset its logo and clock on the Mac. */
 .model-screen-html[data-glass=classic] .menubar{padding-left:24px!important;padding-right:24px!important}
-.model-screen-html[data-glass=laptop] .model-screen-glass,.model-screen-html[data-glass=rgb] .model-screen-glass{box-shadow:inset 0 0 0 1px rgba(0,0,0,.65),inset 0 0 18px rgba(0,0,0,.25);background:linear-gradient(118deg,rgba(255,255,255,.07),rgba(255,255,255,.015) 34%,transparent 52%)}
+.model-screen-html[data-glass=laptop] .model-screen-glass,.model-screen-html[data-glass=rgb] .model-screen-glass{box-shadow:inset 0 0 0 1px rgba(0,0,0,.5);background:none}
 /* Switch effects on the live screen, matched to the 3D transition (durations set inline). */
 .model-screen-fx{position:absolute;inset:0;z-index:60000;pointer-events:none;overflow:hidden;opacity:1;animation-fill-mode:forwards;animation-timing-function:linear}
 .model-screen-fx-scan{animation-name:screen-scan-fade}
@@ -619,8 +619,8 @@ html,body,#__next{height:100%}
 /* Keep applications usable in small viewports and virtual-keyboard layouts. */
 .storm-desktop.mobile .window{max-width:calc(100% - 16px);max-height:calc(100% - 78px);left:8px;min-width:0;min-height:180px}
 .storm-desktop.mobile .portfolio-app-window{width:calc(100% - 16px);height:calc(100% - 88px)}
-.storm-desktop.mobile .titlebar{min-height:36px;font-size:13px;padding-right:82px;touch-action:none}
-.storm-desktop.mobile .window-controls{gap:8px}.storm-desktop.mobile .btn-close,.storm-desktop.mobile .btn-zoom{width:28px;height:28px}
+.storm-desktop.mobile .titlebar{min-height:30px;font-size:13px;padding-right:82px;touch-action:none}
+.storm-desktop.mobile .window-controls{gap:7px}.storm-desktop.mobile .btn-close,.storm-desktop.mobile .btn-zoom{width:22px;height:22px}
 .storm-desktop.mobile .portfolio-app-window .window-body,.storm-desktop.mobile .portfolio-app-window p,.storm-desktop.mobile .portfolio-app-window li{font-size:13px;line-height:1.55}
 .storm-desktop.mobile .desktop-dock{bottom:max(10px,env(safe-area-inset-bottom));padding:5px 4px 2px;gap:0}.storm-desktop.mobile .desktop-dock>button{min-width:44px;padding:3px 5px 7px;font-size:8px}
 .storm-desktop.mobile .desktop-signature{left:20px;bottom:112px;max-width:90%;gap:7px}.storm-desktop.mobile .desktop-signature>strong{font-size:22px}.storm-desktop.mobile .desktop-signature .eyebrow{font-size:7px;letter-spacing:1px}
@@ -633,7 +633,7 @@ html,body,#__next{height:100%}
    containing block for fixed children and flattens the monitor's HTML screen. */
 .crt .content{filter:none;transform:none}.crt{border-radius:0;box-shadow:none}.crt::after{display:none}
 .app-boundary{display:contents}.app-error{padding:24px;font:13px/1.6 var(--retro-editor-font)}.app-error button{font:inherit;padding:8px 16px;color:var(--window-ink);background:var(--bg-window);border:1px solid currentColor;cursor:pointer}
-.storm-desktop.mobile .portfolio-app-window button{min-height:32px}.storm-desktop.mobile .portfolio-app-window input:not([type=range]):not([type=color]):not([type=checkbox]){min-height:32px;font-size:16px}.storm-desktop.mobile .app-pixel-studio{height:min(540px,calc(100% - 88px))}
+.storm-desktop.mobile .portfolio-app-window button:not(.btn-close,.btn-zoom){min-height:32px}.storm-desktop.mobile .portfolio-app-window input:not([type=range]):not([type=color]):not([type=checkbox]){min-height:32px;font-size:16px}.storm-desktop.mobile .app-pixel-studio{height:min(540px,calc(100% - 88px))}
 /* Native touch scrolling belongs to each app; only direct manipulation surfaces
    capture gestures. An ancestor touch-action:none blocks every child scroller. */
 body{touch-action:auto}.storm-desktop .desktop{touch-action:pan-x pan-y pinch-zoom}.storm-desktop .desktop-icon,.storm-desktop .titlebar,.storm-desktop .window-resize-handle{touch-action:none}.storm-desktop .window-body{overscroll-behavior:contain}
@@ -671,7 +671,9 @@ body{touch-action:auto}.storm-desktop .desktop{touch-action:pan-x pan-y pinch-zo
 /* One glass layer only: stacked scanlines create moiré on the scaled 3D screen. */
 .storm-desktop.embedded-screen::before,.model-screen::before{display:none!important}
 
-:root.dark-mode{--desktop-crt-line:#ffffff0d}
+:root.dark-mode{--desktop-crt-line:#ffffff17}
+/* Scanlines belong to the old Mac's CRT only; the LCDs show the desktop clean, in either theme. */
+.model-screen-html:not([data-glass=classic]) .storm-desktop::after{display:none!important}
 /* Boot readout over the matrix rain while the 3D desk loads (shared by page and scene). */
 .boot-screen{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;display:grid;gap:10px;justify-items:center;padding:18px 22px;color:#bfe9d4;font:12px/1.4 var(--retro-ui-font);letter-spacing:2px;text-transform:uppercase;text-shadow:0 0 8px rgba(110,230,190,.45);pointer-events:none;transition:opacity .45s ease,transform .45s ease}
 .boot-screen.is-leaving{opacity:0;transform:translate(-50%,-50%) scale(.96)}
