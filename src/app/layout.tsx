@@ -1,3 +1,4 @@
+import { Courier_Prime, Silkscreen, VT323 } from "next/font/google";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
@@ -17,9 +18,14 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+// Self-hosted and preloaded by Next: no render-blocking Google stylesheet, no late font swaps.
+const silkscreen = Silkscreen({ weight: ["400", "700"], subsets: ["latin"], variable: "--font-silkscreen", display: "swap" });
+const vt323 = VT323({ weight: "400", subsets: ["latin"], variable: "--font-vt323", display: "swap" });
+const courierPrime = Courier_Prime({ weight: ["400", "700"], subsets: ["latin"], variable: "--font-courier-prime", display: "swap" });
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={`${silkscreen.variable} ${vt323.variable} ${courierPrime.variable}`}>
       <head>
         {/* Desktop visitors open in the 3D view: skip painting the flat desktop first, and start
             the default model download alongside the page instead of after the 3D code arrives. */}
@@ -30,9 +36,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="icon" href="/lightning-logo-black.svg?v=2" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" sizes="180x180" />
         <link rel="mask-icon" href="/lightning-logo-black.svg?v=2" color="#000000" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Silkscreen:wght@400;700&family=VT323&display=swap" rel="stylesheet" />
       </head>
       <body>
         <div className="crt">

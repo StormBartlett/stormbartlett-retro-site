@@ -267,14 +267,6 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   const hideDockSoon = (ms = 1600) => { clearTimeout(dockTimer.current); dockTimer.current = setTimeout(() => setDockShown(false), ms); };
   const showDock = () => { setDockShown(true); hideDockSoon(3500); };
   useEffect(() => () => clearTimeout(dockTimer.current), []);
-  // Google Fonts fetch each face on first use, so a menu's bold or editor face swapped in late.
-  // Request every face the UI uses up front.
-  useEffect(() => {
-    if (typeof document === "undefined" || !document.fonts) return;
-    for (const face of ['400 12px "Silkscreen"', '700 12px "Silkscreen"', '400 12px "Courier Prime"', '700 12px "Courier Prime"', '400 16px "VT323"']) {
-      void document.fonts.load(face, "AZaz09 .,").catch(() => {});
-    }
-  }, []);
   const [hardwareQuery, setHardwareQuery] = useState("");
   const hardwareCursorRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => { if(!modelScreen && hardwareCursorRef.current) hardwareCursorRef.current.style.display = "none"; }, [modelScreen]);

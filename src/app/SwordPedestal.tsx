@@ -238,7 +238,7 @@ export function TimeWarpFX({ transition, cue, reduced, deskY: targetDeskY, oldDe
   return <>
     {/* Always present (at zero) so the scene's light count, and so its shaders, never change. */}
     <pointLight ref={light} color="#66c8ff" intensity={0} distance={7} decay={1.4} />
-    <group ref={group} visible={false}>
+    <group ref={group} visible={false} name="time-warp-fx">
       <points geometry={motes.geometry} material={motes.material} frustumCulled={false} renderOrder={20} />
       <mesh ref={column} material={beam} renderOrder={21}><cylinderGeometry args={[.12, .12, 5.2, 24, 1, true]} /></mesh>
       <mesh ref={wave} material={ring} rotation={[-Math.PI / 2, 0, 0]} renderOrder={19}><planeGeometry args={[9, 9]} /></mesh>

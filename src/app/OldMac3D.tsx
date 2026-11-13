@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
-import { Environment, Html, Lightformer, OrbitControls, useGLTF } from "@react-three/drei";
+import { Html, OrbitControls, useGLTF } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as React from "react";
 import * as THREE from "three";
@@ -82,7 +82,8 @@ function HardwareModel({ profile, onReady, onLoaded, onInteractionChange, enable
         const materials=Array.isArray(object.material)?object.material:[object.material];
         object.castShadow=!/[ _]blade[ _]\d+$/.test(object.name)&&!materials.some(material=>material.transparent);
         object.receiveShadow=true;
-        for(const material of materials) if(material instanceof THREE.MeshStandardMaterial) material.envMapIntensity=.75;
+        // Metal and glass catch the studio strips; matte plastics stay soft.
+        for(const material of materials) if(material instanceof THREE.MeshStandardMaterial) material.envMapIntensity=material.metalness>.4||material.transparent||material.roughness<.25?1.45:.75;
       }
     });
     gl.shadowMap.needsUpdate=true;invalidate();
@@ -173,16 +174,62 @@ function ScreenAnchor({screen,from,transition,glass,groupRef,portalRef,onSlot,ta
   </group>;
 }
 
+/**
+ * Reflections from a tiny hand-built studio: warm overhead key, cool side fill, a narrow rim
+ * strip and a dark floor card for contrast. One PMREM bake, no environment loaders in the bundle.
+ */
+function StudioEnvironment(){
+  const {gl,scene,invalidate}=useThree();
+  React.useLayoutEffect(()=>{
+    const studio=new THREE.Scene(),geometry=new THREE.PlaneGeometry(1,1),materials:THREE.Material[]=[];
+    const card=(color:string,intensity:number,position:[number,number,number],rotation:[number,number,number],scale:[number,number]):void=>{
+      const material=new THREE.MeshBasicMaterial({color:new THREE.Color(color).multiplyScalar(intensity),side:THREE.DoubleSide,toneMapped:false});materials.push(material);
+      const mesh=new THREE.Mesh(geometry,material);mesh.position.set(...position);mesh.rotation.set(...rotation);mesh.scale.set(scale[0],scale[1],1);studio.add(mesh);
+    };
+    card("#fff1dc",3,[0,5,0],[Math.PI/2,0,0],[10,5]);
+    card("#dfe8ff",2,[-5,2,2],[0,Math.PI/2,0],[5,5]);
+    card("#ffffff",1.8,[4,1,-3],[0,-Math.PI/2,0],[1.2,6]);
+    card("#ffe6c4",1.1,[0,1.5,6],[0,Math.PI,0],[8,1.2]);
+    card("#0b0c0e",1,[0,-3,0],[-Math.PI/2,0,0],[20,20]);
+    const pmrem=new THREE.PMREMGenerator(gl),target=pmrem.fromScene(studio,0,.1,100,{size:128});
+    const previous=scene.environment;scene.environment=target.texture;invalidate();
+    return()=>{scene.environment=previous;target.dispose();pmrem.dispose();geometry.dispose();materials.forEach(material=>material.dispose());};
+  },[gl,scene,invalidate]);
+  return null;
+}
+
+let contactTexture:THREE.CanvasTexture|undefined;
+/** Soft radial falloff shared by every rig's contact shadow. */
+function contactShadowTexture(){
+  if(contactTexture)return contactTexture;
+  const canvas=document.createElement("canvas");canvas.width=canvas.height=64;
+  const ctx=canvas.getContext("2d")!,gradient=ctx.createRadialGradient(32,32,0,32,32,32);
+  gradient.addColorStop(0,"rgba(0,0,0,1)");gradient.addColorStop(.55,"rgba(0,0,0,.55)");gradient.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle=gradient;ctx.fillRect(0,0,64,64);
+  return contactTexture=new THREE.CanvasTexture(canvas);
+}
+
+/** Grounds each computer on the desk with a soft darkened footprint that fades with its reveal. */
+function ContactShadow({profile,deskY,reveal}:{profile:HardwareProfile;deskY:number;reveal:{value:number}}){
+  const material=React.useRef<THREE.MeshBasicMaterial>(null!);
+  const footprint=React.useMemo(()=>{
+    const bodies=alignedDeskObstacles(profile),box=new THREE.Box2();
+    for(const body of bodies)box.expandByPoint(new THREE.Vector2(body.x-body.halfX,body.z-body.halfZ)).expandByPoint(new THREE.Vector2(body.x+body.halfX,body.z+body.halfZ));
+    const center=box.getCenter(new THREE.Vector2()),size=box.getSize(new THREE.Vector2());
+    return {x:center.x,z:center.y,w:size.x*1.45,d:size.y*1.6};
+  },[profile]);
+  useFrame(()=>{material.current.opacity=.42*reveal.value;});
+  return <mesh position={[footprint.x,deskY+.004,footprint.z]} rotation={[-Math.PI/2,0,0]} scale={[footprint.w,footprint.d,1]} renderOrder={1}>
+    <planeGeometry args={[1,1]}/><meshBasicMaterial ref={material} map={contactShadowTexture()} transparent depthWrite={false} opacity={0} toneMapped={false}/>
+  </mesh>;
+}
+
 function StudioLighting(){
   return <>
     <hemisphereLight intensity={.8} groundColor="#aaa18a"/>
     <directionalLight castShadow position={[4,7,5]} intensity={2.2} color="#fff2dd" shadow-mapSize={[1024,1024]} shadow-bias={-.0003} shadow-camera-left={-5} shadow-camera-right={5} shadow-camera-top={5} shadow-camera-bottom={-5}/>
     <directionalLight position={[-4,3,-2]} intensity={1.2} color="#d9e5ff"/>
-    <Environment frames={1} resolution={128}>
-      <Lightformer form="rect" intensity={3} position={[0,5,0]} rotation={[Math.PI/2,0,0]} scale={[10,5,1]}/>
-      <Lightformer form="rect" intensity={2} position={[-5,2,2]} rotation={[0,Math.PI/2,0]} scale={[5,5,1]}/>
-      <Lightformer form="rect" intensity={1.5} position={[4,1,-3]} rotation={[0,-Math.PI/2,0]} scale={[3,6,1]}/>
-    </Environment>
+    <StudioEnvironment/>
   </>;
 }
 
@@ -219,6 +266,26 @@ function SceneFraming({controlsRef}: {controlsRef:ControlsRef}) {
     camera.position.set(x+Math.sin(.16)*distance,y+distance*.22,z+Math.cos(.16)*distance);
     controlsRef.current?.target.set(x,y,z);controlsRef.current?.update();camera.lookAt(x,y,z);invalidate();
   },[camera,aspect,controlsRef,invalidate]);
+  return null;
+}
+
+/**
+ * Before the first reveal, compile every program the scene will need (desk, pedestal, peripherals,
+ * shadow and warp-effect shaders), not just the GLB's. compileAsync uses parallel shader compile
+ * where available, so the warp-in does not stall on its first frames.
+ */
+function SceneCompileGate({ready,onCompiled}:{ready:boolean;onCompiled:()=>void}) {
+  const {gl,scene,camera}=useThree();
+  const done=React.useRef(false),latest=React.useRef(onCompiled);
+  React.useLayoutEffect(()=>{latest.current=onCompiled;},[onCompiled]);
+  React.useEffect(()=>{
+    if(!ready||done.current)return;
+    done.current=true;
+    const hidden:THREE.Object3D[]=[];
+    scene.traverse(object=>{if(!object.visible&&object.name==="time-warp-fx"){hidden.push(object);object.visible=true;}});
+    const finish=()=>{hidden.forEach(object=>{object.visible=false;});mark("scene-compiled");latest.current();};
+    void gl.compileAsync(scene,camera).then(finish,finish);
+  },[ready,gl,scene,camera]);
   return null;
 }
 
@@ -357,6 +424,7 @@ function ComputerRig({profile,current,previous,transition,onReady,onBoot,interac
   const mouse:[number,number,number]=[profile.mouse[0],alignment.deskY,profile.mouse[2]];
   const screen=profile.screen.position;
   return <group ref={root} position={alignment.offset} scale={alignment.scale} visible={shown}>
+    {shown&&<ContactShadow profile={profile} deskY={alignment.deskY} reveal={reveal}/>}
     <group position={screen} quaternion={alignment.rotation}>
       <group position={[-screen[0],-screen[1],-screen[2]]}>
         <HardwareModel profile={profile} onReady={compiled} onLoaded={loaded} onInteractionChange={interaction} reveal={reveal} enabled={warmPhase.current==="ready"&&profile.asset===current&&!transition.current} spin={moving&&profile.id==="rgb"&&shown}/>
@@ -463,13 +531,14 @@ export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScre
     else setSelected(current.id);
   },[current]);
   const complete=React.useCallback(()=>{mark("switch-end");transition.current=null;if(swordCue.current?.kind==="pull")swordCue.current=null;setPulling(false);setPrevious(null);setScreenFx(null);setIntro(value=>value==="revealing"?"done":value);},[]);
+  const [sceneCompiled,setSceneCompiled]=React.useState(false);
   React.useEffect(()=>{
-    if(intro!=="loading"||!prepared.includes(current.asset)||transition.current)return;
+    if(intro!=="loading"||!prepared.includes(current.asset)||!sceneCompiled||transition.current)return;
     // Warp in from nothing: no outgoing rig, same blue effect as pulling the sword.
     const start=performance.now();HARDWARE_FX.mode.value=1;
     mark("intro-start");transition.current={from:"",to:current.asset,start,mode:"warp",duration:INTRO_MS};
     setScreenFx({mode:"warp",start,duration:INTRO_MS});setIntro("revealing");
-  },[intro,prepared,current]);
+  },[intro,prepared,current,sceneCompiled]);
   React.useEffect(()=>{
     if(nextProfile.asset===current.asset||!prepared.includes(nextProfile.asset)||transition.current)return;
     window.dispatchEvent(new Event("storm-hardware-cancel"));
@@ -500,6 +569,7 @@ export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScre
         {profiles.filter(profile=>library.includes(profile.id)).map(profile=><RigBoundary key={profile.asset} asset={profile.asset} onFailure={rigFailure}><React.Suspense fallback={null}>
           <ComputerRig profile={profile} current={current.asset} previous={previous?.asset??null} transition={transition} onReady={ready} onBoot={profile.asset===current.asset&&intro==="loading"?bootStep:undefined} interaction={interaction} moving={moving} reduced={reduced}/>
         </React.Suspense></RigBoundary>)}
+        <SceneCompileGate ready={prepared.includes(current.asset)} onCompiled={()=>setSceneCompiled(true)}/>
         <FxDriver transition={transition} reduced={reduced} intro={introReveal} introDone={intro==="done"}/>
         <SwordPedestal portalRef={screenOverlayRef} index={index} label={PLAQUE_LABELS[profiles[index].id]} isLast={isLast} busy={busy} onForward={forward} onPull={pull} onWarm={warm}
           deskY={DESK_Y} oldDeskY={DESK_Y} scale={1} oldScale={1} transition={transition} cue={swordCue} reduced={reduced} reveal={introReveal}/>
