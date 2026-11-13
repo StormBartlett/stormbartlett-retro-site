@@ -11,7 +11,6 @@
   color: var(--ink);
   background: var(--paper);
   font: 12px/1.55 var(--retro-editor-font);
-  container-type: inline-size;
 }
 
 .tree {
@@ -164,9 +163,9 @@
 
 @container (max-width: 480px) {
   .root { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-  .tree { display: flex; gap: 2px; padding: 6px; border-right: 0; border-bottom: 2px solid var(--ink); overflow-x: auto; }
+  .tree { display: flex; align-items: center; gap: 2px; padding: 6px; border-right: 0; border-bottom: 2px solid var(--ink); overflow-x: auto; scrollbar-width: none; }
   .treeRoot { display: none; }
-  .tree button, .tree button.child { width: auto; flex: none; margin: 0; padding: 4px 8px; }
+  .tree button, .tree button.child, .tree button.parent { width: auto; flex: none; margin: 0; padding: 4px 8px; }
   .tree .branch { display: none; }
   .peek { width: min(240px, calc(100% - 16px)); }
 }

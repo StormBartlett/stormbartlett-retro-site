@@ -710,5 +710,5 @@ html[data-boot=model] [data-flat-home]{visibility:hidden}
 .storm-desktop .launcher-trigger .pixel-glass{display:block}
 /* SKILL.md: the agent-skills browser. */
 .skills-md-window{width:620px;height:440px}
-.skills-md-window .window-body{display:flex;padding:0;overflow:hidden}
+.skills-md-window .window-body{display:flex;padding:0;overflow:hidden;container-type:inline-size}
 .storm-desktop.mobile .skills-md-window{width:calc(100% - 16px);height:min(520px,calc(100% - 88px))}
