@@ -708,7 +708,7 @@ html[data-boot=model] [data-flat-home]{visibility:hidden}
 /* Menu bar search: the pixel glass, a touch larger than the old glyph. */
 .storm-desktop .launcher-trigger{display:inline-grid;place-items:center;padding:0 6px;line-height:0}
 .storm-desktop .launcher-trigger .pixel-glass{display:block}
-/* The menu bar keeps its moon in both themes: dark mode fills it, light mode shows it as an outline. */
-:root .theme-toggle-anim .sun{display:none}
-:root:not(.dark-mode) .theme-toggle-anim .moon{opacity:1;transform:rotate(-18deg) scale(.92)}
-:root:not(.dark-mode) .theme-toggle-anim .moon img{filter:invert(1) brightness(.55) drop-shadow(0 0 0 #101010);opacity:.55}
+/* SKILL.md: the agent-skills browser. */
+.skills-md-window{width:620px;height:440px}
+.skills-md-window .window-body{display:flex;padding:0;overflow:hidden}
+.storm-desktop.mobile .skills-md-window{width:calc(100% - 16px);height:min(520px,calc(100% - 88px))}

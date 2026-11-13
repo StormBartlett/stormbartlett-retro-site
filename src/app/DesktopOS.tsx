@@ -5,6 +5,7 @@ import Image from "next/image";
 import AppErrorBoundary from "./AppErrorBoundary";
 import dynamic from "next/dynamic";
 import { AppGlyph, AppLauncher, appComponents, PixelGlass, portfolioApps } from "./PortfolioApps";
+import SkillsApp from "./apps/SkillsApp";
 import { installDesktopSounds } from "./DesktopSounds";
 import { suppressDragClick } from "./dragClicks";
 import { createLocalCoordinateMetrics, settleIcons } from "./desktopCoordinates";
@@ -44,7 +45,7 @@ const BROWSER_ICON_SIZE = 96;
 const MOBILE_ICON_SIZE = 100;
 
 const DESKTOP_BIN_POSITION = { x: 392, y: 44 };
-const MOBILE_TOP_ROW_ORDER = ["about", "projects", "playground", "pixel-studio", "activity", "terminal", "skills", "games", "bin"] as const;
+const MOBILE_TOP_ROW_ORDER = ["about", "projects", "playground", "pixel-studio", "activity", "terminal", "skills", "skills-md", "games", "bin"] as const;
 const ICON_STORAGE_KEYS = ["nx-icons", "nx-icons-mobile-portrait", "nx-icons-mobile-landscape"];
 const TRASH_POSITION_STORAGE_KEYS = ["nx-trash-pos", "nx-trash-pos-mobile-portrait", "nx-trash-pos-mobile-landscape"];
 const BIN_POSITION_STORAGE_KEYS = ["nx-bin-pos", "nx-bin-pos-mobile-portrait", "nx-bin-pos-mobile-landscape"];
@@ -53,7 +54,7 @@ const TEXT_FILE_EXTENSION_RE = /\.(txt|md|markdown|rtf)$/i;
 function getSpriteId({ id, label, type }: { id: string; label: string; type?: "file" | "folder" }) {
   if (type === "folder") return "icon-folder";
   if (id === "about") return "icon-file-about";
-  if (id === "skills") return "icon-file-skills";
+  if (id === "skills" || id === "skills-md") return "icon-file-skills";
   if (id === "calculator") return "icon-calculator";
   if (id === "falling-sand") return "icon-hourglass";
   if (id === "activity") return "icon-activity";
@@ -81,6 +82,7 @@ const baseIcons: Icon[] = [
   { id: "pixel-studio", label: "Pixel Studio", app: "pixel-studio", x: 272, y: 152 },
   { id: "terminal", label: "Terminal", app: "terminal", x: 272, y: 260 },
   { id: "games", label: "Games", app: "games", x: 392, y: 152, type: "folder" },
+  { id: "skills-md", label: "SKILL.md", app: "skills-md", x: 392, y: 260 },
 ];
 
 function defaultFolders(): DesktopFolders {
@@ -245,6 +247,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     about: { id: "about", open: false, z: 11, ...initialWindowCascadeBase },
     "about-portfolio": { id: "about-portfolio", open: false, z: 10 },
     skills: { id: "skills", open: false, z: 10 },
+    "skills-md": { id: "skills-md", open: false, z: 10 },
     calculator: { id: "calculator", open: false, z: 10 },
     activity: { id: "activity", open: false, z: 10 },
     todo: { id: "todo", open: false, z: 10 },
@@ -1545,6 +1548,9 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
         </Window>
         <Window id="skills" title="Skills" windows={windows} frontWin={frontWin} closeWin={closeWin}>
           <TiptapEditor initialText={skillsText} />
+        </Window>
+        <Window id="skills-md" title="SKILL.md" windows={windows} frontWin={frontWin} closeWin={closeWin} className="skills-md-window">
+          <SkillsApp />
         </Window>
         <Window id="calculator" title="Calculator" windows={windows} frontWin={frontWin} closeWin={closeWin} className="calculator-window">
           <Calculator />
