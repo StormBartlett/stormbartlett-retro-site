@@ -6,12 +6,15 @@ import styles from "./SkillsApp.module.css";
 
 type Peek = { skill: Skill; x: number; y: number; below: boolean };
 
-/** A file tree of ~/.claude/skills: folders nest by path, each folder shows its own SKILL.md. */
+/** A file tree of ~/.storm/skills: folders nest by path, each folder shows its own SKILL.md. */
 function tree() {
-  return SKILLS.map(skill => {
+  const items = SKILLS.map(skill => {
     const folders = skill.path.split("/").slice(0, -1);
-    return { skill, depth: folders.length - 1, folder: folders[folders.length - 1] };
+    return { skill, depth: folders.length - 1, folder: folders[folders.length - 1], parent: folders.slice(0, -1).join("/"), last: false };
   }).sort((a, b) => a.skill.path.replace(/SKILL\.md$/, "").localeCompare(b.skill.path.replace(/SKILL\.md$/, "")));
+  // The last child of each folder gets the └ connector; earlier siblings get ├.
+  items.forEach((item, i) => { item.last = !items.slice(i + 1).some(next => next.depth === item.depth && next.parent === item.parent); });
+  return items;
 }
 
 export default function SkillsApp() {
@@ -69,14 +72,16 @@ export default function SkillsApp() {
 
   return <div ref={root} className={styles.root}>
     <nav className={styles.tree} aria-label="Skills">
-      <div className={styles.treeRoot}>~/.claude/skills</div>
-      {files.map(({ skill, depth, folder }) => <button key={skill.path} type="button" style={{ paddingLeft: 10 + depth * 14 }}
-        className={skill === current ? styles.active : undefined} aria-current={skill === current ? "page" : undefined} onClick={() => open(skill)}>
-        <span className={styles.folder}>{folder}/</span><span className={styles.file}>SKILL.md</span>
+      <div className={styles.treeRoot}>~/.storm/skills</div>
+      {files.map(({ skill, depth, folder, last }) => <button key={skill.path} type="button"
+        className={`${depth ? styles.child : styles.parent} ${skill === current ? styles.active : ""}`} aria-current={skill === current ? "page" : undefined}
+        title={`${skill.path}`} onClick={() => open(skill)}>
+        {depth ? <span className={styles.branch} aria-hidden="true">{last ? "└─" : "├─"}</span> : <span className={styles.icon} aria-hidden="true" />}
+        <span className={styles.folder}>{folder}</span>
       </button>)}
     </nav>
     <article ref={page} className={styles.page} onScroll={() => setPeek(null)}>
-      <div className={styles.path}>skills/{current.path}</div>
+      <div className={styles.path}>~/.storm/skills/{current.path}</div>
       <pre className={styles.frontmatter} aria-label="Frontmatter">
         <span className={styles.rule}>---</span>{"\n"}
         <span className={styles.key}>name:</span> {current.name}{"\n"}

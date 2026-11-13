@@ -3,7 +3,7 @@
  * frontmatter (name, description, allowed-tools) and [[skill-name]] links between them.
  */
 export type Skill = {
-  /** Path under ~/.claude/skills, always ending in SKILL.md. */
+  /** Path under ~/.storm/skills, always ending in SKILL.md. */
   path: string;
   name: string;
   description: string;
