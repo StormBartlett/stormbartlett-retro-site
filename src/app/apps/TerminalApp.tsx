@@ -322,7 +322,7 @@ export default function TerminalApp({ onOpenApp }: TerminalAppProps) {
         {!entries.length && <p className={styles.empty}>Clean slate. Same curiosity.</p>}
       </div>
       <div className={styles.inputArea}>
-        <div className={styles.currentPath}>{shortPath(cwd)}<span>read-only virtual files</span></div>
+        <div className={styles.currentPath}>{shortPath(cwd)}</div>
         <form className={styles.commandForm} onSubmit={submit}>
           <label className={styles.prompt} htmlFor={inputId}>$<span className={styles.srOnly}>Terminal command</span></label>
           <input
@@ -342,7 +342,7 @@ export default function TerminalApp({ onOpenApp }: TerminalAppProps) {
           />
           <button className={styles.runButton} type="submit" aria-label="Run local command">↵</button>
         </form>
-        <div id={hintId} className={styles.hint} aria-live="polite">{completionHint || "help · Tab completes · ↑↓ history"}</div>
+        <div id={hintId} className={styles.hint} aria-live="polite">{completionHint}</div>
         <div className={styles.shortcuts} aria-label="Try a terminal command">
           {["help", "ls", "cat about", "open finder"].map((item) => (
             <button type="button" key={item} onClick={() => { execute(item); }}>{item}</button>

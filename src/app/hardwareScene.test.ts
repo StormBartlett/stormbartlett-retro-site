@@ -4,6 +4,7 @@ import {HARDWARE_PROFILES,keyboardStart} from "./hardwareProfiles";
 import {rotatedFootprint} from "./deskPhysics";
 import {alignedDeskObstacles,roundedRect,seamlessCrtBezel,seatSideVents,quadMatrix3d,DESK_Y,FIXED_SCREEN,mergeStaticMeshes,prepareFanRotors,rigAlignment,SCREEN_SCALE,screenFor,SWITCH_POSITION,switchObstacle,transitionAmount,TRANSITION_MS,WARP_MS} from "./hardwareScene";
 import {cueActive,swordPose} from "./SwordPedestal";
+import {CAMERA_FOV,DESK_SLAB,deskOutline,frontCamera} from "./deskView";
 
 describe("fixed hardware stage",()=>{
   for(const profile of HARDWARE_PROFILES)it(`${profile.id} stands on the shared level desk with the desktop on its own panel`,()=>{
@@ -151,5 +152,19 @@ describe("fixed hardware stage",()=>{
     expect(transitionAmount(10+TRANSITION_MS*5,10,false)).toBe(1);
     expect(transitionAmount(10,10,true)).toBe(1);
     expect(transitionAmount(10+WARP_MS/2,10,false,WARP_MS)).toBe(.5);
+  });
+});
+
+describe("2D desk placeholder",()=>{
+  for(const [width,height] of [[1280,800],[1920,1080],[390,844],[844,390]])it(`outlines the desk where the 3D camera draws it at ${width}x${height}`,()=>{
+    const {position,target}=frontCamera(width/height),camera=new THREE.PerspectiveCamera(CAMERA_FOV,width/height,.1,100);
+    camera.position.set(...position);camera.lookAt(...target);camera.updateMatrixWorld();
+    const [cx,,cz]=DESK_SLAB.center,hx=DESK_SLAB.size[0]/2,hz=DESK_SLAB.size[2]/2;
+    expect(DESK_SLAB.center[1]+DESK_SLAB.size[1]/2).toBeCloseTo(DESK_Y,10);
+    const outline=deskOutline(width,height);
+    [[cx-hx,cz-hz],[cx+hx,cz-hz],[cx+hx,cz+hz],[cx-hx,cz+hz]].forEach(([x,z],i)=>{
+      const p=new THREE.Vector3(x,DESK_Y,z).project(camera);
+      expect(outline[i][0]).toBeCloseTo((p.x+1)/2*width,3);expect(outline[i][1]).toBeCloseTo((1-p.y)/2*height,3);
+    });
   });
 });

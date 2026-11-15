@@ -110,9 +110,8 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .about-portfolio-list{list-style:none;margin:0;padding:0;display:grid;gap:4px;color:var(--window-ink)}
 .about-portfolio-row{display:grid;grid-template-columns:34px minmax(0,1fr);align-items:center;gap:12px;min-height:28px;color:var(--window-ink)!important}
 .about-portfolio-row span{color:var(--window-ink)!important}
-.about-portfolio-row span,.about-portfolio-location{line-height:1.35;overflow-wrap:anywhere}
+.about-portfolio-row span{line-height:1.35;overflow-wrap:anywhere}
 .about-portfolio-icon{width:28px;height:28px;object-fit:contain;image-rendering:pixelated}
-.about-portfolio-location{color:var(--window-ink)}
 :root.dark-mode .about-portfolio-mac,:root.dark-mode .about-portfolio-icon{filter:invert(1)}
 .falling-sand-window{width:500px;height:400px;min-width:400px;min-height:300px}
 .falling-sand-window .window-body{padding:0;overflow:hidden}
@@ -263,29 +262,10 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .pm-editor .ProseMirror ul[data-type="taskList"] li[data-type="taskItem"]:has(input[type="checkbox"]:checked) p{text-decoration:line-through !important;opacity:0.6 !important}
 .pm-editor .ProseMirror ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] p *,
 .pm-editor .ProseMirror ul[data-type="taskList"] li[data-type="taskItem"]:has(input[type="checkbox"]:checked) p *{text-decoration:line-through !important}
-/* CodeMirror editor - uses same font as ProseMirror above */
-.pm-editor .cm-editor{min-height:180px;border:1px dashed var(--border);background:transparent; font-family:var(--retro-editor-font);font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
 .pm-editor .cm-content{padding:8px; user-select:text; -webkit-user-select:text; font-family:var(--retro-editor-font);font-size:15px;line-height:1.58;letter-spacing:0;text-transform:none}
-.pm-editor .cm-editor{transform:translateZ(0); backface-visibility:hidden; will-change:transform; transform-style: preserve-3d; top: 0}
-.pm-editor .cm-editor:focus{outline:none !important;box-shadow:none !important}
-.pm-editor .cm-editor:focus-within{outline:none !important;box-shadow:none !important}
-:root.dark-mode .pm-editor .cm-editor:focus{outline:none !important;box-shadow:none !important}
-:root.dark-mode .pm-editor .cm-editor:focus-within{outline:none !important;box-shadow:none !important}
-/* Use thin caret in normal mode to avoid 3D offset artifacts */
-.cm-fat-cursor .cm-cursor{display:none!important}
 .embedded-screen{ --text:#101010 }
 :root.dark-mode .embedded-screen{ --text:#ffffff }
 .embedded-screen{ -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-/* Fix for mobile Html transform issues */
-.html-screen-wrapper { 
-  transform: translate3d(0,0,0) !important; 
-  -webkit-transform: translate3d(0,0,0) !important;
-  transform-style: preserve-3d !important;
-  -webkit-transform-style: preserve-3d !important;
-  backface-visibility: hidden !important;
-  -webkit-backface-visibility: hidden !important;
-  will-change: transform;
-}
 .embedded-screen{position:relative; cursor:url("/cursor-light.svg") 1 1, auto}
 :root.dark-mode .embedded-screen{cursor:url("/cursor-dark.svg") 1 1, auto}
 .embedded-screen::before{content:""; position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(to bottom, rgba(0,0,0,.12) 0px, rgba(0,0,0,.12) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) var(--crt-line-gap)); mix-blend-mode:multiply;}
@@ -295,26 +275,6 @@ body::before, body::after{content:"";position:fixed;inset:0;pointer-events:none;
 :root.dark-mode .desktop-icon .icon,
 :root.dark-mode .browser-icon .icon,
 :root.dark-mode .trash-icon .icon{filter:invert(1)}
-
-/* Curved CRT bulge and gloss - tweak with CSS vars above */
-.crt-curvature-overlay{display:none}
-.crt-curvature-gloss{display:none}
-
-/* .embedded-screen{
-  border-radius: clamp(6px, 1.2vw, 14px);
-}
-.embedded-screen .menubar{position:absolute; top:0; left:0; right:0; z-index:2000}
-.embedded-screen .desktop{position:absolute; inset:28px 0 0 0; padding:8px; z-index:100} */
-
-/* In-screen custom cursor */
-.embedded-cursor{position:absolute; left:0; top:0; width:20px; height:24px; pointer-events:none; background:url("/retro-cursor-light.svg") 0 0 / 20px 24px no-repeat; image-rendering:pixelated; z-index:10000; will-change:transform; transform:translate(-1px,-1px);filter:drop-shadow(1px 1px 0 rgba(255,255,255,.9)) drop-shadow(-1px -1px 0 rgba(255,255,255,.75))}
-:root.dark-mode .embedded-cursor{background-image:url("/retro-cursor-dark.svg")}
-:root.dark-mode .embedded-cursor,
-:root.dark-mode .embedded-cursor-global{filter:drop-shadow(1px 1px 0 rgba(0,0,0,.9)) drop-shadow(-1px -1px 0 rgba(0,0,0,.75))}
-
-/* Global overlay cursor that follows the real pointer (visible only over screen) */
-.embedded-cursor-global{position:fixed; left:0; top:0; width:20px; height:24px; pointer-events:none; background:url("/retro-cursor-light.svg") 0 0 / 20px 24px no-repeat; image-rendering:pixelated; z-index:100000; will-change:transform; display:none;filter:drop-shadow(1px 1px 0 rgba(255,255,255,.9)) drop-shadow(-1px -1px 0 rgba(255,255,255,.75))}
-:root.dark-mode .embedded-cursor-global{background-image:url("/retro-cursor-dark.svg")}
 
 /* Make the 3D viewer fill viewport when used as main page */
 html,body,#__next{height:100%}
@@ -380,14 +340,6 @@ html,body,#__next{height:100%}
 :root:not(.dark-mode) .clear-btn{background:#ffffff;color:#000;border-color:#1e1a1a}
 :root:not(.dark-mode) .clear-btn:hover{background:#f0f0f0}
 .clear-btn:hover{filter:brightness(1.1)}
-.hud-footer{margin-top:auto;padding-top:6px;border-top:1px solid var(--border)}
-:root:not(.dark-mode) .hud-footer{border-color:#1e1a1a}
-.hud-hint{font-size:9px;color:#ffffff;opacity:0.7;text-align:center;line-height:1.2;font-family:"Menlo","Monaco","Consolas","Courier New",monospace}
-:root:not(.dark-mode) .hud-hint{color:#ffffff}
-.hud-slider-row{display:flex;align-items:center;gap:8px}
-.hud-slider-row .hud-label{font-size:10px;margin:0;flex-shrink:0;min-width:60px}
-.hud-slider-row input[type="range"]{flex:1;cursor:inherit}
-.hud-slider-row .brush-size-display{font-size:11px;min-width:45px;text-align:right;margin:0}
 :root.dark-mode .material-btn{color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5)}
 :root.dark-mode .clear-btn{color:#000}
 .dark-mode-toggle{appearance:none;background:transparent;border:none;padding:2px 6px;cursor:inherit;font:inherit;color:var(--text);font-size:14px}
@@ -398,20 +350,6 @@ html,body,#__next{height:100%}
 :root.dark-mode .dark-mode-toggle svg{color:#fff;fill:#fff}
 :root.dark-mode .dark-mode-toggle use{color:#fff;fill:#fff;stroke:none}
 :root.dark-mode .menubar .dark-mode-toggle{color:#101010}
-
-/* Floating tooltip shown when hovering Mac model */
-.view-tooltip{position:fixed;transform:translate(12px,12px);appearance:none;background:var(--bg-window);color:var(--text);border:2px solid var(--border);box-shadow:0 6px 18px var(--shadow);padding:6px 10px;font:inherit;font-size:12px;line-height:1;border-radius:6px;z-index:2147483647;pointer-events:auto}
-.view-tooltip:hover,.view-tooltip:focus{filter:brightness(1.05)}
-
-/* CSS to stabilize Html component rendering on mobile */
-.html-screen-wrapper {
-  transform-style: preserve-3d;
-  -webkit-transform-style: preserve-3d;
-}
-.html-screen-wrapper > div {
-  transform-style: preserve-3d;
-  -webkit-transform-style: preserve-3d;
-}
 
 /* Menubar brand icon */
 .menu-trigger-apple{padding:2px 6px;font-weight:700;letter-spacing:.5px}
@@ -433,11 +371,6 @@ html,body,#__next{height:100%}
 
 /* Icon click burst animations */
 .desktop-icon{position:absolute;transform-origin:center center}
-.desktop-icon.is-burst .icon{animation:icon-pop .25s ease-out}
-.desktop-icon.is-burst::after{content:"";position:absolute;left:50%;top:24px;width:4px;height:4px;border:2px solid currentColor;border-radius:9999px;transform:translate(-50%,-50%);opacity:.7;animation:ring-pop .5s ease-out;z-index:2}
-.desktop-icon.is-burst .icon::after,.desktop-icon.is-burst .icon::before{content:"";position:absolute;left:50%;top:50%;width:2px;height:2px;background:currentColor;border-radius:1px;opacity:.9;z-index:2}
-.desktop-icon.is-burst .icon::after{transform:translate(-50%,-50%) translate(10px,-6px);animation:sparkle 500ms ease-out}
-.desktop-icon.is-burst .icon::before{transform:translate(-50%,-50%) translate(-9px,8px);animation:sparkle 500ms ease-out}
 
 @keyframes icon-pop{0%{transform:scale(1)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
 @keyframes ring-pop{0%{transform:translate(-50%,-50%) scale(.6);opacity:.9}100%{transform:translate(-50%,-50%) scale(1.8);opacity:0}}
@@ -461,21 +394,6 @@ html,body,#__next{height:100%}
 .browser-icon.dragging{opacity:0.7 !important; z-index:1000; transform:translateZ(0); will-change:left,top,opacity; -moz-user-select:none; backface-visibility:hidden; -webkit-backface-visibility:hidden}
 .browser-icon.drag-over{outline:2px dashed var(--border); background:rgba(255,255,255,.1)}
 .browser-icon.folder .folder-count{position:absolute; top:2px; right:2px; background:var(--accent); color:#101010; font-size:9px; font-weight:700; padding:1px 4px; border-radius:8px; min-width:14px; text-align:center; border:1px solid var(--border); box-shadow:0 1px 3px rgba(0,0,0,.3); line-height:1.4; z-index:10}
-
-/* Blog posts window */
-.blog-posts{height:100%; overflow-y:auto; overflow-x:hidden; box-sizing:border-box;min-height:0;touch-action:auto;-webkit-overflow-scrolling:touch}
-.blog-post{margin-bottom:32px; padding-bottom:24px; border-bottom:1px solid var(--border)}
-.blog-post:last-child{border-bottom:none; margin-bottom:0}
-.blog-title{font-size:16px; font-weight:700; margin:0 0 6px 0; color:inherit}
-.blog-meta{font-size:11px; color:var(--text); opacity:.7; margin-bottom:12px}
-.blog-content{font-size:13px; line-height:1.6; color:inherit; user-select:text; -webkit-user-select:text}
-.blog-content p{margin:0 0 12px 0; user-select:text; -webkit-user-select:text}
-.blog-content p:last-child{margin-bottom:0}
-.blog-content pre, .blog-content .code-block, .blog-content .equation{user-select:text; -webkit-user-select:text}
-.equation{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; background:rgba(0,0,0,.05); padding:8px 12px; margin:12px 0; border-left:3px solid var(--border); font-size:13px; white-space:pre-wrap; overflow-x:auto}
-:root.dark-mode .equation{background:rgba(255,255,255,.08)}
-.code-block{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; background:rgba(0,0,0,.05); padding:10px; margin:12px 0; border:1px solid var(--border); font-size:12px; line-height:1.5; overflow-x:auto; white-space:pre}
-:root.dark-mode .code-block{background:rgba(255,255,255,.08)}
 
 /* Central drag-and-drop visuals */
 .drag-ghost-icon{opacity:.75;filter:drop-shadow(0 4px 10px rgba(0,0,0,.4))}
@@ -548,19 +466,12 @@ html,body,#__next{height:100%}
 .mobile .desktop-icon .icon-label,.mobile-portrait .desktop-icon .icon-label,.mobile .browser-icon .icon-label{font-size:13px;line-height:1.2}
 .mobile .browser-icon.folder .folder-count{font-size:12px}
 .mobile .blog-post-window .window-body{padding:18px}
-.mobile .blog-title{font-size:24px;line-height:1.2;margin-bottom:10px}
-.mobile .blog-meta{font-size:15px;line-height:1.35;margin-bottom:16px}
-.mobile .blog-content{font-size:18px;line-height:1.65}
-.mobile .blog-content p{font-size:18px;line-height:1.65;margin-bottom:16px}
-.mobile .equation{font-size:16px;line-height:1.5}
-.mobile .code-block{font-size:15px;line-height:1.5}
 .mobile .pm-editor .ProseMirror{font-size:18px;line-height:1.6}
 .mobile .calc-display{font-size:16px}
 .mobile .key{font-size:15px}
 .mobile .falling-sand-hud h3{font-size:18px}
 .mobile .hud-label,.mobile .material-btn,.mobile .clear-btn{font-size:15px}
 .mobile .brush-size-display{font-size:16px}
-.mobile .hud-hint{font-size:14px}
 
 /* Storm OS — quiet chrome, more room to discover. */
 .storm-desktop{height:100%;isolation:isolate}
@@ -577,34 +488,29 @@ html,body,#__next{height:100%}
 .desktop-signature>strong span{color:var(--desktop-accent,#9185ac)}
 .desktop-signature>span:not(.eyebrow){font:10px/1.7 var(--retro-ui-font);letter-spacing:1px;text-transform:uppercase;opacity:.7}
 .desktop-signature>button{align-self:flex-start;border:0;border-bottom:1px dotted currentColor;background:transparent;color:inherit;padding:0 0 5px;font:11px/1.5 var(--retro-editor-font);pointer-events:auto;cursor:pointer}
-.desktop-dock{position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:50%;transform:translate(-50%,calc(100% + 30px));z-index:5;display:flex;gap:3px;padding:7px 9px 5px;background:#f8f5ec;color:#25232c;border:1.5px solid #25232c;box-shadow:3px 3px 0 #25232c;max-width:calc(100% - 20px);transition:transform .22s cubic-bezier(.3,.7,.2,1) .45s}
-/* Auto-hide: slides up from a bottom hot zone, on keyboard focus, or from the touch handle. */
-.dock-hotzone{position:absolute;left:0;right:0;bottom:0;height:12px;z-index:4}
-.dock-hotzone:hover~.desktop-dock,.desktop-dock:hover,.desktop-dock:focus-within,.desktop-dock.dock-shown{transform:translate(-50%,0);transition:transform .2s cubic-bezier(.3,.7,.2,1) 0s}
-.dock-handle{position:absolute;left:50%;bottom:max(3px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:4;display:grid;place-items:center;width:64px;height:16px;padding:0;border:0;background:transparent;cursor:pointer;transition:opacity .2s}
+/* Dock: hidden below the screen edge like the macOS dock. With a mouse it slides up the moment the
+   pointer touches the bottom edge and drops as soon as the pointer leaves it; there is no delay.
+   It floats above windows. On touch a small handle toggles it. */
+.desktop-dock{position:absolute;bottom:max(6px,env(safe-area-inset-bottom));left:50%;transform:translate(-50%,calc(100% + 16px));z-index:39001;display:flex;align-items:stretch;gap:3px;padding:7px 9px 5px;background:#f8f5ec;color:#25232c;border:1.5px solid #25232c;box-shadow:3px 3px 0 #25232c;max-width:calc(100% - 20px);transition:transform .17s ease-out}
+.dock-hotzone{position:absolute;left:0;right:0;bottom:0;height:8px;z-index:39000}
+.desktop-dock:has(:focus-visible),.desktop-dock.dock-shown{transform:translate(-50%,0)}
+/* Hover only where there is a real pointer: a tap leaves a sticky :hover behind on touch screens. */
+@media (hover:hover){.dock-hotzone:hover~.desktop-dock,.desktop-dock:hover{transform:translate(-50%,0)}}
+.dock-handle{position:absolute;left:50%;bottom:max(3px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:4;display:grid;place-items:center;width:64px;height:16px;padding:0;border:0;background:transparent;cursor:pointer;transition:opacity .17s}
 .dock-handle>span{display:block;width:44px;height:5px;background:#f8f5ec;border:1.5px solid #25232c;box-shadow:2px 2px 0 #25232c}
-.dock-handle.is-hidden,.dock-hotzone:hover~.dock-handle{opacity:0;pointer-events:none}
-@media (hover:hover) and (pointer:fine){.dock-hotzone{z-index:6}.dock-handle{width:44px;height:10px}.dock-handle>span{width:30px;height:4px;opacity:.75}}
+.dock-handle.is-hidden{opacity:0;pointer-events:none}
+@media (hover:hover) and (pointer:fine){.dock-handle{display:none}}
 @media (hover:none){.dock-hotzone{display:none}}
-.desktop-dock>button{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;padding:3px 6px 7px;background:transparent;border:0;color:inherit;font:9px/1.3 var(--retro-editor-font);cursor:pointer}
+.desktop-dock>button{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;max-width:68px;padding:3px 6px 8px;background:transparent;border:0;color:inherit;font:9px/1.3 var(--retro-editor-font);cursor:pointer}
+.desktop-dock>button>span:last-child{max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .desktop-dock>button:hover{background:#eae5dc}
-.desktop-dock>button.running::after{content:"";position:absolute;bottom:1px;width:3px;height:3px;background:#25232c}
+.desktop-dock>button.running::after{content:"";position:absolute;bottom:1px;width:4px;height:4px;background:#25232c}
+.dock-divider{flex:none;width:0;margin:4px 3px 6px;border-left:1.5px dotted #25232c;opacity:.55}
 .dock-grid{font:29px/28px monospace}
 .portfolio-app-window{width:540px;height:490px;max-width:calc(100% - 24px);max-height:calc(100% - 88px);min-height:240px}
 .portfolio-app-window .window-body{padding:0;overflow:auto;min-height:0;flex:1;font-family:var(--retro-editor-font);font-size:13px;line-height:1.5;touch-action:auto}
-.app-pixel-studio{width:540px;height:590px}.app-terminal{width:560px;height:430px}.app-finder{width:650px;height:490px}.app-project-tasks{width:560px;height:430px}.app-preferences{width:420px;height:570px}.app-postcards{width:430px;height:590px}.app-snake{width:430px;height:570px}.app-sound-lab{width:450px;height:620px}.app-focus-timer{width:420px;height:530px}
+.app-pixel-studio{width:400px;height:420px}.app-terminal{width:560px;height:430px}.app-finder{width:650px;height:490px}.app-project-tasks{width:560px;height:376px}.app-preferences{width:332px;height:560px}.app-postcards{width:430px;height:590px}.app-snake{width:430px;height:520px}.app-sound-lab{width:450px;height:620px}.app-focus-timer{width:420px;height:530px}
 .app-loading{padding:32px;text-align:center;font:12px/1.5 var(--retro-editor-font)}
-.playground-app{padding:24px;color:var(--window-ink);min-height:100%}
-.playground-heading h1{font:700 25px/1.2 var(--retro-editor-font);letter-spacing:-1px;margin:8px 0 12px}
-.playground-heading p{font:13px/1.7 var(--retro-editor-font);opacity:.7;margin:0;max-width:420px}
-.app-filters{display:flex;flex-wrap:wrap;gap:5px;margin:22px 0 16px}
-.app-filters button{padding:5px 10px;border:1px solid var(--window-ink);background:transparent;color:inherit;font:11px var(--retro-editor-font);cursor:pointer}
-.app-filters button[aria-pressed=true]{background:var(--window-ink);color:var(--bg-window)}
-.app-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-.app-card{display:flex;align-items:center;gap:12px;text-align:left;padding:14px 10px;background:color-mix(in srgb,var(--bg-window) 94%,var(--desktop-accent,#ad96cf));border:1px solid color-mix(in srgb,var(--window-ink) 28%,transparent);color:var(--window-ink);min-width:0;cursor:pointer}
-.app-card:hover{border-color:var(--window-ink);box-shadow:2px 2px 0 var(--window-ink);transform:translate(-1px,-1px)}
-.app-card>svg{flex-shrink:0;color:#292630;filter:none}.app-card>span:nth-child(2){flex:1;min-width:0}.app-card strong{display:block;font:700 12px/1.5 var(--retro-editor-font)}.app-card small{display:block;font:10px/1.5 var(--retro-editor-font);opacity:.65;margin-top:4px}.app-card>span:last-child{align-self:flex-start;font:14px monospace;opacity:.5}
-.playground-footnote{font:10px/1.6 var(--retro-editor-font);opacity:.5;margin:20px 0 0}
 .launcher-backdrop{position:absolute;inset:0;z-index:40000;display:flex;align-items:flex-start;justify-content:center;padding:clamp(16px,10%,90px) 12px 12px;background:rgba(18,17,23,.38);touch-action:auto}
 .app-launcher{background:#faf8f1;color:#25232c;border:2px solid #25232c;width:500px;max-width:100%;max-height:100%;box-shadow:6px 6px 0 rgba(0,0,0,.3);display:flex;flex-direction:column;font:12px/1.5 var(--retro-editor-font)}
 .launcher-search{display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid #b8b4a9}.launcher-search>span{font:28px monospace}.launcher-search input{width:100%;min-width:0;padding:8px 0;border:0;outline:none;background:transparent;color:inherit;font:15px var(--retro-editor-font)}.launcher-search>button{border:1px solid #aaa79f;color:inherit;background:transparent;font:10px monospace;padding:4px;cursor:pointer}
@@ -624,11 +530,10 @@ html,body,#__next{height:100%}
 .storm-desktop.mobile .portfolio-app-window .window-body,.storm-desktop.mobile .portfolio-app-window p,.storm-desktop.mobile .portfolio-app-window li{font-size:13px;line-height:1.55}
 .storm-desktop.mobile .desktop-dock{bottom:max(10px,env(safe-area-inset-bottom));padding:5px 4px 2px;gap:0}.storm-desktop.mobile .desktop-dock>button{min-width:44px;padding:3px 5px 7px;font-size:8px}
 .storm-desktop.mobile .desktop-signature{left:20px;bottom:112px;max-width:90%;gap:7px}.storm-desktop.mobile .desktop-signature>strong{font-size:22px}.storm-desktop.mobile .desktop-signature .eyebrow{font-size:7px;letter-spacing:1px}
-.storm-desktop.mobile .menubar{height:36px;padding:0 4px}.storm-desktop.mobile .desktop{top:36px}.storm-desktop.mobile .menubar-right{gap:4px}.storm-desktop.mobile .menu{margin-right:0}.storm-desktop.mobile .menu-trigger{padding:7px 5px;font-size:12px}.storm-desktop.mobile .menubar-right span{font-size:11px}.storm-desktop.mobile .menu-user{display:none}
-.storm-desktop.mobile .playground-app{padding:16px}.storm-desktop.mobile .app-grid{grid-template-columns:1fr}.storm-desktop.mobile .playground-heading h1{font-size:23px}.storm-desktop.mobile .launcher-search input{font-size:16px}.storm-desktop.mobile .launcher-backdrop{padding-top:10px}
+.storm-desktop.mobile .menubar{height:36px;padding:0 4px}.storm-desktop.mobile .desktop{top:36px}.storm-desktop.mobile .menubar-right{gap:4px}.storm-desktop.mobile .menu{margin-right:0}.storm-desktop.mobile .menu-trigger{padding:7px 5px;font-size:12px}.storm-desktop.mobile .menubar-right span{font-size:11px}.storm-desktop.mobile .menu-user{display:none}.storm-desktop.mobile .launcher-search input{font-size:16px}.storm-desktop.mobile .launcher-backdrop{padding-top:10px}
 @media(max-height:650px){.desktop-signature{display:none}}
 @media(max-width:360px){.storm-desktop.mobile .menubar-right>span{display:none}.storm-desktop.mobile .desktop-dock>button{min-width:40px;padding-left:4px;padding-right:4px}}
-.games-library h1{font:700 28px/1.2 var(--retro-editor-font);letter-spacing:-1px;margin:12px 0}.games-library>p{font:12px/1.6 var(--retro-editor-font);opacity:.7}.games-library .app-grid{margin-top:24px;grid-template-columns:1fr}.game-card{padding:10px;gap:18px}.game-cover{position:relative;display:grid;place-items:center;flex-shrink:0;width:72px;height:64px;border:1px solid #25232c;color:#25232c;background:repeating-linear-gradient(0deg,#a7bcc1 0 3px,#a1b6bb 3px 4px)}.game-cover small{position:absolute;bottom:3px;right:4px;font:8px monospace;opacity:.6}.game-cover-1{background:#e0d3a7}.game-cover-2{background:#b5c9a2}.game-cover-3{background:#c8bed6}.game-cover-4{background:#d5ac98}.portfolio-app-window.app-star-patrol,.portfolio-app-window.app-balloon-bastion,.portfolio-app-window.app-mossblade{width:680px;height:610px}.app-project-tasks .window-body,.app-finder .window-body{display:flex;overflow:hidden}.app-postcards .window-body,.app-focus-timer .window-body{display:flex;justify-content:center;background:#f8f6f0}
+.games-library h1{font:700 28px/1.2 var(--retro-editor-font);letter-spacing:-1px;margin:12px 0}.games-library>p{font:12px/1.6 var(--retro-editor-font);opacity:.7}.portfolio-app-window.app-star-patrol,.portfolio-app-window.app-balloon-bastion,.portfolio-app-window.app-mossblade{width:680px;height:610px}.app-project-tasks .window-body,.app-finder .window-body{display:flex;overflow:hidden}.app-postcards .window-body,.app-focus-timer .window-body{display:flex;justify-content:center;background:#f8f6f0}
 /* No transformed/filter ancestor around CSS3D: WebKit otherwise changes the
    containing block for fixed children and flattens the monitor's HTML screen. */
 .crt .content{filter:none;transform:none}.crt{border-radius:0;box-shadow:none}.crt::after{display:none}
@@ -639,18 +544,15 @@ html,body,#__next{height:100%}
 body{touch-action:auto}.storm-desktop .desktop{touch-action:pan-x pan-y pinch-zoom}.storm-desktop .desktop-icon,.storm-desktop .titlebar,.storm-desktop .window-resize-handle{touch-action:none}.storm-desktop .window-body{overscroll-behavior:contain}
 .storm-desktop.mobile .menubar{height:calc(36px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top)}.storm-desktop.mobile .desktop{top:calc(36px + env(safe-area-inset-top))}
 .app-star-patrol .window-body{background:#e8ebdf}.app-balloon-bastion .window-body{background:#eef0e0}.app-mossblade .window-body{background:#e8edde}
-.hardware-hint{position:absolute;left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:101;display:flex;align-items:center;gap:14px;max-width:calc(100% - 24px);padding:9px 13px;border:1px solid #b4aa8a66;background:#181917df;color:#e9e4d7;font:10px/1.6 var(--retro-editor-font)}.hardware-hint button{white-space:nowrap;min-height:32px;color:inherit;border:1px solid #b4aa8a77;background:transparent;padding:3px 8px;font:inherit;cursor:pointer}@media(max-width:600px){.hardware-hint{width:calc(100% - 24px);bottom:max(14px,env(safe-area-inset-bottom));font-size:10px}}
 .hardware-screen-cursor{display:none;position:absolute;left:0;top:0;will-change:transform;width:20px;height:24px;background:url('/cursor-light.svg') 0 0/20px 24px no-repeat;filter:drop-shadow(1px 1px 0 #fff);pointer-events:none;z-index:50000}
-.hardware-hint{pointer-events:none}.hardware-hint button{pointer-events:auto}
 .portfolio-app-window.app-star-patrol,.portfolio-app-window.app-balloon-bastion,.portfolio-app-window.app-mossblade{height:680px}
 
 /* Applications are files, without promotional cards or cover art. */
 .games-library{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));align-content:start;gap:18px 10px;padding:24px 16px;min-height:100%;background:var(--bg-desktop);color:var(--text)}
 .game-file{display:flex;align-items:center;flex-direction:column;gap:9px;padding:8px 4px;background:none;border:0;color:inherit;font:12px/1.5 var(--retro-ui-font,monospace);text-align:center;cursor:pointer;border-radius:0}.game-file:hover,.game-file:focus-visible{background:color-mix(in srgb,var(--desktop-accent,#777) 16%,transparent);outline:1px dotted currentColor}
 .portfolio-app-window:is(.app-star-patrol,.app-balloon-bastion,.app-mossblade,.app-snake) .window-body{padding:0;background:#172027;overflow:auto}
-.playground-app{padding:12px!important}.playground-app .app-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:12px}.playground-app .app-card{border:0;box-shadow:none;background:none;display:flex;flex-direction:column;justify-content:center;text-align:center;gap:8px;min-height:100px;padding:8px}.playground-app .app-card strong{font-size:12px;font-weight:400}
 
-.browser-icon{touch-action:none}.folder-toolbar{display:flex;gap:8px;padding:4px 8px;border-bottom:1px solid var(--border);flex-shrink:0}.folder-toolbar button{border:1px solid var(--border);background:var(--bg-window);color:var(--text);font:11px var(--retro-ui-font);padding:4px 8px}.file-operation-notice{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);z-index:9000;background:var(--bg-window);color:var(--text);border:2px solid var(--border);box-shadow:3px 3px var(--border);padding:10px 14px;max-width:90%;font:12px/1.5 var(--retro-ui-font)}.file-operation-notice button{margin-left:12px;background:none;color:inherit;border:0;font:inherit}.drag-ghost-layer{will-change:transform}.desktop-icon.dragging{opacity:.65!important}
+.browser-icon{touch-action:none}.file-operation-notice{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);z-index:9000;background:var(--bg-window);color:var(--text);border:2px solid var(--border);box-shadow:3px 3px var(--border);padding:10px 14px;max-width:90%;font:12px/1.5 var(--retro-ui-font)}.file-operation-notice button{margin-left:12px;background:none;color:inherit;border:0;font:inherit}.drag-ghost-layer{will-change:transform}.desktop-icon.dragging{opacity:.65!important}
 
 .window-body:has(>.blog-browser){display:flex;flex-direction:column;padding:0;overflow:hidden}.window-body>.blog-browser,.app-boundary>.blog-browser{flex:1;height:auto;min-height:0;overflow:auto}
 .menu-entry:disabled{opacity:.4;cursor:default}
@@ -674,15 +576,7 @@ body{touch-action:auto}.storm-desktop .desktop{touch-action:pan-x pan-y pinch-zo
 :root.dark-mode{--desktop-crt-line:#ffffff17}
 /* Scanlines belong to the old Mac's CRT only; the LCDs show the desktop clean, in either theme. */
 .model-screen-html:not([data-glass=classic]) .storm-desktop::after{display:none!important}
-/* Boot readout over the matrix rain while the 3D desk loads (shared by page and scene). */
-.boot-screen{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;display:grid;gap:10px;justify-items:center;padding:18px 22px;color:#bfe9d4;font:12px/1.4 var(--retro-ui-font);letter-spacing:2px;text-transform:uppercase;text-shadow:0 0 8px rgba(110,230,190,.45);pointer-events:none;transition:opacity .45s ease,transform .45s ease}
-.boot-screen.is-leaving{opacity:0;transform:translate(-50%,-50%) scale(.96)}
-.boot-title{font-size:16px;letter-spacing:6px;color:#e9fff4}
-.boot-bar{width:180px;height:10px;padding:2px;border:2px solid #bfe9d4;box-shadow:0 0 10px rgba(110,230,190,.25)}
-.boot-bar>span{display:block;height:100%;background:repeating-linear-gradient(90deg,#bfe9d4 0 6px,transparent 6px 8px);transition:width .35s steps(6)}
-.boot-step{min-height:17px;opacity:.85;font-size:10px}
-.boot-caret{animation:boot-blink 1s steps(1) infinite}
-@keyframes boot-blink{50%{opacity:0}}
+/* Until React picks the view, desktop visitors see the rain rather than a flash of the flat desktop. */
 html[data-boot=model] [data-flat-home]{visibility:hidden}
 /* Games is a folder: size it like the other folder windows instead of a full app window. */
 .portfolio-app-window.app-games{width:420px;height:350px}
@@ -712,3 +606,10 @@ html[data-boot=model] [data-flat-home]{visibility:hidden}
 .skills-md-window{width:620px;height:440px}
 .skills-md-window .window-body{display:flex;padding:0;overflow:hidden;container-type:inline-size}
 .storm-desktop.mobile .skills-md-window{width:calc(100% - 16px);height:min(520px,calc(100% - 88px))}
+/* Folder windows: file names such as "NoteTime.txt" fit on one line; Playground shows all three rows. */
+.storm-desktop .browser-icon .icon-label{font-size:12px}
+.window[data-app="playground"]{height:412px}
+/* Short apps keep their own height on phones instead of stretching into an empty sheet. */
+.storm-desktop.mobile .portfolio-app-window:is(.app-project-tasks,.app-preferences){height:auto;max-height:calc(100% - 88px)}
+/* Phones: the pinned set plus running apps can outgrow the screen, so the dock scrolls sideways. */
+.storm-desktop.mobile .desktop-dock{overflow-x:auto;scrollbar-width:none}

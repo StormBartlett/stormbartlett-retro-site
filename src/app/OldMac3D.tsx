@@ -8,12 +8,12 @@ import * as THREE from "three";
 import { reportInteraction, RetroKeyboard, RetroMouse } from "./RetroHardware";
 import type { DeskWorld } from "./deskPhysics";
 import { readStoredSetting, useIsMobileViewport, useMediaQuery, writeStoredSetting } from "./FullscreenContext";
-import { framingDistance, HARDWARE_PROFILES, HARDWARE_STORAGE_KEY, hardwareProfile, keyboardStart, type HardwareProfile } from "./hardwareProfiles";
-import { addPixelDissolve, alignedDeskObstacles, disposeMergedGeometry, mergeStaticMeshes, seamlessCrtBezel, seatSideVents, addMouldedPlastic, DESK_COLORS, DESK_Y, FIXED_FRAMING, PORTRAIT_FRAMING, HARDWARE_FX, prepareFanRotors, quadMatrix3d, rigAlignment, roundedRect, screenFor, switchObstacle, transitionAmount, TRANSITION_MS, WARP_MS, type TransitionMode } from "./hardwareScene";
+import { CAMERA_FOV, DESK_SLAB, frontCamera } from "./deskView";
+import { HARDWARE_PROFILES, HARDWARE_STORAGE_KEY, hardwareProfile, keyboardStart, type HardwareProfile } from "./hardwareProfiles";
+import { addPixelDissolve, alignedDeskObstacles, disposeMergedGeometry, mergeStaticMeshes, seamlessCrtBezel, seatSideVents, addMouldedPlastic, DESK_COLORS, DESK_Y, HARDWARE_FX, prepareFanRotors, quadMatrix3d, rigAlignment, roundedRect, screenFor, switchObstacle, transitionAmount, TRANSITION_MS, WARP_MS, type TransitionMode } from "./hardwareScene";
 import { SwordPedestal, TimeWarpFX, type SwitchTransition, type SwordCue } from "./SwordPedestal";
 import styles from "./HardwareGallery.module.css";
 
-const CAMERA_FOV = 28;
 const INITIAL_CAMERA: [number,number,number] = [1.2,1.3,9];
 const INTRO_MS = 1700;
 const PLAQUE_LABELS:Record<HardwareProfile["id"],string>={classic:"Mac",laptop:"Laptop",rgb:"RTX"};
@@ -50,9 +50,8 @@ function useSceneMotion(active:boolean) {
 }
 
 /** Local Blender assets, including clickable laptop keycaps. No network textures or fonts. */
-function HardwareModel({ profile, onReady, onLoaded, onInteractionChange, enabled, reveal, spin }: { profile: HardwareProfile; onReady: (url:string) => void; onLoaded?: () => void; onInteractionChange: (active:boolean) => void; enabled:boolean; reveal:{value:number;outgoing?:{value:number}}; spin:boolean }) {
+function HardwareModel({ profile, onReady, onInteractionChange, enabled, reveal, spin }: { profile: HardwareProfile; onReady: (url:string) => void; onInteractionChange: (active:boolean) => void; enabled:boolean; reveal:{value:number;outgoing?:{value:number}}; spin:boolean }) {
   const {scene:cached} = useGLTF(profile.asset);
-  React.useEffect(()=>{onLoaded?.();},[onLoaded]);
   const {gl,camera,scene:world,invalidate} = useThree();
   const prepared=React.useMemo(()=>{
     const scene=cached.clone(true),materials=new Map<THREE.Material,THREE.Material>();
@@ -129,6 +128,8 @@ function HardwareModel({ profile, onReady, onLoaded, onInteractionChange, enable
 }
 
 type ScreenRect=ReturnType<typeof screenFor>;
+/** Cosine between the glass normal and the view direction below which the screen counts as edge-on (about 86°). */
+const FACING_MIN=.07;
 
 function ScreenSlot({onSlot,onResized,tapRef,screen,reduced,fx,glass}: {onSlot:(slot:HTMLElement,mounted?:boolean)=>void;onResized:()=>void;tapRef:React.RefObject<(()=>void)|undefined>;screen:ScreenRect;reduced:boolean;fx:ScreenFx;glass:string}) {
   const slotRef=React.useRef<HTMLDivElement>(null!),frameRef=React.useRef<HTMLDivElement>(null!);
@@ -176,7 +177,7 @@ function ScreenPin({screen,from,transition,pinRef,hitRef,reduced,introDone,inval
   React.useEffect(()=>()=>material.dispose(),[material]);
   const on=React.useRef({since:introDone?-Infinity:Infinity});
   React.useEffect(()=>{on.current.since=introDone?performance.now():Infinity;invalidate();},[introDone,invalidate]);
-  const scratch=React.useMemo(()=>({center:new THREE.Vector3(),target:new THREE.Vector3(),corner:new THREE.Vector3(),normal:new THREE.Vector3(),euler:new THREE.Euler(),last:"",clip:"",settled:0}),[]);
+  const scratch=React.useMemo(()=>({center:new THREE.Vector3(),target:new THREE.Vector3(),corner:new THREE.Vector3(),normal:new THREE.Vector3(),euler:new THREE.Euler(),last:"",clip:"",settled:0,facing:true}),[]);
   useFrame(()=>{
     const pin=pinRef.current,frame=pin?.firstElementChild as HTMLElement|null;if(!pin||!frame||!hole.current)return;
     const change=transition.current,t=change?transitionAmount(performance.now(),change.start,reduced,change.duration):1,lerp=THREE.MathUtils.lerp;
@@ -190,13 +191,20 @@ function ScreenPin({screen,from,transition,pinRef,hitRef,reduced,introDone,inval
     hole.current.scale.set(w*2/screen.width,h*2/screen.height,1);
     // Screen power-on: opaque black until the intro has finished, then fade to the desktop.
     const lit=reduced?1:THREE.MathUtils.clamp((performance.now()-on.current.since)/450,0,1);
-    hole.current.visible=on.current.since!==Infinity;
     if(material.opacity!==1-lit){material.opacity=1-lit;if(lit<1)invalidate();}
     camera.updateMatrixWorld();
+    // The camera can orbit all the way round. From behind or edge-on, or with a corner behind
+    // the lens, there is no glass to look through: no hole, no desktop underneath, no click-through.
+    let facing=corner.copy(camera.position).sub(center).normalize().dot(normal)>FACING_MIN;
     const quad=([[-w,h],[w,h],[w,-h],[-w,-h]] as const).map(([x,y])=>{
-      corner.set(x,y,0).applyEuler(euler).add(center).project(camera);
+      corner.set(x,y,0).applyEuler(euler).add(center);
+      if(target.copy(corner).applyMatrix4(camera.matrixWorldInverse).z>-camera.near)facing=false;
+      corner.project(camera);
       return [(corner.x+1)/2*size.width,(1-corner.y)/2*size.height] as [number,number];
     });
+    hole.current.visible=facing&&on.current.since!==Infinity;
+    if(facing!==scratch.facing){scratch.facing=facing;pin.style.visibility=facing?"":"hidden";pin.dataset.facing=facing?"1":"0";scratch.last="";}
+    if(!facing){if(scratch.clip!=="none"&&hitRef.current){scratch.clip="none";hitRef.current.style.clipPath="none";}return;}
     const transform=quadMatrix3d(cssWidth,cssHeight,quad),key=`${cssWidth}x${cssHeight}${transform}`;
     const clip=hole.current.visible?`polygon(evenodd,0 0,${size.width}px 0,${size.width}px ${size.height}px,0 ${size.height}px,0 0,${quad.map(([x,y])=>`${x.toFixed(1)}px ${y.toFixed(1)}px`).join(",")},${quad[0][0].toFixed(1)}px ${quad[0][1].toFixed(1)}px,0 0)`:"none";
     if(clip!==scratch.clip&&hitRef.current){scratch.clip=clip;hitRef.current.style.clipPath=clip;}
@@ -289,17 +297,16 @@ function ContextRecovery({onRestore,onRecover,active}:{onRestore:()=>void;onReco
   return null;
 }
 
-function SceneFraming({controlsRef}: {controlsRef:ControlsRef}) {
+/** Frames the desk from the front: on load, on an aspect change, and again whenever the visitor leaves for the desktop. */
+function SceneFraming({controlsRef,active}: {controlsRef:ControlsRef;active:boolean}) {
   const {camera,size,invalidate}=useThree();
   const aspect=Math.round(size.width/Math.max(1,size.height)*10)/10;
   React.useEffect(()=>{
     // Portrait phones fit the pedestal-to-mouse span rather than the whole desk.
-    const framing=aspect<1?PORTRAIT_FRAMING:FIXED_FRAMING;
-    const distance=framingDistance({framing} as HardwareProfile,aspect,(camera as THREE.PerspectiveCamera).fov);
-    const [x,y,z]=framing.target;
-    camera.position.set(x+Math.sin(.16)*distance,y+distance*.22,z+Math.cos(.16)*distance);
+    const {position,target:[x,y,z]}=frontCamera(aspect);
+    camera.position.set(...position);
     controlsRef.current?.target.set(x,y,z);controlsRef.current?.update();camera.lookAt(x,y,z);invalidate();
-  },[camera,aspect,controlsRef,invalidate]);
+  },[camera,aspect,controlsRef,invalidate,active]);
   return null;
 }
 
@@ -323,26 +330,35 @@ function SceneCompileGate({ready,onCompiled}:{ready:boolean;onCompiled:()=>void}
   return null;
 }
 
-/** Viewport size for screen-space dissolves; one write per rendered frame. */
-function FxDriver({transition,reduced,intro,introDone}:{transition:React.RefObject<Transition|null>;reduced:boolean;intro:{value:number};introDone:boolean}) {
-  const gl=useThree(state=>state.gl);
+/**
+ * Viewport size for screen-space dissolves; one write per rendered frame.
+ *
+ * It also drives the first load. There is no loading screen: while the computer's model is
+ * still on its way, the desk and the sword's stone (procedural, so already here) half-form out
+ * of the blue warp cells and shimmer. When the model is ready, the same reveal runs on to solid
+ * with the computer warping in. A cached model skips straight to that; nothing waits on a timer.
+ */
+function FxDriver({transition,reduced,intro,introDone,onFirstFrame}:{transition:React.RefObject<Transition|null>;reduced:boolean;intro:{value:number};introDone:boolean;onFirstFrame?:()=>void}) {
+  const {gl,invalidate}=useThree();
+  const began=React.useRef(0),announce=React.useRef(onFirstFrame);
+  React.useLayoutEffect(()=>{announce.current=onFirstFrame;},[onFirstFrame]);
   useFrame(()=>{
-    gl.getDrawingBufferSize(HARDWARE_FX.viewport.value);HARDWARE_FX.time.value=performance.now()/1000;
-    const change=transition.current;
-    // Desk and pedestal follow the first warp-in, then stay solid for every later switch.
-    intro.value=introDone?1:change&&change.from===""?transitionAmount(performance.now(),change.start,reduced,change.duration):0;
+    const now=performance.now();
+    gl.getDrawingBufferSize(HARDWARE_FX.viewport.value);HARDWARE_FX.time.value=now/1000;
+    if(introDone||reduced){if(!began.current){began.current=now;queueMicrotask(()=>announce.current?.());}intro.value=introDone||!transition.current?1:transitionAmount(now,transition.current.start,reduced,transition.current.duration);return;}
+    if(!began.current){
+      // The 2D placeholder has been showing this same shimmer: carry on from it, fully formed.
+      began.current=document.documentElement.dataset.deskForming?now-900:now;
+      delete document.documentElement.dataset.deskForming;queueMicrotask(()=>announce.current?.());
+    }
+    HARDWARE_FX.mode.value=1;
+    const change=transition.current,t=change&&change.from===""?transitionAmount(now,change.start,reduced,change.duration):0;
+    const formed=Math.min(1,(now-began.current)/900),forming=formed*formed*(3-2*formed)*(.4+.05*Math.sin(now/380));
+    intro.value=THREE.MathUtils.lerp(forming,1,t);
+    // The shimmer needs frames of its own until the warp-in takes over.
+    if(!change)invalidate();
   },-1);
   return null;
-}
-
-const BOOT_STEPS=["Starting renderer","Loading hardware","Warming shaders","Powering on"];
-/** Pixel boot readout over the rain; real stages, not a fake timer. */
-export function BootScreen({step,leaving=false}:{step:number;leaving?:boolean}) {
-  return <div className={`boot-screen${leaving?" is-leaving":""}`} aria-hidden="true">
-    <div className="boot-title">STORM OS</div>
-    <div className="boot-bar"><span style={{width:`${Math.round((step+1)/BOOT_STEPS.length*100)}%`}}/></div>
-    <div className="boot-step">{BOOT_STEPS[Math.min(step,BOOT_STEPS.length-1)]}<span className="boot-caret">_</span></div>
-  </div>;
 }
 
 /**
@@ -357,6 +373,8 @@ function ScreenAlignmentGuard({overlayRef,screen,transition}:{overlayRef:React.R
   const check=React.useCallback(()=>{
     const overlay=overlayRef.current,frame=overlay?.querySelector<HTMLElement>(".model-screen-html");
     if(!overlay||!frame)return;
+    // Nothing to align while the glass faces away; a stale correction must not linger either.
+    if(frame.parentElement?.dataset.facing==="0"){overlay.style.transform="";return;}
     // A correction measured for the previous computer is wrong for the next one:
     // clear it while the screen moves, then measure again once it has settled.
     if(transition.current){overlay.style.transform="";clearTimeout(retry.current);retry.current=setTimeout(()=>requestAnimationFrame(()=>checkRef.current()),120);return;}
@@ -402,24 +420,21 @@ function SharedDesk({current,previous,transition,reduced,reveal}:{current:Hardwa
     const change=transition.current,t=change?transitionAmount(performance.now(),change.start,reduced,change.duration):1;
     material.current.color.copy(colors.from).lerp(colors.to,t);
   });
-  return <mesh receiveShadow position={[.45,DESK_Y-.05,.35]}><boxGeometry args={[9.6,.1,5.6]}/><meshStandardMaterial ref={material} color={DESK_COLORS[current.id]} roughness={.7}/></mesh>;
+  return <mesh receiveShadow position={DESK_SLAB.center}><boxGeometry args={DESK_SLAB.size}/><meshStandardMaterial ref={material} color={DESK_COLORS[current.id]} roughness={.7}/></mesh>;
 }
 
 /** Retains loaded cases, but only active/transition peripherals need scene resources. */
-function ComputerRig({profile,current,previous,transition,onReady,onBoot,interaction,moving,reduced}: {profile:HardwareProfile;current:string;previous:string|null;transition:React.RefObject<Transition|null>;onReady:(asset:string)=>void;onBoot?:(step:number)=>void;interaction:(active:boolean)=>void;moving:boolean;reduced:boolean}) {
+function ComputerRig({profile,current,previous,transition,onReady,interaction,moving,reduced}: {profile:HardwareProfile;current:string;previous:string|null;transition:React.RefObject<Transition|null>;onReady:(asset:string)=>void;interaction:(active:boolean)=>void;moving:boolean;reduced:boolean}) {
   const root=React.useRef<THREE.Group>(null!);
   const {gl,invalidate}=useThree();
   const reveal=React.useMemo(()=>({value:0,outgoing:{value:0}}),[]);
   const warmPhase=React.useRef<"compile"|"upload"|"ready">("compile");
   const warmTimer=React.useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
-  // Boot progress goes through a ref so these callbacks never change identity:
-  // a new identity would re-run the rig's shader warm-up and hide it again.
-  const bootRef=React.useRef(onBoot);React.useLayoutEffect(()=>{bootRef.current=onBoot;},[onBoot]);
+  // Stable identity: a new one would re-run the rig's shader warm-up and hide it again.
   const compiled=React.useCallback(()=>{
     if(warmPhase.current!=="compile")return;
-    mark(`compiled:${profile.id}`);bootRef.current?.(3);warmPhase.current="upload";invalidate();
+    mark(`compiled:${profile.id}`);warmPhase.current="upload";invalidate();
   },[invalidate,profile.id]);
-  const loaded=React.useCallback(()=>bootRef.current?.(2),[]);
   React.useEffect(()=>()=>clearTimeout(warmTimer.current),[]);
   const alignment=React.useMemo(()=>rigAlignment(profile),[profile]);
   const physics=React.useMemo<DeskWorld>(()=>{
@@ -467,12 +482,12 @@ function ComputerRig({profile,current,previous,transition,onReady,onBoot,interac
     {shown&&<ContactShadow profile={profile} deskY={alignment.deskY} reveal={reveal}/>}
     <group position={screen} quaternion={alignment.rotation}>
       <group position={[-screen[0],-screen[1],-screen[2]]}>
-        <HardwareModel profile={profile} onReady={compiled} onLoaded={loaded} onInteractionChange={interaction} reveal={reveal} enabled={warmPhase.current==="ready"&&profile.asset===current&&!transition.current} spin={moving&&profile.id==="rgb"&&shown}/>
+        <HardwareModel profile={profile} onReady={compiled} onInteractionChange={interaction} reveal={reveal} enabled={warmPhase.current==="ready"&&profile.asset===current&&!transition.current} spin={moving&&profile.id==="rgb"&&shown}/>
       </group>
     </group>
     {shown&&<>
       {profile.keyboard&&<RetroKeyboard position={keyboard} tone={profile.id==="rgb"?"modern":"classic"} bounds={{minX:-2.5,maxX:3.3,minZ:-1.9,maxZ:2.3}} physics={physics} onInteractionChange={interaction}/>}
-      <RetroMouse position={mouse} bounds={{minX:profile.bounds[0],maxX:profile.bounds[1],minZ:profile.bounds[2],maxZ:profile.bounds[3]}} tone={profile.id==="classic"?"classic":"modern"} shape={profile.id==="rgb"?"ergo":"box"} physics={physics} onInteractionChange={interaction}/>
+      <RetroMouse position={mouse} bounds={{minX:profile.bounds[0],maxX:profile.bounds[1],minZ:profile.bounds[2],maxZ:profile.bounds[3]}} tone={profile.id==="classic"?"classic":"modern"} shape={profile.id==="rgb"?"ergo":profile.id==="laptop"?"pebble":"box"} physics={physics} onInteractionChange={interaction}/>
     </>}
   </group>;
 }
@@ -505,7 +520,9 @@ class RigBoundary extends React.Component<{asset:string;onFailure:(asset:string)
   render(){return this.state.failed?null:this.props.children;}
 }
 
-export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScreenSlot:(slot:HTMLElement,mounted?:boolean)=>void;onScreenTap?:()=>void;active?:boolean}) {
+export default function OldMac3D({onScreenSlot,onScreenTap,onFirstFrame,active=true}: {onScreenSlot:(slot:HTMLElement,mounted?:boolean)=>void;onScreenTap?:()=>void;
+  /** The scene has drawn its first frame, so the page's 2D placeholder can go. */
+  onFirstFrame?:()=>void;active?:boolean}) {
   const isMobile=useIsMobileViewport();
   const [profiles]=React.useState(()=>HARDWARE_PROFILES.map(profile=>profile.id==="classic"&&readStoredSetting("storm-mac-soft-case-v1")==="1"?{...profile,asset:"/models/studio-mac-rounded.glb"}:profile));
   const [selected,setSelected]=React.useState(()=>hardwareProfile(readStoredSetting(HARDWARE_STORAGE_KEY)).id);
@@ -530,11 +547,9 @@ export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScre
   const [screenFx,setScreenFx]=React.useState<ScreenFx>(null);
   const [notice,setNotice]=React.useState("");
   const [pulling,setPulling]=React.useState(false);
-  /** First load: rain and a boot readout, then the computer warps in once it is fully ready. */
+  /** First load: the desk shimmers half-formed over the rain, then the computer warps in once it is fully ready. */
   const [intro,setIntro]=React.useState<"loading"|"revealing"|"done">("loading");
-  const [boot,setBoot]=React.useState(0);
   const introReveal=React.useMemo(()=>({value:0,outgoing:{value:0}}),[]);
-  const bootStep=React.useCallback((step:number)=>setBoot(value=>Math.max(value,step)),[]);
   const {moving,reduced}=useSceneMotion(active);
   const nextProfile=profiles.find(profile=>profile.id===selected)!;
   React.useEffect(()=>{tapRef.current=onScreenTap;},[onScreenTap]);
@@ -596,7 +611,7 @@ export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScre
   },[active,prepared,current,library,profiles,failed]);
   const restoreLighting=React.useCallback(()=>setLightingVersion(value=>value+1),[]);
   const recoverContext=React.useCallback(()=>{
-    transition.current=null;swordCue.current=null;setPulling(false);setPrevious(null);setPrepared([]);setScreenFx(null);setIntro("loading");setBoot(0);
+    transition.current=null;swordCue.current=null;setPulling(false);setPrevious(null);setPrepared([]);setScreenFx(null);setIntro("loading");
     if(recoveryAttempts.current++===0)setCanvasVersion(value=>value+1);else setContextFailed(true);
   },[]);
   const screen=React.useMemo(()=>screenFor(current),[current]);
@@ -610,22 +625,22 @@ export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScre
       </div>
     </div>
     <div className={styles.canvas}>
-      <Canvas key={canvasVersion} frameloop={active?"demand":"never"} shadows dpr={isMobile?[1,1.5]:[1,2]} eventSource={eventSourceRef} camera={{position:INITIAL_CAMERA,fov:CAMERA_FOV}} onCreated={state=>{mark("canvas-created");bootStep(1);if(location.search.includes("perf"))Object.assign(window,{__stormThree:state});state.gl.shadowMap.autoUpdate=false;state.gl.shadowMap.needsUpdate=true;}}>
+      <Canvas key={canvasVersion} frameloop={active?"demand":"never"} shadows dpr={isMobile?[1,1.5]:[1,2]} eventSource={eventSourceRef} camera={{position:INITIAL_CAMERA,fov:CAMERA_FOV}} onCreated={state=>{mark("canvas-created");if(location.search.includes("perf"))Object.assign(window,{__stormThree:state});state.gl.shadowMap.autoUpdate=false;state.gl.shadowMap.needsUpdate=true;}}>
         <StudioLighting key={lightingVersion}/>
         <ContextRecovery onRestore={restoreLighting} onRecover={recoverContext} active={active}/>
         {profiles.filter(profile=>library.includes(profile.id)).map(profile=><RigBoundary key={profile.asset} asset={profile.asset} onFailure={rigFailure}><React.Suspense fallback={null}>
-          <ComputerRig profile={profile} current={current.asset} previous={previous?.asset??null} transition={transition} onReady={ready} onBoot={profile.asset===current.asset&&intro==="loading"?bootStep:undefined} interaction={interaction} moving={moving} reduced={reduced}/>
+          <ComputerRig profile={profile} current={current.asset} previous={previous?.asset??null} transition={transition} onReady={ready} interaction={interaction} moving={moving} reduced={reduced}/>
         </React.Suspense></RigBoundary>)}
         <SceneCompileGate ready={prepared.includes(current.asset)} onCompiled={()=>setSceneCompiled(true)}/>
-        <FxDriver transition={transition} reduced={reduced} intro={introReveal} introDone={intro==="done"}/>
+        <FxDriver transition={transition} reduced={reduced} intro={introReveal} introDone={intro==="done"} onFirstFrame={onFirstFrame}/>
         <SwordPedestal portalRef={screenOverlayRef} index={index} label={PLAQUE_LABELS[profiles[index].id]} isLast={isLast} busy={busy} onForward={forward} onPull={pull} onWarm={warm}
           deskY={DESK_Y} oldDeskY={DESK_Y} scale={1} oldScale={1} transition={transition} cue={swordCue} reduced={reduced} reveal={introReveal}/>
-        <TimeWarpFX transition={transition} cue={swordCue} reduced={reduced} deskY={DESK_Y} oldDeskY={DESK_Y}/>
+        <TimeWarpFX transition={transition} cue={swordCue} reduced={reduced} deskY={DESK_Y} oldDeskY={DESK_Y} forming={intro==="loading"}/>
         <SharedDesk current={current} previous={previous} transition={transition} reduced={reduced} reveal={introReveal}/>
         <pointLight position={[2.5,.4,.6]} color="#77f7dd" intensity={current.id==="rgb"?1.3:0} distance={2.4}/><pointLight position={[2,-.3,.5]} color="#be91ff" intensity={current.id==="rgb"?.8:0} distance={2}/>
         <ScreenPin screen={screen} from={fromScreen} transition={transition} pinRef={screenPinRef} hitRef={eventSourceRef} reduced={reduced} introDone={intro==="done"} invalidateRef={invalidateRef} onSettled={screenResized}/>
-        <OrbitControls makeDefault ref={controlsRef} enabled={active} enableDamping dampingFactor={.09} enablePan={false} minDistance={1.5} maxDistance={70} minAzimuthAngle={-Math.PI/3} maxAzimuthAngle={Math.PI/3} minPolarAngle={Math.PI/4} maxPolarAngle={Math.PI/2.02}/>
-        <SceneFraming controlsRef={controlsRef}/>
+        <OrbitControls makeDefault ref={controlsRef} enabled={active} enableDamping dampingFactor={.09} enablePan={false} minDistance={1.5} maxDistance={24} minPolarAngle={Math.PI/4} maxPolarAngle={Math.PI/2.02}/>
+        <SceneFraming controlsRef={controlsRef} active={active}/>
         <ScreenAlignmentGuard overlayRef={screenLayerRef} screen={screen} transition={transition}/>
         <SceneTicker version={current.asset+intro} moving={moving} spinning={current.id==="rgb"||previous?.id==="rgb"} transition={transition} reduced={reduced} onComplete={complete}/>
       </Canvas>
@@ -633,7 +648,6 @@ export default function OldMac3D({onScreenSlot,onScreenTap,active=true}: {onScre
     {/* Pointer layer for the 3D scene; ScreenPin cuts the live screen's quad out of it. */}
     <div ref={eventSourceRef} className={styles.hitLayer}/>
     <div ref={screenOverlayRef} className={styles.screenOverlay}/>
-    {intro!=="done"&&<BootScreen step={boot} leaving={intro==="revealing"}/>}
     <span className={styles.status} role="status">{intro==="loading"?"Loading the 3D desk…":selected!==current.id?"Preparing computer…":notice||`${current.label}. Press the button on the sword's stone to switch computer.`}</span>
   </div>;
 }

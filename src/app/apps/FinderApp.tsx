@@ -358,7 +358,7 @@ export default function FinderApp({ onOpenApp }: Props) {
             </button>)}
             {items.length === 0 && <div className={styles.empty}><Glyph kind="folder" /><strong>{query || filter !== "all" ? "No matching items" : "Empty folder"}</strong><p>{query || filter !== "all" ? "Try another search or file type." : "No items."}</p>{(query || filter !== "all") && <button type="button" onClick={() => { setQuery(""); setFilter("all"); }}>Clear filters</button>}</div>}
           </div>
-          <div className={styles.selectionBar}><span>{selected ? selected.name : "Click to select · double-click to open"}</span>{selected && <button type="button" onClick={() => open(selected)}>Open ↗</button>}</div>
+          <div className={styles.selectionBar}><span>{selected?.name}</span>{selected && <button type="button" onClick={() => open(selected)}>Open ↗</button>}</div>
         </>}
       </main>
     </div>
@@ -366,7 +366,7 @@ export default function FinderApp({ onOpenApp }: Props) {
     {drag&&<div ref={ghostRef} className={styles.dragGhost} style={{transform:`translate(${drag.x}px,${drag.y}px)`}} aria-hidden="true"><Glyph kind={nodes.find(node=>node.id===drag.id)!.kind}/><span>{nodes.find(node=>node.id===drag.id)!.name}</span></div>}
     <footer className={styles.statusBar}>
       <span>{current.kind === "text" ? "Text document" : `${items.length} ${items.length === 1 ? "item" : "items"}`}</span>
-      <span className={styles.statusMessage} role="status" aria-live="polite">{notice || (storageState === "session" ? "Storage unavailable · session only" : "Visitor files stay in this browser")}</span>
+      <span className={styles.statusMessage} role="status" aria-live="polite">{notice || (storageState === "session" ? "Storage unavailable · session only" : "")}</span>
     </footer>
   </section>;
 }

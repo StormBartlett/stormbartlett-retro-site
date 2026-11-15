@@ -51,12 +51,12 @@ const TRASH_POSITION_STORAGE_KEYS = ["nx-trash-pos", "nx-trash-pos-mobile-portra
 const BIN_POSITION_STORAGE_KEYS = ["nx-bin-pos", "nx-bin-pos-mobile-portrait", "nx-bin-pos-mobile-landscape"];
 const TEXT_FILE_EXTENSION_RE = /\.(txt|md|markdown|rtf)$/i;
 
-function getSpriteId({ id, label, type }: { id: string; label: string; type?: "file" | "folder" }) {
+function getSpriteId({ id, label, type, app }: { id: string; label: string; type?: "file" | "folder"; app?: string }) {
   if (type === "folder") return "icon-folder";
   if (id === "about") return "icon-file-about";
   if (id === "skills" || id === "skills-md") return "icon-file-skills";
   if (id === "calculator") return "icon-calculator";
-  if (id === "falling-sand") return "icon-hourglass";
+  if (id === "falling-sand" || app === "falling-sand") return "icon-hourglass";
   if (id === "activity") return "icon-activity";
   if (type === "file" || TEXT_FILE_EXTENSION_RE.test(label)) return "icon-file-txt";
   return "icon-file";
@@ -68,7 +68,26 @@ function getSpriteId({ id, label, type }: { id: string; label: string; type?: "f
 function IconArtwork({item,size=48}:{item:{id:string;label:string;app?:string;windowId?:string;type?:"file"|"folder"};size?:number}) {
   const app=item.app??item.windowId??item.id;
   const glyph=portfolioApps.find(entry=>entry.id===app)?.glyph??(app==="playground"?"workshop":undefined);
-  return glyph?<AppGlyph glyph={glyph} size={size}/>:<svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true"><use href={`#${getSpriteId(item)}`}/></svg>;
+  return glyph?<AppGlyph glyph={glyph} size={size}/>:<svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true"><use href={`#${getSpriteId({ ...item, app })}`}/></svg>;
+}
+
+/** The dock's permanent set: the quickest tour of the site. Other open windows join it while they run. */
+const DOCK_PINNED = [
+  { id: "finder", label: "Files" },
+  { id: "project-tasks", label: "Work" },
+  { id: "skills-md", label: "SKILL.md" },
+  { id: "terminal", label: "Terminal" },
+  { id: "games", label: "Games" },
+  { id: "pixel-studio", label: "Paint" },
+] as const;
+/** Windows with no app entry and (after a move to the trash) possibly no icon: [dock label, artwork id]. */
+const DOCK_FALLBACKS: Record<string, [string, string]> = {
+  "about-portfolio": ["About", "about"], about: ["About", "about"], skills: ["Skills.txt", "skills"], calculator: ["Calculator", "calculator"],
+  activity: ["Activity", "activity"], "falling-sand": ["Falling Sand", "falling-sand"], bin: ["Trash", "bin"],
+};
+
+function DockButton({ label, running, onClick, children }: { label: string; running: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button onClick={onClick} aria-label={running ? `${label}, open` : `Open ${label}`} title={label} className={running ? "running" : ""}>{children}<span>{label}</span></button>;
 }
 
 const baseIcons: Icon[] = [
@@ -85,6 +104,9 @@ const baseIcons: Icon[] = [
   { id: "skills-md", label: "SKILL.md", app: "skills-md", x: 392, y: 260 },
 ];
 
+/** Phones show a shorter set of the built-in icons; anything the visitor added always shows. */
+const shownOnMobile = (icon: { id: string }) => (MOBILE_TOP_ROW_ORDER as readonly string[]).includes(icon.id) || !baseIcons.some(item => item.id === icon.id);
+
 function defaultFolders(): DesktopFolders {
   return {
     blog:{label:"Blog",items:[{id:"blog-recursion",label:"Recursive Algorithms.txt",type:"file",x:20,y:20,app:"blog-recursion",windowId:"blog-recursion"},{id:"blog-sorting",label:"Mathematics of Sorting.txt",type:"file",x:120,y:20,app:"blog-sorting",windowId:"blog-sorting"},{id:"blog-graphs",label:"Graph Theory.txt",type:"file",x:220,y:20,app:"blog-graphs",windowId:"blog-graphs"},{id:"test-folder",label:"Test Folder",type:"folder",app:"test-folder",x:20,y:120}]},
@@ -99,9 +121,10 @@ function buildMobileTopRowLayout(width: number, isPortrait: boolean) {
   const preferredColumnCount = isPortrait || width < 740 ? 3 : MOBILE_TOP_ROW_ORDER.length;
   const maxColumnCount = Math.max(1, Math.min(MOBILE_TOP_ROW_ORDER.length, Math.floor(width / (MOBILE_ICON_SIZE + 2))));
   const columnCount = Math.min(preferredColumnCount, maxColumnCount);
-  const gap = columnCount === 3 ? 4 : Math.max(2, Math.floor((width - MOBILE_ICON_SIZE * columnCount) / (columnCount + 1)));
+  // Even gutters, centred: the grid breathes on wide phones and still fits narrow ones.
+  const gap = Math.max(2, Math.min(28, Math.floor((width - MOBILE_ICON_SIZE * columnCount) / (columnCount + 1))));
   const totalWidth = MOBILE_ICON_SIZE * columnCount + gap * (columnCount - 1);
-  const startX = columnCount === 3 ? 8 : Math.max(2, Math.floor((width - totalWidth) / 2));
+  const startX = Math.max(2, Math.floor((width - totalWidth) / 2));
   const startY = isPortrait ? 64 : 48;
   const rowHeight = isPortrait ? 112 : 104;
   const layout: Partial<Record<(typeof MOBILE_TOP_ROW_ORDER)[number], { x: number; y: number }>> = {};
@@ -265,11 +288,14 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
   const [nextZ, setNextZ] = useState(11);
   const [launcherOpen, setLauncherOpen] = useState(false);
   // Auto-hiding dock: pointer hot zone or keyboard focus reveal it (CSS); touch uses the handle.
+  // Touch only: the handle toggles the dock and a tap anywhere else puts it away. With a mouse it is pure CSS hover.
   const [dockShown, setDockShown] = useState(false);
-  const dockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const hideDockSoon = (ms = 1600) => { clearTimeout(dockTimer.current); dockTimer.current = setTimeout(() => setDockShown(false), ms); };
-  const showDock = () => { setDockShown(true); hideDockSoon(3500); };
-  useEffect(() => () => clearTimeout(dockTimer.current), []);
+  useEffect(() => {
+    if (!dockShown) return;
+    const away = (event: PointerEvent) => { if (!(event.target as Element | null)?.closest?.(".desktop-dock,.dock-handle")) setDockShown(false); };
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [dockShown]);
   const [hardwareQuery, setHardwareQuery] = useState("");
   const hardwareCursorRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => { if(!modelScreen && hardwareCursorRef.current) hardwareCursorRef.current.style.display = "none"; }, [modelScreen]);
@@ -952,6 +978,21 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     setNextZ((z) => z + 1);
   };
   useEffect(() => { openWinRef.current = openWin; });
+  const runningDockIds = Object.keys(windows).filter(id => windows[id].open && !DOCK_PINNED.some(app => app.id === id));
+  /** Name and artwork for an open window that is not pinned: its app, its desktop icon or its file in a folder. */
+  const dockEntry = (id: string): { label: string; item: Parameters<typeof IconArtwork>[0]["item"] } => {
+    const app = portfolioApps.find(entry => entry.id === id);
+    if (app) return { label: app.name, item: { id, label: app.name, app: id } };
+    const icon = icons.find(entry => entry.app === id || entry.id === id);
+    if (icon) return { label: icon.label, item: icon };
+    for (const folder of Object.values(folders)) {
+      const file = folder.items.find(entry => (entry.windowId ?? entry.app ?? entry.id) === id);
+      if (file) return { label: file.label, item: file };
+    }
+    if (folders[id]) return { label: folders[id].label, item: { id, label: folders[id].label, type: "folder" } };
+    const [label, artId] = DOCK_FALLBACKS[id] ?? [id, id];
+    return { label, item: { id: artId, label, app: id } };
+  };
   const frontWin = (id: string) => {
     window.dispatchEvent(new CustomEvent("storm-app-focus", {detail:{id}}));
     setWindows((w) => ({ ...w, [id]: { ...w[id], z: nextZ + 1 } }));
@@ -1122,7 +1163,11 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
     const area = getDesktopSize();
     if (area.width < 120 || area.height < 120) return list;
     const binSpot = binPos ?? getDefaultBinPosition();
-    return settleIcons(list, area, binSpot ? [binSpot] : [], isMobile ? MOBILE_ICON_SIZE : DESKTOP_ICON_SIZE);
+    if (!isMobile) return settleIcons(list, area, binSpot ? [binSpot] : [], DESKTOP_ICON_SIZE);
+    // Icons the phone does not show must not claim grid cells and push the visible ones around.
+    const settled = settleIcons(list.filter(shownOnMobile), area, binSpot ? [binSpot] : [], MOBILE_ICON_SIZE);
+    const moved = new Map(settled.map(icon => [icon.id, icon]));
+    return list.some(icon => moved.get(icon.id) !== icon && moved.has(icon.id)) ? list.map(icon => moved.get(icon.id) ?? icon) : list;
   }
   const settleRef = useRef(settleOnDesktop); settleRef.current = settleOnDesktop;
   useEffect(() => {
@@ -1394,7 +1439,7 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
 
       <main id="desktop" className="desktop" ref={desktopRef} data-dropzone="desktop" onContextMenu={onContextMenu} onMouseDown={onDesktopMouseDown}>
         <div ref={hardwareCursorRef} className="hardware-screen-cursor" aria-hidden="true"/>
-        {icons.filter(icon => !isMobile || (MOBILE_TOP_ROW_ORDER as readonly string[]).includes(icon.id) || !baseIcons.some(item => item.id === icon.id)).map((icon) => (
+        {icons.filter(icon => !isMobile || shownOnMobile(icon)).map((icon) => (
           <DesktopIcon
             key={icon.id}
             icon={icon}
@@ -1529,10 +1574,14 @@ export default function DesktopOS({ embedded = false, modelScreen = false, mobil
 
         <div className="desktop-signature"><strong>Storm Bartlett</strong><span>Software developer</span></div>
         <div className="dock-hotzone" aria-hidden="true" />
-        <button type="button" className={`dock-handle${dockShown ? " is-hidden" : ""}`} aria-label="Show dock" onClick={showDock}><span aria-hidden="true" /></button>
-        <nav className={`desktop-dock${dockShown ? " dock-shown" : ""}`} aria-label="Quick launch" onPointerEnter={() => clearTimeout(dockTimer.current)} onPointerLeave={() => { if (dockShown) hideDockSoon(); }}>
-          {[{id:"finder",label:"Files",glyph:"folder"},{id:"project-tasks",label:"Work",glyph:"tasks"},{id:"games",label:"Games",glyph:"game"},{id:"pixel-studio",label:"Paint",glyph:"paint"},{id:"terminal",label:"Terminal",glyph:"terminal"}].map(app => <button key={app.id} onClick={() => { openWin(app.id); hideDockSoon(500); }} aria-label={`Open ${app.label}`} title={app.label} className={windows[app.id]?.open ? "running" : ""}><AppGlyph glyph={app.glyph} size={28}/><span>{app.label}</span></button>)}
-          <button onClick={() => { setLauncherOpen(true); hideDockSoon(500); }} aria-label="All apps"><span className="dock-grid" aria-hidden="true">⊞</span><span>All apps</span></button>
+        <button type="button" className={`dock-handle${dockShown ? " is-hidden" : ""}`} aria-label="Show dock" aria-expanded={dockShown} onClick={() => setDockShown(shown => !shown)}><span aria-hidden="true" /></button>
+        <nav className={`desktop-dock${dockShown ? " dock-shown" : ""}`} aria-label="Dock">
+          {DOCK_PINNED.map(app => <DockButton key={app.id} label={app.label} running={!!windows[app.id]?.open} onClick={() => { openWin(app.id); setDockShown(false); }}><IconArtwork item={{ id: app.id, label: app.label, app: app.id }} size={28}/></DockButton>)}
+          {/* Anything else that is open joins the dock while it runs, like macOS. */}
+          {runningDockIds.length > 0 && <span className="dock-divider" aria-hidden="true" />}
+          {runningDockIds.map(id => { const entry = dockEntry(id); return <DockButton key={id} label={entry.label} running onClick={() => { openWin(id); setDockShown(false); }}><IconArtwork item={entry.item} size={28}/></DockButton>; })}
+          <span className="dock-divider" aria-hidden="true" />
+          <button onClick={() => { setLauncherOpen(true); setDockShown(false); }} aria-label="All apps"><span className="dock-grid" aria-hidden="true">⊞</span><span>All apps</span></button>
         </nav>
         {fileNotice&&<div className="file-operation-notice" role="status">{fileNotice}<button onClick={()=>setFileNotice("")} aria-label="Dismiss">×</button></div>}
         {discovered && <button className="secret-badge" onClick={() => setDiscovered(false)}>✦ Secret handshake discovered</button>}

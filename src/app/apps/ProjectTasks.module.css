@@ -139,20 +139,9 @@
   color: var(--paper) !important;
 }
 
-.viewLabel,
 .status,
-.workTitle > span,
-.roleDetail,
-.statusNote,
-.footer {
+.workTitle > span {
   font-family: var(--retro-ui-font);
-}
-
-.viewLabel {
-  color: var(--muted);
-  font-size: 8px;
-  letter-spacing: .4px;
-  white-space: nowrap;
 }
 
 .workList {
@@ -266,54 +255,6 @@
   opacity: .65;
 }
 
-.roleDetail {
-  font-size: 9px;
-}
-
-.statusNote {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: 8px;
-}
-
-.statusNote > span {
-  font-size: 12px;
-}
-
-.footer {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 5px 12px;
-  border-top: 1px solid var(--ink);
-  background: color-mix(in srgb, var(--ink) 4%, var(--paper));
-  font-size: 8px;
-  letter-spacing: .4px;
-}
-
-.footer > span:last-child {
-  margin-left: auto;
-  color: var(--muted);
-  letter-spacing: 0;
-}
-
-.footerMark {
-  font-size: 13px;
-}
-
-.srOnly {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
 
 @container (max-width: 380px) {
   .header {
@@ -327,10 +268,6 @@
   .workSection {
     padding-left: 13px;
     padding-right: 13px;
-  }
-
-  .viewLabel {
-    display: none;
   }
 
   .workButton {

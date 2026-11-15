@@ -1,6 +1,6 @@
 .panel {
-  width: 300px;
-  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 100%;
   padding: 14px;
   background: #f5f3e9;
   color: #20201c !important;

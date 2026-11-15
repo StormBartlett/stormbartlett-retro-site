@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { Component, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import DesktopOS from "./DesktopOS";
+import FormingDesk from "./FormingDesk";
 import MatrixBackground from "./MatrixBackground";
 import {
   FullscreenProvider,
@@ -30,15 +31,9 @@ const CHROME_STYLE: CSSProperties = {
   font: "inherit",
 };
 
-/** Same boot readout the 3D scene shows, so loading reads as one sequence over the rain. */
+/** Screen-reader status only: what visitors see while the 3D code arrives is FormingDesk over the rain. */
 function ModelLoading() {
-  return (
-    <div className="boot-screen" role="status" aria-label="Loading 3D view">
-      <div className="boot-title">STORM OS</div>
-      <div className="boot-bar"><span style={{ width: "12%" }} /></div>
-      <div className="boot-step">Loading 3D view<span className="boot-caret">_</span></div>
-    </div>
-  );
+  return <span role="status" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clipPath: "inset(50%)", whiteSpace: "nowrap" }}>Loading 3D view</span>;
 }
 
 // Three.js is only fetched once the visitor is actually in model mode.
@@ -87,6 +82,9 @@ function HomeContent() {
   const viewMode: ViewMode = modelFailed || !settingsLoaded ? "desktop" : isMobile ? mobileViewMode : isFullscreen ? "desktop" : "model";
   // Allocate WebGL only after the first visit; retain its uploaded resources for instant returns.
   const [modelVisited, setModelVisited] = useState(false);
+  // Until the scene draws its first frame, a 2D stand-in shows the desk forming where it will appear.
+  const [sceneLive, setSceneLive] = useState(false);
+  const sceneStarted = useCallback(() => setSceneLive(true), []);
   useEffect(() => { if (viewMode === "model") setModelVisited(true); }, [viewMode]);
   useEffect(() => {
     if (!settingsLoaded || isMobile) return;
@@ -176,9 +174,10 @@ function HomeContent() {
       {!modelFailed && (viewMode === "model" || modelVisited) && (
         <>
           {viewMode === "model" && <MatrixBackground />}
+          {viewMode === "model" && !sceneLive && <FormingDesk />}
           <ModelErrorBoundary onError={modelUnavailable}>
             <div aria-hidden={viewMode !== "model"} inert={viewMode !== "model"} style={{ position: "fixed", inset: 0, visibility: viewMode === "model" ? "visible" : "hidden", pointerEvents: viewMode === "model" ? "auto" : "none" }}>
-              <OldMac3D active={viewMode === "model"} onScreenSlot={attachToScreenSlot} onScreenTap={isMobile ? enterDesktop : undefined} />
+              <OldMac3D active={viewMode === "model"} onScreenSlot={attachToScreenSlot} onScreenTap={isMobile ? enterDesktop : undefined} onFirstFrame={sceneStarted} />
             </div>
           </ModelErrorBoundary>
           {/* Plain DOM so it works while the model loads, and if WebGL never starts. */}

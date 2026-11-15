@@ -116,19 +116,12 @@
 }
 
 .currentPath {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
   margin-bottom: 5px;
   color: #b2d197;
   overflow-wrap: anywhere;
   font-size: 10px;
 }
 
-.currentPath span {
-  color: #a5b09c;
-  text-align: right;
-}
 
 .commandForm {
   display: flex;
@@ -175,8 +168,11 @@
   cursor: pointer;
 }
 
+.hint:empty {
+  display: none;
+}
+
 .hint {
-  min-height: 17px;
   margin-top: 5px;
   color: #acbba0;
   font-size: 10px;

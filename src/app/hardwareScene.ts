@@ -2,13 +2,14 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { deskObstacles, HARDWARE_PROFILES, type HardwareId, type HardwareProfile } from "./hardwareProfiles";
 import type { DeskBody } from "./deskPhysics";
+import { DESK_Y } from "./deskView";
+
+export { DESK_COLORS, DESK_Y, FIXED_FRAMING, PORTRAIT_FRAMING } from "./deskView";
 
 /** The Mac's glass defines the desktop's pixel layout: 600 CSS px tall at 1.2 world units. */
 export const FIXED_SCREEN = HARDWARE_PROFILES[0].screen;
 /** World units per CSS pixel for the Mac; bigger panels scale the same layout up. */
 export const SCREEN_SCALE = FIXED_SCREEN.height * 40 / FIXED_SCREEN.cssHeight;
-/** One level desk for every computer; the camera never moves. */
-export const DESK_Y = -1.54;
 /** Real-world sizing on that desk: newer machines are bigger, with bigger panels. */
 export const RIG_SCALE: Record<HardwareId, number> = { classic: 1, laptop: .7, rgb: .84 };
 const SCREEN_Z = FIXED_SCREEN.position[2];
@@ -33,9 +34,6 @@ export function screenFor(profile: HardwareProfile) {
     radius: profile.id === "classic" ? 40 : Math.round(profile.screen.radius * FIXED_SCREEN.cssHeight / profile.screen.cssHeight),
   };
 }
-export const FIXED_FRAMING = { target: [.45, -.15, .35] as [number, number, number], width: 6.2, height: 4.1, distance: 9.5 };
-/** Portrait phones: centred on the pedestal (x −2.4) to RTX mouse (x 4.1) span, with a small margin. */
-export const PORTRAIT_FRAMING = { ...FIXED_FRAMING, target: [.85, -.15, .35] as [number, number, number], width: 6.9 };
 /** Sword pedestal, left of the widest monitor, on the shared desk. */
 export const SWITCH_POSITION: [number, number, number] = [-1.95, DESK_Y, .55];
 export const PEDESTAL_RADIUS = .34;
@@ -53,8 +51,6 @@ export const HARDWARE_FX = {
   time: { value: 0 },
 };
 
-/** Desk finish per computer; the shared desk blends between them. */
-export const DESK_COLORS: Record<HardwareId, string> = { classic: "#aaa18d", laptop: "#aaa18d", rgb: "#292f38" };
 
 export function rigAlignment(profile: HardwareProfile) {
   const scale = RIG_SCALE[profile.id], [x, , z] = profile.screen.position;

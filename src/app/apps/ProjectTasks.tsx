@@ -13,7 +13,6 @@ const CURRENT_WORK = [
     type: "project" as const,
     label: "Current project",
     description: "Explore Noteception on the web to see what’s being built.",
-    detail: "Visit the project to see what’s being built.",
     href: "https://noteception.com",
     linkLabel: "Visit Noteception",
   },
@@ -23,7 +22,6 @@ const CURRENT_WORK = [
     type: "role" as const,
     label: "Software Developer",
     description: "Current software development role at the University of New South Wales.",
-    detail: "Software Developer · UNSW",
   },
 ];
 
@@ -59,7 +57,6 @@ export default function ProjectTasks({ onOpenApp }: ProjectTasksProps) {
                 <button key={item.id} type="button" className={`${styles.filter} ${filter === item.id ? styles.selectedFilter : ""}`} aria-pressed={filter === item.id} onClick={() => setFilter(item.id)}>{item.label}<span>{item.count}</span></button>
               ))}
             </div>
-            <span className={styles.viewLabel}>STATUS / CURRENT</span>
           </div>
 
           <div className={styles.workList}>
@@ -77,18 +74,16 @@ export default function ProjectTasks({ onOpenApp }: ProjectTasksProps) {
                   <div id={detailId} hidden={!isExpanded} className={styles.workDetail}>
                     <p>{work.description}</p>
                     <div className={styles.detailFooter}>
-                      {"href" in work ? <a href={work.href} target="_blank" rel="noopener noreferrer" className={styles.detailLink}>{work.linkLabel}<span aria-hidden="true">↗</span></a> : onOpenApp ? <button type="button" className={styles.detailLink} onClick={() => onOpenApp("about")}>About Storm<span aria-hidden="true">↗</span></button> : <span className={styles.roleDetail}>{work.detail}</span>}
+                      {"href" in work ? <a href={work.href} target="_blank" rel="noopener noreferrer" className={styles.detailLink}>{work.linkLabel}<span aria-hidden="true">↗</span></a> : onOpenApp && <button type="button" className={styles.detailLink} onClick={() => onOpenApp("about")}>About Storm<span aria-hidden="true">↗</span></button>}
                     </div>
                   </div>
                 </article>
               );
             })}
           </div>
-          <div className={styles.statusNote}><span aria-hidden="true">◇</span> Portfolio status · not live system activity</div>
         </div>
 
       </div>
-      <footer className={styles.footer}><span className={styles.footerMark} aria-hidden="true">▦</span><span>PROJECT MANAGER</span><span>2 current items</span></footer>
     </section>
   );
 }

@@ -53,16 +53,6 @@ export function AppGlyph({ glyph, size = 32 }: { glyph: string; size?: number })
   </svg>;
 }
 
-export function Playground({ onOpenApp }: { onOpenApp?: (id: string) => void }) {
-  const [filter, setFilter] = useState("All");
-  return <div className="playground-app">
-
-    <div className="app-filters" aria-label="Filter apps">{["All", "Explore", "Make", "Unwind", "System"].map(category => <button key={category} aria-pressed={filter === category} onClick={() => setFilter(category)}>{category}</button>)}</div>
-    <div className="app-grid">{portfolioApps.filter(app => app.category !== "Games" && (filter === "All" || app.category === filter)).map(app => <button className="app-card" key={app.id} onClick={() => onOpenApp?.(app.id)}><AppGlyph glyph={app.glyph} size={36}/><span><strong>{app.name}</strong></span></button>)}</div>
-
-  </div>;
-}
-
 /** Pixel-art magnifying glass: a chunky lens ring and a stepped handle. */
 export function PixelGlass({ size = 18 }: { size?: number }) {
   return <svg className="pixel-glass" width={size} height={size} viewBox="0 0 12 12" shapeRendering="crispEdges" aria-hidden="true" fill="currentColor">

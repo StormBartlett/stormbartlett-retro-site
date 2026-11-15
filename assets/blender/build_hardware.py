@@ -127,6 +127,14 @@ def classic():
     cube('Carry handle inset',(0,1.297 if opt.classic_style=='rounded' else 1.218,-.85),(.88,.013,.32),'rubber',.006)
     cube('Carry handle bridge',(0,1.308 if opt.classic_style=='rounded' else 1.234,-.82),(.94,.028,.10),'ivory',.012)
     for i in range(10):cube('Rear exhaust '+str(i),(-.72+i*.16,.65,-1.48),(.055,.65,.012),'ink',.006)
+    # Back panel, seen when the visitor orbits behind: a recessed port strip, power inlet and rocker.
+    cube('Rear port strip',(0,-.50,-1.482),(1.56,.30,.014),'edge',.006)
+    for i in range(3):cube('Rear serial port '+str(i),(.58-i*.26,-.50,-1.49),(.17,.07,.012),'rubber',0)
+    for i in range(2):cyl('Rear round port '+str(i),(-.16-i*.17,-.50,-1.49),.042,.012,'rubber',verts=16)
+    cyl('Rear audio jack',(-.56,-.50,-1.49),.02,.012,'rubber',verts=12)
+    cube('Rear power inlet',(.70,-1.08,-1.486),(.24,.17,.02),'rubber',.008)
+    cube('Rear power rocker surround',(-.70,-1.08,-1.486),(.13,.19,.02),'rubber',.008)
+    cube('Rear power rocker',(-.70,-1.075,-1.497),(.085,.13,.012),'edge',.006,rotation=(.12,0,0))
     cube('Lower plinth',(0,-1.46,-.69),(2.04,.13,1.45),'edge',.035)
     for x in (-.76,.76):
       for z in (-1.16,-.2):cube('Rubber foot',(x,-1.525,z),(.22,.06,.22),'rubber',.025)
@@ -175,6 +183,12 @@ def pc():
     cube('IPS screen backing',(0,0,.082),(3.50,1.969,.012),'black',.003,parent=display)
     cyl('Monitor standby',(1.68,-1.025,.09),.012,.009,'teal',parent=display,verts=12)
     text('Monitor lower mark','STORM',(-1.46,-1.025,.09),.038,'label',parent=display)
+    # Back of the display: electronics hump with exhaust slots, a port bay, the mark and the stand's neck.
+    cube('Monitor rear hump',(0,-.06,-.135),(1.70,.96,.07),'graphite',.03,parent=display)
+    for i in range(11):cube('Monitor rear slot '+str(i),(-.5+i*.1,.24,-.172),(.055,.20,.006),'black',0,parent=display)
+    cube('Monitor port bay',(0,-.36,-.172),(.82,.08,.006),'black',0,parent=display)
+    cube('Monitor stand neck',(0,-.78,-.125),(.17,.62,.05),'silver',.02,parent=display)
+    text('Monitor rear mark','STORM',(0,.72,-.123),.11,'label',parent=display,rotation=(0,math.pi,0))
     cube('Monitor stem',(-.75,-1.13,-.54),(.19,.65,.19),'silver',.04)
     cube('Monitor foot',(-.75,-1.49,-.24),(1.15,.07,.66),'graphite',.035)
     tower=empty('Custom RTX workstation',(2.20,-.20,-.05),rotation=(0,-.25,0))
@@ -213,6 +227,15 @@ def pc():
       cube('DDR diffuser',(-.37,.50,z),(.027,.64,.05),'pink',.008,parent=tower)
     for i in range(2):
       for j in range(8):cube('Braided coolant',(-.25+i*.12,.62+j*.045,-.05-j*.07),(.07,.11,.08),'rubber',.03,parent=tower)
+    # Rear of the case: a closed panel with the PSU grille, exhaust ring, IO shield and slot covers.
+    cube('Rear panel',(0,0,-.735),(1.26,2.26,.02),'graphite',0,parent=tower)
+    cube('PSU rear grille',(.05,-.91,-.75),(.92,.34,.012),'black',0,parent=tower)
+    cube('PSU switch',(-.50,-.91,-.752),(.07,.12,.014),'white',0,parent=tower)
+    cyl('Rear exhaust mesh',(.22,.70,-.748),.25,.012,'black',parent=tower,verts=24)
+    cyl('Rear exhaust hub',(.22,.70,-.752),.07,.012,'silver',parent=tower,verts=16)
+    cube('Rear IO shield',(-.40,.62,-.749),(.22,.78,.012),'silver',0,parent=tower)
+    for i in range(5):cube('Rear IO port '+str(i),(-.40,.90-i*.14,-.757),(.13,.075,.008),'black',0,parent=tower)
+    for i in range(6):cube('Rear slot cover '+str(i),(.05,.18-i*.1,-.749),(.86,.07,.012),'silver',0,parent=tower)
     cube('Front IO',(0,1.246,.38),(.55,.015,.30),'graphite',.008,parent=tower)
     cyl('Power switch',(-.15,1.26,.39),.05,.015,'silver',axis='y',parent=tower)
     for x in (.03,.17):cube('Top USB socket',(x,1.26,.39),(.055,.012,.10),'black',.006,parent=tower)

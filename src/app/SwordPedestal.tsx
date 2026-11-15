@@ -5,6 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as React from "react";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { stoneGeometry, STONE_TOP, swordBladeGeometry } from "./peripheralGeometry";
 import { addPixelDissolve, HARDWARE_FX, SWITCH_POSITION, transitionAmount, type TransitionMode } from "./hardwareScene";
 import styles from "./HardwareGallery.module.css";
 
@@ -12,7 +13,6 @@ export type SwitchTransition = { from: string; to: string; start: number; mode: 
 /** Short sword reactions: a refusal rattle, a hint hum on the last machine, and the pull itself. */
 export type SwordCue = { kind: "rattle" | "hum" | "pull"; start: number };
 
-const STONE_TOP = .38;
 /** Guard height above the desk; .55 of blade shows above the stone, .35 stays buried. */
 const GUARD_Y = .93;
 const PULL_LIFT = .58;
@@ -49,37 +49,50 @@ export function cueActive(now: number, cue: SwordCue | null) {
   return !!cue && (cue.kind === "pull" || now - cue.start < CUE_MS[cue.kind]);
 }
 
-function plaqueTexture(index: number, label: string) {
-  const canvas = document.createElement("canvas"); canvas.width = 256; canvas.height = 96;
+/** Brass plate with the machine's number engraved; the name lives in the accessible label. */
+function plaqueTexture(index: number) {
+  const canvas = document.createElement("canvas"); canvas.width = 192; canvas.height = 96;
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#1a1f26"; ctx.fillRect(0, 0, 256, 96);
-  ctx.strokeStyle = "#b8924a"; ctx.lineWidth = 6; ctx.strokeRect(5, 5, 246, 86);
+  ctx.fillStyle = "#b8924a"; ctx.fillRect(0, 0, 192, 96);
+  ctx.fillStyle = "#14181d"; ctx.fillRect(7, 7, 178, 82);
+  ctx.strokeStyle = "#6f5526"; ctx.lineWidth = 2; ctx.strokeRect(8, 8, 176, 80);
   ctx.fillStyle = "#f0cf86"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.font = "bold 34px Georgia, 'Times New Roman', serif"; ctx.fillText(["I", "II", "III"][index] ?? String(index + 1), 128, 34);
-  ctx.font = "bold 21px monospace"; ctx.fillStyle = "#cfd6c0"; ctx.fillText(label.toUpperCase(), 128, 70);
+  ctx.font = "bold 58px Georgia, 'Times New Roman', serif"; ctx.fillText(["I", "II", "III"][index] ?? String(index + 1), 96, 51);
   const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 4;
   return texture;
 }
 
-/** Original sword geometry built once: tapered blade with a fuller, swept guard, wrapped grip. */
+/** Stone face: centre height, distance from the axis and backward lean of the body tier's flats. */
+const FACE = { y: .22, apothem: .248 * Math.cos(Math.PI / 8), tilt: -Math.atan(.04 * Math.cos(Math.PI / 8) / .19) };
+/** Three carved marks, each a few strokes as [x, y, length, angle]. */
+const RUNES: [number, number, number, number][][] = [
+  [[0, 0, .07, 0], [.012, .014, .034, -.8], [.012, -.012, .034, .8]],
+  [[-.012, 0, .07, 0], [.012, 0, .07, 0], [0, 0, .04, -.75]],
+  [[0, 0, .07, 0], [0, .012, .04, .9], [0, -.012, .04, .9]],
+];
+
+/** Original sword geometry built once: faceted blade, winged guard, wrapped grip, brass fittings. */
 function useSwordParts() {
   const parts = React.useMemo(() => {
-    const blade = new THREE.Shape();
-    blade.moveTo(-.043, 0); blade.lineTo(-.037, -.72); blade.lineTo(0, -.9); blade.lineTo(.037, -.72); blade.lineTo(.043, 0); blade.closePath();
-    const bladeGeometry = new THREE.ExtrudeGeometry(blade, { depth: .012, bevelEnabled: true, bevelThickness: .006, bevelSize: .006, bevelSegments: 1, steps: 1 });
-    bladeGeometry.translate(0, 0, -.006);
     const guard = new THREE.Shape();
-    guard.moveTo(-.2, .085); guard.quadraticCurveTo(-.1, .03, 0, .05); guard.quadraticCurveTo(.1, .03, .2, .085);
-    guard.quadraticCurveTo(.215, .05, .19, .04); guard.quadraticCurveTo(.1, -.01, 0, -.012); guard.quadraticCurveTo(-.1, -.01, -.19, .04);
-    guard.quadraticCurveTo(-.215, .05, -.2, .085);
-    const guardGeometry = new THREE.ExtrudeGeometry(guard, { depth: .036, bevelEnabled: true, bevelThickness: .01, bevelSize: .008, bevelSegments: 2, steps: 1, curveSegments: 8 });
-    guardGeometry.translate(0, 0, -.018);
-    const wraps = mergeGeometries([0, 1, 2, 3, 4].map(i => new THREE.TorusGeometry(.0225, .005, 4, 14).rotateX(Math.PI / 2).translate(0, .075 + i * .04, 0)))!;
-    const runes = mergeGeometries(Array.from({ length: 8 }, (_, i) => {
-      const angle = i * Math.PI / 4 + Math.PI / 8;
-      return new THREE.BoxGeometry(i % 2 ? .05 : .03, .022, .006).translate(0, 0, .231).rotateY(angle).translate(0, .25, 0);
-    }))!;
-    return { bladeGeometry, guardGeometry, wraps, runes };
+    guard.moveTo(0, .052); guard.quadraticCurveTo(.11, .03, .215, .105); guard.quadraticCurveTo(.2, .03, .1, 0);
+    guard.lineTo(.05, -.012); guard.lineTo(0, -.07); guard.lineTo(-.05, -.012); guard.lineTo(-.1, 0);
+    guard.quadraticCurveTo(-.2, .03, -.215, .105); guard.quadraticCurveTo(-.11, .03, 0, .052);
+    const guardGeometry = new THREE.ExtrudeGeometry(guard, { depth: .03, bevelEnabled: true, bevelThickness: .009, bevelSize: .007, bevelSegments: 2, steps: 1, curveSegments: 10 });
+    guardGeometry.translate(0, 0, -.015);
+    const lathe = (points: [number, number][], segments = 16) => new THREE.LatheGeometry(points.map(([r, y]) => new THREE.Vector2(r, y)), segments);
+    const brass = mergeGeometries([
+      lathe([[0, .046], [.031, .046], [.031, .064], [.022, .07]]),
+      lathe([[.02, .25], [.03, .254], [.03, .266], [.021, .272], [.036, .288], [.041, .304], [.035, .322], [.019, .333], [0, .336]]),
+    ])!;
+    const grip = lathe([[.02, .066], [.0235, .12], [.0235, .19], [.02, .252]], 12);
+    const wraps = mergeGeometries([0, 1, 2, 3, 4, 5, 6].map(i => new THREE.TorusGeometry(.0235, .0034, 4, 14).rotateX(Math.PI / 2).translate(0, .09 + i * .023, 0)))!;
+    const gems = mergeGeometries([1, -1].map(side => new THREE.OctahedronGeometry(.024).scale(1, 1.25, .55).translate(0, .012, side * .026)))!;
+    const runes = mergeGeometries(Array.from({ length: 7 }, (_, face) => RUNES[face % RUNES.length].map(([x, y, length, angle]) =>
+      new THREE.BoxGeometry(.008, length, .004).rotateZ(angle).translate(x, y, 0).rotateX(FACE.tilt).translate(0, FACE.y, FACE.apothem + .001).rotateY((face + 1) * Math.PI / 4))).flat())!;
+    // Flat faces, not corners, point at the camera.
+    const stone = stoneGeometry().rotateY(Math.PI / 8);
+    return { bladeGeometry: swordBladeGeometry(), guardGeometry, brass, grip, wraps, gems, runes, stone };
   }, []);
   React.useEffect(() => () => Object.values(parts).forEach(geometry => geometry.dispose()), [parts]);
   return parts;
@@ -93,8 +106,8 @@ export function SwordPedestal({ index, label, isLast, busy, onForward, onPull, o
   reveal?: { value: number; outgoing?: { value: number } };
 }) {
   const invalidate = useThree(state => state.invalidate);
-  const { bladeGeometry, guardGeometry, wraps, runes } = useSwordParts();
-  const plaque = React.useMemo(() => plaqueTexture(index, label), [index, label]);
+  const { bladeGeometry, guardGeometry, brass, grip, wraps, gems, runes, stone } = useSwordParts();
+  const plaque = React.useMemo(() => plaqueTexture(index), [index]);
   React.useEffect(() => () => plaque.dispose(), [plaque]);
   const root = React.useRef<THREE.Group>(null!), sword = React.useRef<THREE.Group>(null!);
   const gem = React.useRef<THREE.MeshStandardMaterial>(null!), rune = React.useRef<THREE.MeshStandardMaterial>(null!), button = React.useRef<THREE.MeshStandardMaterial>(null!);
@@ -129,34 +142,26 @@ export function SwordPedestal({ index, label, isLast, busy, onForward, onPull, o
   const stop = (event: React.PointerEvent | React.MouseEvent) => event.stopPropagation();
   const drag = React.useRef<{ id: number; y: number; done: boolean } | null>(null);
   const pull = () => { onPull(); invalidate(); };
-  const steel = "#e8eff4";
+  const gold = <meshStandardMaterial color="#c9a24d" metalness={.85} roughness={.3} envMapIntensity={1.3} />;
   return <group position={[SWITCH_POSITION[0], deskY, SWITCH_POSITION[2]]} ref={root}>
-    {/* Stone: stepped octagonal plinth, body and cap; flat faces point at the camera. */}
-    <group rotation={[0, Math.PI / 8, 0]}>
-      <mesh position={[0, .06, 0]} castShadow receiveShadow><cylinderGeometry args={[.31, .34, .12, 8]} /><meshStandardMaterial color="#8d8f8a" roughness={.92} flatShading /></mesh>
-      <mesh position={[0, .22, 0]} castShadow receiveShadow><cylinderGeometry args={[.225, .265, .2, 8]} /><meshStandardMaterial color="#9a9c95" roughness={.95} flatShading /></mesh>
-      <mesh position={[0, .35, 0]} castShadow receiveShadow><cylinderGeometry args={[.255, .235, .06, 8]} /><meshStandardMaterial color="#a7a89f" roughness={.88} flatShading /></mesh>
-      <mesh geometry={runes} rotation={[0, -Math.PI / 8, 0]}><meshStandardMaterial ref={rune} color="#1d3a4a" emissive="#57d6ff" emissiveIntensity={.05} roughness={.6} /></mesh>
-    </group>
+    {/* Stone: one stepped octagonal plinth with carved marks on every face but the plaque's. */}
+    <mesh geometry={stone} castShadow receiveShadow><meshStandardMaterial vertexColors roughness={.96} /></mesh>
+    <mesh geometry={runes}><meshStandardMaterial ref={rune} color="#1d3a4a" emissive="#57d6ff" emissiveIntensity={.05} roughness={.6} /></mesh>
     {/* Slot in the cap where the blade enters. */}
-    <mesh position={[0, STONE_TOP + .001, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[.11, .035]} /><meshBasicMaterial color="#1c1d1b" /></mesh>
-    {/* Plaque and the forward button, set into the base. */}
-    <mesh position={[0, .225, .238]}><planeGeometry args={[.25, .094]} /><meshBasicMaterial map={plaque} toneMapped={false} /></mesh>
-    <group position={[0, .062, .318]}>
-      <mesh rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[.07, .075, .022, 20]} /><meshStandardMaterial color="#b58d45" metalness={.75} roughness={.32} /></mesh>
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, .016]}><cylinderGeometry args={[.05, .052, .02, 20]} /><meshStandardMaterial ref={button} color="#a33d2a" emissive={busy ? "#ffb347" : "#ff6a3d"} emissiveIntensity={.45} roughness={.5} /></mesh>
+    <mesh position={[0, STONE_TOP + .001, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[.12, .036]} /><meshBasicMaterial color="#151614" /></mesh>
+    {/* Plaque and the forward button, set into the front faces. */}
+    <mesh position={[0, FACE.y, FACE.apothem + .002]} rotation={[FACE.tilt, 0, 0]}><planeGeometry args={[.15, .075]} /><meshBasicMaterial map={plaque} toneMapped={false} /></mesh>
+    <group position={[0, .058, .312]} rotation={[-.14, 0, 0]}>
+      <mesh rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[.066, .074, .024, 24]} />{gold}</mesh>
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, .008]} scale={[1, .55, 1]}><sphereGeometry args={[.052, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2]} /><meshStandardMaterial ref={button} color="#b23a26" emissive={busy ? "#ffb347" : "#ff6a3d"} emissiveIntensity={.45} roughness={.35} /></mesh>
     </group>
     <group ref={sword} position={[0, GUARD_Y, 0]}>
-      <mesh geometry={bladeGeometry} castShadow><meshStandardMaterial color={steel} metalness={.6} roughness={.24} envMapIntensity={1.5} /></mesh>
-      <mesh position={[0, -.36, .0125]}><boxGeometry args={[.011, .62, .002]} /><meshStandardMaterial color="#8fa2b0" metalness={.9} roughness={.3} /></mesh>
-      <mesh position={[0, -.36, -.0125]}><boxGeometry args={[.011, .62, .002]} /><meshStandardMaterial color="#8fa2b0" metalness={.9} roughness={.3} /></mesh>
-      <mesh geometry={guardGeometry} castShadow><meshStandardMaterial color="#284a86" metalness={.55} roughness={.3} /></mesh>
-      {[-.205, .205].map(x => <mesh key={x} position={[x, .07, 0]}><sphereGeometry args={[.022, 10, 8]} /><meshStandardMaterial color="#caa24c" metalness={.8} roughness={.3} /></mesh>)}
-      <mesh position={[0, .035, .03]}><icosahedronGeometry args={[.021, 1]} /><meshStandardMaterial ref={gem} color="#2b8fb0" emissive="#6ee6ff" emissiveIntensity={.2} roughness={.15} flatShading /></mesh>
-      <mesh position={[0, .155, 0]} castShadow><cylinderGeometry args={[.019, .022, .2, 10]} /><meshStandardMaterial color="#1c2847" roughness={.85} /></mesh>
-      <mesh geometry={wraps}><meshStandardMaterial color="#3a5aa0" roughness={.7} /></mesh>
-      <mesh position={[0, .263, 0]}><cylinderGeometry args={[.03, .024, .016, 12]} /><meshStandardMaterial color="#caa24c" metalness={.8} roughness={.3} /></mesh>
-      <mesh position={[0, .3, 0]} castShadow><sphereGeometry args={[.036, 14, 10]} /><meshStandardMaterial color="#caa24c" metalness={.82} roughness={.28} /></mesh>
+      <mesh geometry={bladeGeometry} castShadow><meshStandardMaterial vertexColors metalness={.82} roughness={.2} envMapIntensity={1.6} /></mesh>
+      <mesh geometry={guardGeometry} castShadow><meshStandardMaterial color="#27488a" metalness={.6} roughness={.28} envMapIntensity={1.2} /></mesh>
+      <mesh geometry={gems}><meshStandardMaterial ref={gem} color="#2b8fb0" emissive="#6ee6ff" emissiveIntensity={.2} roughness={.12} flatShading /></mesh>
+      <mesh geometry={grip} castShadow><meshStandardMaterial color="#1a2542" roughness={.88} /></mesh>
+      <mesh geometry={wraps}><meshStandardMaterial color="#3d5ea6" roughness={.7} /></mesh>
+      <mesh geometry={brass} castShadow>{gold}</mesh>
       {/* Hidden handle target: drag up (or click/Enter) to pull the sword. */}
       <Html transform center wrapperClass={styles.htmlPortal} portal={portalRef} position={[0, .15, .05]} scale={.36} zIndexRange={[150, 101]}>
         <button type="button" className={styles.swordHit} aria-label="Pull the sword" title=""
@@ -174,7 +179,11 @@ export function SwordPedestal({ index, label, isLast, busy, onForward, onPull, o
 }
 
 /** Blue time-warp: rising motes, a light column from the sword and a ring across the desk. */
-export function TimeWarpFX({ transition, cue, reduced, deskY: targetDeskY, oldDeskY }: { transition: React.RefObject<SwitchTransition | null>; cue: React.RefObject<SwordCue | null>; reduced: boolean; deskY: number; oldDeskY: number }) {
+export function TimeWarpFX({ transition, cue, reduced, deskY: targetDeskY, oldDeskY, forming = false }: {
+  transition: React.RefObject<SwitchTransition | null>; cue: React.RefObject<SwordCue | null>; reduced: boolean; deskY: number; oldDeskY: number;
+  /** First load, model still arriving: hold a soft version of the warp (motes, column, slow rings) until it lands. */
+  forming?: boolean;
+}) {
   const count = 320;
   const motes = React.useMemo(() => {
     const random = seeded(1986), geometry = new THREE.BufferGeometry(), seeds = new Float32Array(count * 4), position = new Float32Array(count * 3);
@@ -216,11 +225,15 @@ export function TimeWarpFX({ transition, cue, reduced, deskY: targetDeskY, oldDe
   React.useEffect(() => () => { motes.geometry.dispose(); motes.material.dispose(); beam.dispose(); ring.dispose(); }, [motes, beam, ring]);
   const group = React.useRef<THREE.Group>(null!), column = React.useRef<THREE.Mesh>(null!), wave = React.useRef<THREE.Mesh>(null!), light = React.useRef<THREE.PointLight>(null!);
   const { gl } = useThree();
-  useFrame(() => {
+  const idle = React.useRef(0);
+  useFrame((_, delta) => {
     const now = performance.now(), change = transition.current, warp = change?.mode === "warp" ? change : null;
     const t = warp ? transitionAmount(now, warp.start, reduced, warp.duration) : 0;
     const pose = swordPose(now, cue.current, change, reduced);
-    const glow = reduced ? 0 : warp ? Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.08)), .7) : pose.lift / PULL_LIFT * .35;
+    // Eases in while forming and back out under the warp-in, so the two never step.
+    idle.current = THREE.MathUtils.damp(idle.current, forming && !reduced ? .42 : 0, 5, Math.min(delta, .05));
+    if (!forming && idle.current < .004) idle.current = 0;
+    const glow = reduced ? 0 : Math.max(idle.current * (.88 + .12 * Math.sin(now / 300)), warp ? Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.08)), .7) : pose.lift / PULL_LIFT * .35);
     HARDWARE_FX.glow.value = glow;
     group.current.visible = glow > .002;
     if (!group.current.visible) { light.current.intensity = 0; return; }
@@ -230,7 +243,7 @@ export function TimeWarpFX({ transition, cue, reduced, deskY: targetDeskY, oldDe
     beam.uniforms.glow.value = glow; beam.uniforms.time.value = time;
     column.current.position.set(SWITCH_POSITION[0], deskY + STONE_TOP + 2.6, SWITCH_POSITION[2]);
     column.current.scale.set(.6 + glow * 1.2, 1, .6 + glow * 1.2);
-    ring.uniforms.glow.value = glow; ring.uniforms.phase.value = warp ? Math.min(1, t * 1.25) : 0;
+    ring.uniforms.glow.value = glow; ring.uniforms.phase.value = warp ? Math.min(1, t * 1.25) : idle.current ? (time * .4) % 1 : 0;
     wave.current.position.set(SWITCH_POSITION[0], deskY + .012, SWITCH_POSITION[2]);
     light.current.position.set(SWITCH_POSITION[0], deskY + 1.2, SWITCH_POSITION[2] + .3);
     light.current.intensity = glow * 7;
