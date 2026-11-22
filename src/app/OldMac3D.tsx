@@ -300,10 +300,91 @@ function SceneFraming({controlsRef,active}: {controlsRef:ControlsRef;active:bool
   const aspect=Math.round(size.width/Math.max(1,size.height)*10)/10;
   React.useEffect(()=>{
     // Portrait phones fit the pedestal-to-mouse span rather than the whole desk.
-    const {position,target:[x,y,z]}=frontCamera(aspect);
+    const {position,target:[x,y,z]}=frontCamera(aspect),controls=controlsRef.current;
     camera.position.set(...position);
-    controlsRef.current?.target.set(x,y,z);controlsRef.current?.update();camera.lookAt(x,y,z);invalidate();
+    // Zoom out to at least half as far again as the front view; narrow phones frame from far back.
+    if(controls){controls.maxDistance=Math.max(24,camera.position.distanceTo(new THREE.Vector3(x,y,z))*1.5);controls.target.set(x,y,z);controls.update();}
+    camera.lookAt(x,y,z);invalidate();
   },[camera,aspect,controlsRef,invalidate,active]);
+  return null;
+}
+
+/**
+ * Scroll and pinch zoom, eased. A plain scroll over the live screen still scrolls the desktop;
+ * a trackpad pinch (ctrl + wheel) and a two-finger pinch zoom from anywhere on the stage, the
+ * screen included, so the browser never zooms the page instead.
+ */
+function ZoomGestures({controlsRef,stageRef,screenRef,active}:{controlsRef:ControlsRef;stageRef:React.RefObject<HTMLDivElement>;screenRef:React.RefObject<HTMLDivElement>;active:boolean}) {
+  const {camera,invalidate}=useThree();
+  const goal=React.useRef<number|null>(null);
+  const offset=React.useMemo(()=>new THREE.Vector3(),[]);
+  React.useEffect(()=>{
+    const stage=stageRef.current;
+    if(!stage||!active)return;
+    const current=()=>{const controls=controlsRef.current;return goal.current??(controls?camera.position.distanceTo(controls.target):0);};
+    const zoomTo=(distance:number)=>{
+      const controls=controlsRef.current;
+      if(!controls||!Number.isFinite(distance))return;
+      goal.current=THREE.MathUtils.clamp(distance,controls.minDistance,controls.maxDistance);invalidate();
+    };
+    const wheel=(event:WheelEvent)=>{
+      if(!event.ctrlKey&&screenRef.current?.contains(event.target as Node))return;
+      event.preventDefault();
+      const unit=event.deltaMode===1?16:event.deltaMode===2?400:1;
+      zoomTo(current()*Math.exp(THREE.MathUtils.clamp(event.deltaY*unit,-240,240)*(event.ctrlKey?.01:.0012)));
+    };
+    let pinch:{span:number;from:number}|null=null;
+    const span=(touches:TouchList)=>Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY);
+    const start=(event:TouchEvent)=>{
+      if(event.touches.length!==2)return;
+      pinch={span:Math.max(1,span(event.touches)),from:current()};
+      // A second finger turns whatever the first one was doing (a drag, an orbit) into a pinch.
+      window.dispatchEvent(new Event("storm-hardware-cancel"));
+    };
+    const move=(event:TouchEvent)=>{
+      if(!pinch||event.touches.length<2)return;
+      if(event.cancelable)event.preventDefault();
+      zoomTo(pinch.from*pinch.span/Math.max(1,span(event.touches)));
+    };
+    const end=(event:TouchEvent)=>{if(event.touches.length<2)pinch=null;};
+    const gesture=(event:Event)=>event.preventDefault();
+    const options={passive:false,capture:true};
+    stage.addEventListener("wheel",wheel,options);
+    stage.addEventListener("touchstart",start,options);stage.addEventListener("touchmove",move,options);
+    stage.addEventListener("touchend",end,options);stage.addEventListener("touchcancel",end,options);
+    // Safari's own pinch gesture would scale the page.
+    stage.addEventListener("gesturestart",gesture,options);stage.addEventListener("gesturechange",gesture,options);
+    return()=>{
+      stage.removeEventListener("wheel",wheel,options);
+      stage.removeEventListener("touchstart",start,options);stage.removeEventListener("touchmove",move,options);
+      stage.removeEventListener("touchend",end,options);stage.removeEventListener("touchcancel",end,options);
+      stage.removeEventListener("gesturestart",gesture,options);stage.removeEventListener("gesturechange",gesture,options);
+      pinch=null;
+    };
+  },[stageRef,screenRef,controlsRef,camera,invalidate,active]);
+  // After OrbitControls' own update (priority -1): only the distance changes, never the direction.
+  useFrame((_,delta)=>{
+    const controls=controlsRef.current,target=goal.current;
+    if(!controls||target===null)return;
+    offset.copy(camera.position).sub(controls.target);
+    const distance=offset.length(),next=THREE.MathUtils.damp(distance,target,16,Math.min(delta,.05));
+    const done=Math.abs(next-target)<.003;
+    offset.setLength(done?target:next);camera.position.copy(controls.target).add(offset);
+    if(done)goal.current=null;
+    invalidate();
+  });
+  return null;
+}
+
+/**
+ * The shadow map only redraws on request (autoUpdate is off). Rigs request it on every frame of a
+ * swap or the intro, but the last of those frames is still mid-dissolve, and the final state
+ * (outgoing rig hidden, incoming rig whole) was never redrawn: each device kept whichever
+ * in-between shadow it happened to capture. Redraw once whenever the scene settles.
+ */
+function ShadowRefresh({settled}:{settled:string}) {
+  const {gl,invalidate}=useThree();
+  React.useEffect(()=>{gl.shadowMap.needsUpdate=true;invalidate();},[settled,gl,invalidate]);
   return null;
 }
 
@@ -472,6 +553,13 @@ function ComputerRig({profile,current,previous,transition,onReady,interaction,mo
     const fixed=alignedDeskObstacles(profile);
     return new Map([...fixed,switchObstacle(profile)].map((body,i)=>[`fixed-${i}`,body]));
   },[profile]);
+  // Devices roam the whole desk top (in this rig's scaled space); the computer and the sword's
+  // stone are the only fixed things on it. The mouse's pad is just what maps onto the screen.
+  const desk=React.useMemo(()=>{
+    const {offset,scale}=alignment,[cx,,cz]=DESK_SLAB.center,hx=DESK_SLAB.size[0]/2-.05,hz=DESK_SLAB.size[2]/2-.05;
+    return {minX:(cx-hx-offset.x)/scale,maxX:(cx+hx-offset.x)/scale,minZ:(cz-hz-offset.z)/scale,maxZ:(cz+hz-offset.z)/scale};
+  },[alignment]);
+  const pad=React.useMemo(()=>({minX:profile.bounds[0],maxX:profile.bounds[1],minZ:profile.bounds[2],maxZ:profile.bounds[3]}),[profile]);
   const shown=profile.asset===current||profile.asset===previous;
   // Compile the whole rig (case, keyboard, mouse, contact shadow) against the studio's lights and
   // environment, not just the GLB: compile walks hidden objects, so the root can stay invisible.
@@ -525,8 +613,8 @@ function ComputerRig({profile,current,previous,transition,onReady,interaction,mo
       </group>
     </group>
     {shown&&<>
-      {profile.keyboard&&<RetroKeyboard position={keyboard} tone={profile.id==="rgb"?"modern":"classic"} bounds={{minX:-2.5,maxX:3.3,minZ:-1.9,maxZ:2.3}} physics={physics} onInteractionChange={interaction}/>}
-      <RetroMouse position={mouse} bounds={{minX:profile.bounds[0],maxX:profile.bounds[1],minZ:profile.bounds[2],maxZ:profile.bounds[3]}} tone={profile.id==="classic"?"classic":"modern"} shape={profile.id==="rgb"?"ergo":profile.id==="laptop"?"pebble":"box"} physics={physics} onInteractionChange={interaction}/>
+      {profile.keyboard&&<RetroKeyboard position={keyboard} tone={profile.id==="rgb"?"modern":"classic"} bounds={desk} physics={physics} onInteractionChange={interaction}/>}
+      <RetroMouse position={mouse} bounds={desk} pad={pad} tone={profile.id==="classic"?"classic":"modern"} shape={profile.id==="rgb"?"ergo":profile.id==="laptop"?"pebble":"box"} physics={physics} onInteractionChange={interaction}/>
     </>}
   </group>;
 }
@@ -581,6 +669,7 @@ export default function OldMac3D({onScreenSlot,onScreenTap,onFirstFrame,active=t
   const screenPinRef=React.useRef<HTMLDivElement>(null!),screenLayerRef=React.useRef<HTMLDivElement>(null!),invalidateRef=React.useRef<()=>void>(()=>{});
   const screenResized=React.useCallback(()=>{invalidateRef.current();window.dispatchEvent(new Event("resize"));},[]);
   const eventSourceRef=React.useRef<HTMLDivElement>(null!);
+  const stageRef=React.useRef<HTMLDivElement>(null!);
   const screenOverlayRef=React.useRef<HTMLDivElement>(null!);
   const tapRef=React.useRef(onScreenTap);
   const transition=React.useRef<Transition|null>(null);
@@ -659,7 +748,7 @@ export default function OldMac3D({onScreenSlot,onScreenTap,onFirstFrame,active=t
   const screen=React.useMemo(()=>screenFor(current),[current]);
   const fromScreen=React.useMemo(()=>previous?screenFor(previous):screen,[previous,screen]);
   if(contextFailed)throw new Error("The graphics context could not be restored.");
-  return <div className={`r3f-wrap ${styles.stage}`} data-intro={intro} data-hardware={current.id} data-prepared-models={prepared.length} data-transition={previous?transition.current?.mode??"dissolve":"idle"}>
+  return <div ref={stageRef} className={`r3f-wrap ${styles.stage}`} data-intro={intro} data-hardware={current.id} data-prepared-models={prepared.length} data-transition={previous?transition.current?.mode??"dissolve":"idle"}>
     <div ref={screenLayerRef} className={styles.screenLayer}>
       {/* Never keyed by hardware: the desktop's DOM host and all app state survive every change. */}
       <div ref={screenPinRef} className={styles.screenPin}>
@@ -682,9 +771,11 @@ export default function OldMac3D({onScreenSlot,onScreenTap,onFirstFrame,active=t
         <SharedDesk current={current} previous={previous} transition={transition} reduced={reduced} reveal={introReveal}/>
         <pointLight position={[2.5,.4,.6]} color="#77f7dd" intensity={current.id==="rgb"?1.3:0} distance={2.4}/><pointLight position={[2,-.3,.5]} color="#be91ff" intensity={current.id==="rgb"?.8:0} distance={2}/>
         <ScreenPin screen={screen} from={fromScreen} transition={transition} pinRef={screenPinRef} hitRef={eventSourceRef} reduced={reduced} introDone={intro==="done"} invalidateRef={invalidateRef} onSettled={screenResized}/>
-        <OrbitControls makeDefault ref={controlsRef} enabled={active} enableDamping dampingFactor={.09} enablePan={false} minDistance={1.5} maxDistance={24} minPolarAngle={Math.PI/4} maxPolarAngle={Math.PI/2.02}/>
+        <OrbitControls makeDefault ref={controlsRef} enabled={active} enableDamping dampingFactor={.09} enablePan={false} enableZoom={false} minDistance={3} maxDistance={24} minPolarAngle={Math.PI/4} maxPolarAngle={Math.PI/2.02}/>
+        <ZoomGestures controlsRef={controlsRef} stageRef={stageRef} screenRef={screenLayerRef} active={active}/>
         <SceneFraming controlsRef={controlsRef} active={active}/>
         <ScreenAlignmentGuard overlayRef={screenLayerRef} screen={screen} transition={transition}/>
+        <ShadowRefresh settled={`${current.asset}|${previous?.asset??""}|${intro}`}/>
         <SceneTicker version={current.asset+intro} moving={moving} spinning={current.id==="rgb"||previous?.id==="rgb"} transition={transition} reduced={reduced} onComplete={complete}/>
       </Canvas>
     </div>

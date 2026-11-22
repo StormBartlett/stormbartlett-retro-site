@@ -241,7 +241,7 @@ def pc():
     for x in (.03,.17):cube('Top USB socket',(x,1.26,.39),(.055,.012,.10),'black',.006,parent=tower)
     for x in (-.45,.45):
       for z in (-.5,.5):cube('Case rubber foot',(x,-1.29,z),(.17,.13,.20),'rubber',.016,parent=tower)
-    return dict(id='rgb',label='RTX Workstation',subtitle='Glass side · dual RTX · RGB',asset='/models/studio-pc.glb',screen=dict(position=[-.75,.18,-.337],rotation=[0,0,0],width=3.50,height=1.96875,cssWidth=1120,cssHeight=630,radius=12),framing=dict(target=[.65,-.12,.30],width=7.1,height=4.3,distance=10.2),keyboard=True,mouse=[2.7,-1.54,1.7],bounds=[2.0,3.6,.7,2.4])
+    return dict(id='rgb',label='RTX Workstation',subtitle='Glass side · dual RTX · RGB',asset='/models/studio-pc.glb',screen=dict(position=[-.75,.18,-.337],rotation=[0,0,0],width=3.50,height=1.96875,cssWidth=1120,cssHeight=630,radius=12),framing=dict(target=[.65,-.12,.30],width=7.1,height=4.3,distance=10.2),keyboard=True,mouse=[1.1,-1.54,1.45],bounds=[.8,2.4,1.25,2.65])
 
 profiles=[]
 for factory,name in [(classic,'studio-mac'),(laptop,'studio-laptop'),(pc,'studio-pc')]:

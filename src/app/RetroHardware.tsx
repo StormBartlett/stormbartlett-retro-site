@@ -5,7 +5,7 @@
 import * as React from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
-import { moveOnDesk, rotatedFootprint, type DeskBody, type DeskWorld } from "./deskPhysics";
+import { fits, moveOnDesk, rotatedFootprint, transferMomentum, type DeskBody, type DeskWorld } from "./deskPhysics";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { applyPlasticFinish, boxProjectUVs } from "./hardwareScene";
 import { shellBand, shellGeometry, shellPoint, shellStrip, type ShellSpec } from "./peripheralGeometry";
@@ -19,14 +19,17 @@ export type RetroHardwareProps = {
   shape?: "box" | "pebble" | "ergo";
   physics?: DeskWorld;
   rotationY?: number;
+  /** The device's whole footprint stays inside this area: the desk top, in parent coordinates. */
   bounds?: DeskBounds;
+  /** Mouse only: the stretch of desk that maps onto the screen, edge to edge, for its cursor. */
+  pad?: DeskBounds;
   onInteractionChange?: (active: boolean) => void;
 };
 
 const KEYBOARD_POSITION: [number, number, number] = [0, -0.94, 1.45];
 const MOUSE_POSITION: [number, number, number] = [1.7, -0.94, 1.42];
-const KEYBOARD_BOUNDS: DeskBounds = { minX: -0.75, maxX: 0.65, minZ: 0.85, maxZ: 2.3 };
-const MOUSE_BOUNDS: DeskBounds = { minX: 0.85, maxX: 2.65, minZ: 0.7, maxZ: 2.35 };
+const DESK_AREA: DeskBounds = { minX: -4.3, maxX: 5.2, minZ: -2.4, maxZ: 3.1 };
+const MOUSE_PAD: DeskBounds = { minX: 0.85, maxX: 2.65, minZ: 0.7, maxZ: 2.35 };
 const NO_RAYCAST = () => null;
 const KEY_Y = 0.143;
 const KEY_LABEL_Y = KEY_Y + 0.0445;
@@ -54,19 +57,38 @@ type PointerCaptureTarget = {
 };
 
 /** Pointer capture plus window fallbacks also covers a release outside the canvas. */
-function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: number; angle: number }, physics?: DeskWorld, onInteractionChange?: (active: boolean) => void) {
+/**
+ * Off the desk, a device that can fall drops, tumbling, into the dark, then lands back at its
+ * starting spot from above. `floor` is where it stops falling; `landing` is the drop back in.
+ */
+type Airborne = { vx: number; vy: number; vz: number; rx: number; rz: number; landing: boolean };
+const GRAVITY = 16;
+
+function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: number; angle: number }, physics?: DeskWorld, onInteractionChange?: (active: boolean) => void, canFall = false) {
   const group = React.useRef<THREE.Group>(null);
   const bodyId = React.useId();
-  const body = React.useRef<DeskBody>({ x: 0, z: 0, ...rotatedFootprint(footprint.width, footprint.depth, footprint.angle) });
+  // The shared body is the truth for position and momentum: other devices push it by writing here.
+  // A device that can fall has no edge to stop at: the desk only decides whether it is held up.
+  const body = React.useRef<DeskBody>({ x: 0, z: 0, movable: true, vx: 0, vz: 0, spin: 0, bounds: canFall ? undefined : bounds, ...rotatedFootprint(footprint.width, footprint.depth, footprint.angle) });
+  const turn = React.useRef(0);
+  const home = React.useRef(new THREE.Vector3());
+  const air = React.useRef<Airborne | null>(null);
   React.useLayoutEffect(() => {
-    if (!group.current || !physics) return;
-    Object.assign(body.current, { x: group.current.position.x, z: group.current.position.z }, rotatedFootprint(footprint.width, footprint.depth, footprint.angle));
+    if (!group.current) return;
+    turn.current = 0;
+    air.current = null;
+    home.current.copy(group.current.position);
+    Object.assign(body.current, { x: group.current.position.x, z: group.current.position.z, vx: 0, vz: 0, spin: 0 }, rotatedFootprint(footprint.width, footprint.depth, footprint.angle));
+    group.current.rotation.set(0, footprint.angle, 0);
+    if (!physics) return;
     physics.set(bodyId, body.current);
     return () => { physics.delete(bodyId); };
   }, [physics, bodyId, footprint.width, footprint.depth, footprint.angle]);
+  const support = React.useRef(bounds);
+  React.useLayoutEffect(() => { support.current = bounds; if (!canFall) body.current.bounds = bounds; }, [bounds, canFall]);
   const { camera, gl, invalidate } = useThree();
-  const latest = React.useRef({ bounds, onInteractionChange });
-  React.useLayoutEffect(() => { latest.current = { bounds, onInteractionChange }; }, [bounds, onInteractionChange]);
+  const latest = React.useRef({ onInteractionChange });
+  React.useLayoutEffect(() => { latest.current = { onInteractionChange }; }, [onInteractionChange]);
   const state = React.useRef({
     pointer: -1,
     downX: 0,
@@ -77,8 +99,6 @@ function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: numb
     lastZ: 0,
     lastTime: 0,
     moved: false,
-    velocityX: 0,
-    velocityZ: 0,
     capture: null as PointerCaptureTarget | null,
     actions: null as GestureActions | null,
     interactionCallback: undefined as InteractionCallback | undefined,
@@ -88,6 +108,16 @@ function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: numb
     ndc: new THREE.Vector2(),
     raycaster: new THREE.Raycaster(),
   });
+  const move = React.useCallback((x: number, z: number) => {
+    const self = body.current;
+    if (!physics) {
+      const b = self.bounds;
+      self.x = b ? THREE.MathUtils.clamp(x, b.minX + self.halfX, b.maxX - self.halfX) : x;
+      self.z = b ? THREE.MathUtils.clamp(z, b.minZ + self.halfZ, b.maxZ - self.halfZ) : z;
+      return { x: self.x, z: self.z, hitX: self.x !== x, hitZ: self.z !== z, pushed: [] };
+    }
+    return moveOnDesk(self, x, z, physics.values());
+  }, [physics]);
 
   const finish = React.useCallback((cancelled: boolean) => {
     const s = state.current;
@@ -97,7 +127,7 @@ function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: numb
     const wasTap = !s.moved && !cancelled;
     s.pointer = -1;
     s.actions = null;
-    if (cancelled || performance.now() - s.lastTime > 90) s.velocityX = s.velocityZ = 0;
+    if (cancelled || performance.now() - s.lastTime > 90) body.current.vx = body.current.vz = 0;
     try { s.capture?.releasePointerCapture(pointer); } catch { /* Capture can already be lost. */ }
     s.capture = null;
     gl.domElement.style.cursor = "grab";
@@ -109,7 +139,7 @@ function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: numb
   }, [gl, invalidate]);
 
   React.useEffect(() => {
-    const move = (event: PointerEvent) => {
+    const onMove = (event: PointerEvent) => {
       const s = state.current;
       const root = group.current;
       if (event.pointerId !== s.pointer || !root) return;
@@ -126,14 +156,13 @@ function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: numb
       s.raycaster.setFromCamera(s.ndc, camera);
       if (!s.raycaster.ray.intersectPlane(s.plane, s.hit)) return;
       root.parent?.worldToLocal(s.hit);
-      const b = latest.current.bounds;
-      const x = THREE.MathUtils.clamp(s.hit.x + s.offsetX, b.minX, b.maxX);
-      const z = THREE.MathUtils.clamp(s.hit.z + s.offsetZ, b.minZ, b.maxZ);
-      const resolved = physics ? moveOnDesk(body.current, x, z, physics.values()) : { x, z };
+      const self = body.current;
+      const resolved = move(s.hit.x + s.offsetX, s.hit.z + s.offsetZ);
       const now = performance.now();
       const dt = Math.max((now - s.lastTime) / 1000, 0.008);
-      s.velocityX = THREE.MathUtils.clamp((resolved.x - s.lastX) / dt * 0.65 + s.velocityX * 0.35, -5, 5);
-      s.velocityZ = THREE.MathUtils.clamp((resolved.z - s.lastZ) / dt * 0.65 + s.velocityZ * 0.35, -5, 5);
+      self.vx = THREE.MathUtils.clamp((resolved.x - s.lastX) / dt * 0.65 + (self.vx ?? 0) * 0.35, -12, 12);
+      self.vz = THREE.MathUtils.clamp((resolved.z - s.lastZ) / dt * 0.65 + (self.vz ?? 0) * 0.35, -12, 12);
+      transferMomentum(self, self.vx, self.vz, resolved.pushed);
       s.lastX = root.position.x = resolved.x;
       s.lastZ = root.position.z = resolved.z;
       s.lastTime = now;
@@ -142,15 +171,15 @@ function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: numb
     };
     const up = (event: PointerEvent) => { if (event.pointerId === state.current.pointer) finish(false); };
     const cancel = (event: PointerEvent) => { if (event.pointerId === state.current.pointer) finish(true); };
-    const blur = () => {state.current.velocityX=state.current.velocityZ=0;finish(true);};
-    window.addEventListener("pointermove", move, { passive: false });
+    const blur = () => {body.current.vx = body.current.vz = body.current.spin = 0;finish(true);};
+    window.addEventListener("pointermove", onMove, { passive: false });
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", cancel);
     window.addEventListener("blur", blur);
     window.addEventListener("storm-hardware-cancel", blur);
     gl.domElement.addEventListener("lostpointercapture", cancel);
     return () => {
-      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", cancel);
       window.removeEventListener("blur", blur);
@@ -159,27 +188,75 @@ function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: numb
       finish(true);
       gl.domElement.style.cursor = "";
     };
-  }, [camera, finish, gl, invalidate, physics]);
+  }, [camera, finish, gl, invalidate, move]);
 
   useFrame((_, delta) => {
-    const s = state.current;
     const root = group.current;
-    if (!root || s.pointer !== -1 || (s.velocityX === 0 && s.velocityZ === 0)) return;
-    const dt = Math.min(delta, 0.04);
-    const b = latest.current.bounds;
-    const nextX = root.position.x + s.velocityX * dt;
-    const nextZ = root.position.z + s.velocityZ * dt;
-    const x = THREE.MathUtils.clamp(nextX, b.minX, b.maxX);
-    const z = THREE.MathUtils.clamp(nextZ, b.minZ, b.maxZ);
-    const resolved = physics ? moveOnDesk(body.current, x, z, physics.values()) : { x, z, hitX: false, hitZ: false };
-    root.position.x = resolved.x; root.position.z = resolved.z;
+    if (!root) return;
+    const self = body.current, s = state.current, dt = Math.min(delta, 0.04);
+    const flying = air.current;
+    if (flying) {
+      flying.vy -= GRAVITY * dt;
+      root.position.x += flying.vx * dt; root.position.y += flying.vy * dt; root.position.z += flying.vz * dt;
+      root.rotation.x += flying.rx * dt; root.rotation.z += flying.rz * dt;
+      if (flying.landing && root.position.y <= home.current.y) {
+        // Back on the desk: a small bounce, then it is an ordinary desk device again.
+        root.position.y = home.current.y;
+        if (flying.vy < -2) flying.vy *= -.28;
+        else { air.current = null; physics?.set(bodyId, self); }
+      } else if (!flying.landing && root.position.y < home.current.y - 9) {
+        // Gone: drop it back in at its starting spot, or the nearest free one beside it.
+        Object.assign(self, rotatedFootprint(footprint.width, footprint.depth, footprint.angle), { x: home.current.x, z: home.current.z, vx: 0, vz: 0, spin: 0 });
+        for (let i = 1; i < 16 && physics && !fits(self, physics.values()); i++) self.x = home.current.x + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * .25;
+        turn.current = 0;
+        root.rotation.set(0, footprint.angle, 0);
+        root.position.set(self.x, home.current.y + 2.2, self.z);
+        Object.assign(flying, { vx: 0, vy: 0, vz: 0, rx: 0, rz: 0, landing: true });
+      }
+      gl.shadowMap.needsUpdate = true;
+      invalidate();
+      return;
+    }
+    let changed = false;
+    // Something pushed this device since the last frame.
+    if (root.position.x !== self.x || root.position.z !== self.z) { root.position.x = self.x; root.position.z = self.z; changed = true; }
+    // Knocked devices turn a little; a turn that would clip something or leave the desk bounces back.
+    if (self.spin && s.pointer === -1) {
+      const next = turn.current + self.spin * dt, size = rotatedFootprint(footprint.width, footprint.depth, footprint.angle + next);
+      const before = { halfX: self.halfX, halfZ: self.halfZ };
+      Object.assign(self, size);
+      if (Math.abs(next) < .6 && fits(self, physics?.values() ?? [])) { turn.current = next; root.rotation.y = footprint.angle + next; changed = true; }
+      else { Object.assign(self, before); self.spin *= -.3; }
+      self.spin *= Math.exp(-5 * dt);
+      if (Math.abs(self.spin) < .02) self.spin = 0;
+    }
+    const vx = self.vx ?? 0, vz = self.vz ?? 0;
+    if (s.pointer === -1 && (vx || vz)) {
+      const resolved = move(self.x + vx * dt, self.z + vz * dt);
+      root.position.x = resolved.x; root.position.z = resolved.z;
+      // Momentum carries into whatever it ran into; the mover keeps a little of its own.
+      transferMomentum(self, vx, vz, resolved.pushed);
+      const friction = Math.exp(-6.8 * dt);
+      const pushedX = resolved.pushed.some(push => push.axis === "x"), pushedZ = resolved.pushed.some(push => push.axis === "z");
+      // A little energy is returned at walls and the desk edge; friction settles the device quickly.
+      self.vx = resolved.hitX ? vx * -0.16 : pushedX ? vx * .35 : vx * friction;
+      self.vz = resolved.hitZ ? vz * -0.16 : pushedZ ? vz * .35 : vz * friction;
+      if (Math.abs(self.vx) < 0.008) self.vx = 0;
+      if (Math.abs(self.vz) < 0.008) self.vz = 0;
+      changed = true;
+    }
+    // Past the desk's edge (its centre no longer over the top) and not held: it falls.
+    const desk = support.current;
+    if (canFall && s.pointer === -1 && (self.x < desk.minX || self.x > desk.maxX || self.z < desk.minZ || self.z > desk.maxZ)) {
+      const vx = self.vx ?? 0, vz = self.vz ?? 0;
+      // Tips over the edge it left by: the turn axis lies along that edge.
+      air.current = { vx, vy: 0, vz, rx: vz * .6 + (self.z > desk.maxZ ? 2.5 : self.z < desk.minZ ? -2.5 : 0), rz: -vx * .6 - (self.x > desk.maxX ? 2.5 : self.x < desk.minX ? -2.5 : 0), landing: false };
+      self.vx = self.vz = self.spin = 0;
+      physics?.delete(bodyId);
+      changed = true;
+    }
+    if (!changed) return;
     gl.shadowMap.needsUpdate = true;
-    // A little energy is returned at the desk boundary; friction settles the object quickly.
-    const friction = Math.exp(-6.8 * dt);
-    s.velocityX *= !resolved.hitX && nextX === root.position.x ? friction : -0.16;
-    s.velocityZ *= !resolved.hitZ && nextZ === root.position.z ? friction : -0.16;
-    if (Math.abs(s.velocityX) < 0.008) s.velocityX = 0;
-    if (Math.abs(s.velocityZ) < 0.008) s.velocityZ = 0;
     invalidate();
   });
 
@@ -188,7 +265,7 @@ function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: numb
     event.nativeEvent.preventDefault();
     const s = state.current;
     const root = group.current;
-    if (!root || s.pointer !== -1 || (event.pointerType === "mouse" && event.button !== 0)) return false;
+    if (!root || s.pointer !== -1 || air.current || (event.pointerType === "mouse" && event.button !== 0)) return false;
     root.getWorldPosition(s.world);
     s.plane.constant = -s.world.y;
     if (!event.ray.intersectPlane(s.plane, s.hit)) return false;
@@ -200,7 +277,7 @@ function useDeskDrag(bounds: DeskBounds, footprint: { width: number; depth: numb
     s.lastX = root.position.x;
     s.lastZ = root.position.z;
     s.lastTime = performance.now();
-    s.velocityX = s.velocityZ = 0;
+    body.current.vx = body.current.vz = body.current.spin = 0;
     s.moved = false;
     s.actions = actions;
     s.pointer = event.pointerId;
@@ -274,11 +351,9 @@ function useHardwareResources(tone: "classic" | "modern" = "classic") {
 
 /** A small dynamic tube keeps its far end plugged in while the hardware moves. */
 function HardwareCable({
-  body, position, rotationY, offset, anchor, material,
+  body, offset, anchor, material,
 }: {
   body: React.RefObject<THREE.Group | null>;
-  position: [number, number, number];
-  rotationY: number;
   offset: [number, number, number];
   anchor: [number, number, number];
   material: THREE.Material;
@@ -299,17 +374,19 @@ function HardwareCable({
     result.setIndex(indices);
     return result;
   }, []);
-  const previous = React.useRef({ x: Infinity, z: Infinity });
+  const previous = React.useRef({ x: Infinity, y: NaN, z: Infinity, turn: NaN });
   useFrame(() => {
     const root = body.current;
-    if (!root || (root.position.x === previous.current.x && root.position.z === previous.current.z)) return;
+    if (!root || (root.position.x === previous.current.x && root.position.z === previous.current.z && root.position.y === previous.current.y && root.rotation.y === previous.current.turn)) return;
+    previous.current.y = root.position.y;
     previous.current.x = root.position.x;
     previous.current.z = root.position.z;
-    const cos = Math.cos(rotationY);
-    const sin = Math.sin(rotationY);
+    previous.current.turn = root.rotation.y;
+    const cos = Math.cos(root.rotation.y);
+    const sin = Math.sin(root.rotation.y);
     const startX = root.position.x + offset[0] * cos + offset[2] * sin;
     const startZ = root.position.z - offset[0] * sin + offset[2] * cos;
-    const startY = position[1] + offset[1];
+    const startY = root.position.y + offset[1];
     const controlX = startX - sin * 0.42;
     const controlZ = startZ - cos * 0.42;
     const endX = anchor[0];
@@ -410,7 +487,7 @@ function makeLegends() {
 
 /** Compact 1980s keyboard. Tap a key; drag any part; release with a little momentum. */
 export function RetroKeyboard({
-  position = KEYBOARD_POSITION, rotationY = -0.025, bounds = KEYBOARD_BOUNDS, onInteractionChange, tone = "classic", physics,
+  position = KEYBOARD_POSITION, rotationY = -0.025, bounds = DESK_AREA, onInteractionChange, tone = "classic", physics,
 }: RetroHardwareProps) {
   const { groupRef, begin, hover, leave } = useDeskDrag(bounds, { width: 2.48, depth: 1.01, angle: rotationY }, physics, onInteractionChange);
   const materials = useHardwareResources(tone);
@@ -490,7 +567,7 @@ export function RetroKeyboard({
   const release = () => { animation.current.held = -1; invalidate(); };
   return (
     <>
-      <HardwareCable body={groupRef} position={position} rotationY={rotationY} offset={[0.82, 0.068, -0.46]} anchor={[0.63, position[1] + 0.035, -0.42]} material={materials.cord} />
+      <HardwareCable body={groupRef} offset={[0.82, 0.068, -0.46]} anchor={[0.63, position[1] + 0.035, -0.42]} material={materials.cord} />
       <group ref={groupRef} position={position} rotation={[0, rotationY, 0]} onPointerOver={hover} onPointerOut={leave} onPointerDown={(event) => begin(event)}>
         {lightBar && <mesh geometry={lightBar} position={[0, .05, .456]} raycast={NO_RAYCAST}><meshBasicMaterial vertexColors /></mesh>}
         <mesh geometry={geometries.base} material={materials.side} position={[0, 0.022, 0]} castShadow receiveShadow />
@@ -557,9 +634,9 @@ function buildWirelessMouse(shape: "pebble" | "ergo") {
 
 /** The desk mouse. Clicks emit a scoped event rather than clicking page elements. */
 export function RetroMouse({
-  position = MOUSE_POSITION, rotationY = -0.11, bounds = MOUSE_BOUNDS, onInteractionChange, tone = "classic", shape = "box", physics,
+  position = MOUSE_POSITION, rotationY = -0.11, bounds = DESK_AREA, pad = MOUSE_PAD, onInteractionChange, tone = "classic", shape = "box", physics,
 }: RetroHardwareProps) {
-  const { groupRef, begin, hover, leave } = useDeskDrag(bounds, { width: .444, depth: .636, angle: rotationY }, physics, onInteractionChange);
+  const { groupRef, begin, hover, leave } = useDeskDrag(bounds, { width: .444, depth: .636, angle: rotationY }, physics, onInteractionChange, true);
   const materials = useHardwareResources(tone);
   const { invalidate } = useThree();
   const button = React.useRef<THREE.Group>(null);
@@ -570,8 +647,8 @@ export function RetroMouse({
     if (!body || (body.position.x === lastPointer.current.x && body.position.z === lastPointer.current.z)) return;
     lastPointer.current.x = body.position.x; lastPointer.current.z = body.position.z;
     window.dispatchEvent(new CustomEvent("storm-hardware-pointer", {detail:{
-      u: THREE.MathUtils.clamp((body.position.x - bounds.minX)/(bounds.maxX-bounds.minX),0,1),
-      v: THREE.MathUtils.clamp((body.position.z - bounds.minZ)/(bounds.maxZ-bounds.minZ),0,1),
+      u: THREE.MathUtils.clamp((body.position.x - pad.minX)/(pad.maxX-pad.minX),0,1),
+      v: THREE.MathUtils.clamp((body.position.z - pad.minZ)/(pad.maxZ-pad.minZ),0,1),
     }}));
   });
   // One-button box mouse: soft moulded corners and a button set into a shadow gap.
@@ -604,7 +681,7 @@ export function RetroMouse({
   const ergo = shape === "ergo";
   return (
     <>
-      {box && <HardwareCable body={groupRef} position={position} rotationY={rotationY} offset={[0, 0.07, -0.32]} anchor={[0.91, position[1] + 0.035, -0.19]} material={materials.cord} />}
+      {box && <HardwareCable body={groupRef} offset={[0, 0.07, -0.32]} anchor={[0.91, position[1] + 0.035, -0.19]} material={materials.cord} />}
       <group
         ref={groupRef} position={position} rotation={[0, rotationY, 0]} onPointerOver={hover} onPointerOut={leave}
         onPointerDown={(event) => {

@@ -15,8 +15,11 @@ export const DESK_COLORS: Record<HardwareId, string> = { classic: "#aaa18d", lap
 
 export const CAMERA_FOV = 28;
 export const FIXED_FRAMING = { target: [.45, -.15, .35] as [number, number, number], width: 6.2, height: 4.1, distance: 9.5 };
-/** Portrait phones: centred on the pedestal (x −2.4) to RTX mouse (x 4.1) span, with a small margin. */
-export const PORTRAIT_FRAMING = { ...FIXED_FRAMING, target: [.85, -.15, .35] as [number, number, number], width: 6.9 };
+/**
+ * Portrait phones: centred on the computer's screen (every rig's screen sits at x 0), wide
+ * enough for the sword's stone on the left. Pinch zoom brings anything else in.
+ */
+export const PORTRAIT_FRAMING = { ...FIXED_FRAMING, target: [0, -.15, .35] as [number, number, number], width: 6 };
 /** The front view sits slightly to the right of straight-on and above the target. */
 const CAMERA_YAW = .16, CAMERA_RISE = .22;
 

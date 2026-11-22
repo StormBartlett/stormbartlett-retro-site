@@ -2,6 +2,7 @@ import { Courier_Prime, Silkscreen, VT323 } from "next/font/google";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { modelUrl } from "./modelUrl";
+import { MODEL_BOOT_TEST } from "./bootView";
 
 export const metadata: Metadata = {
   title: "Storm Bartlett",
@@ -28,9 +29,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" suppressHydrationWarning className={`${silkscreen.variable} ${vt323.variable} ${courierPrime.variable}`}>
       <head>
-        {/* Desktop visitors open in the 3D view: skip painting the flat desktop first, and start
+        {/* Visitors who open in the 3D view (desktop by default, phones that chose it): skip painting the flat desktop first, and start
             the default model download alongside the page instead of after the 3D code arrives. */}
-        <script dangerouslySetInnerHTML={{ __html: `try{if(!matchMedia("(max-width: 900px), (pointer: coarse)").matches&&localStorage.getItem("nx-fullscreen")!=="1")document.documentElement.dataset.boot="model"}catch(e){}` }} />
+        <script dangerouslySetInnerHTML={{ __html: `try{if(${MODEL_BOOT_TEST})document.documentElement.dataset.boot="model"}catch(e){}` }} />
         <link rel="preload" href={modelUrl("/models/studio-mac.glb")} as="fetch" crossOrigin="anonymous" media="(min-width: 901px) and (pointer: fine)" />
         <link rel="icon" href="/favicon.ico?v=2" sizes="any" />
         <link rel="icon" href="/favicon-32x32.png?v=2" type="image/png" sizes="32x32" />

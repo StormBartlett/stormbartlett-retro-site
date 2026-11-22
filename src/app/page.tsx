@@ -3,11 +3,11 @@
 import { Component, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import DesktopOS from "./DesktopOS";
 import FormingDesk from "./FormingDesk";
+import { opensInModel } from "./bootView";
 import MatrixBackground from "./MatrixBackground";
 import {
   FullscreenProvider,
   readStoredSetting,
-  MOBILE_MEDIA_QUERY,
   useFullscreen,
   useIsMobileViewport,
   useMediaQuery,
@@ -38,9 +38,9 @@ function ModelLoading() {
 // Three.js is only fetched once the visitor is actually in model mode.
 const loadHardware = () => import("./OldMac3D");
 type HardwareView = Awaited<ReturnType<typeof loadHardware>>["default"];
-// Desktop visitors land in 3D: fetch its code with the page rather than after hydration.
+// Visitors who land in 3D: fetch its code with the page rather than after hydration.
 if (typeof window !== "undefined") {
-  try { if (!window.matchMedia(MOBILE_MEDIA_QUERY).matches && window.localStorage.getItem("nx-fullscreen") !== "1") void loadHardware().catch(() => {}); } catch {}
+  try { if (opensInModel()) void loadHardware().catch(() => {}); } catch {}
 }
 
 /** Chunk, WebGL-context and GLB failures all land here and fall back to the flat desktop. */
