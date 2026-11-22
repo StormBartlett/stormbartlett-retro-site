@@ -7,7 +7,11 @@ import { HARDWARE_STORAGE_KEY, hardwareProfile } from "./hardwareProfiles";
 
 /** Screen pixels per cell, close to the 3D warp's cells on a 2x display. */
 const CELL = 4;
-/** A cached scene is up within this time, so the placeholder never flashes on a fast load. */
+/**
+ * A cached scene is up within this time after navigation, so the placeholder never flashes on a
+ * fast load. Measured from navigation start, not from mount: a slow first visit that hydrates late
+ * starts drawing straight away instead of waiting a further 280 ms.
+ */
 const DELAY_MS = 280;
 const RAMP_MS = 900;
 /** The desk as the studio lights render it, for each finish. */
@@ -41,24 +45,33 @@ export default function FormingDesk() {
         if (inside) { const hash = Math.sin(col * 12.9898 + row * 78.233) * 43758.5453; mask[row * cols + col] = hash - Math.floor(hash); }
       }
     };
-    const started = performance.now();
+    // performance.now() counts from navigation start, the same clock the WebGL scene uses.
+    const rampStart = Math.max(performance.now(), DELAY_MS);
+    let flagged = false;
     const draw = () => {
-      const now = performance.now(), age = now - started - DELAY_MS;
-      if (age <= 0 || !image) return;
-      // Tells the scene to pick up fully formed instead of starting its own ramp.
-      document.documentElement.dataset.deskForming = "1";
+      const now = performance.now(), age = now - rampStart;
+      // The WebGL scene has drawn its first frame: it owns the shimmer from here.
+      if (age < 0 || !image || document.documentElement.dataset.sceneLive) return;
       const ramp = Math.min(1, age / RAMP_MS), progress = ramp * ramp * (3 - 2 * ramp) * (.4 + .05 * Math.sin(now / 380)), data = image.data;
+      let painted = false;
       for (let i = 0; i < mask.length; i++) {
         const threshold = mask[i], shown = threshold >= 0 && threshold <= progress, edge = shown ? Math.max(0, 1 - (progress - threshold) / .1) : 0;
+        painted ||= shown;
         for (let channel = 0; channel < 3; channel++) data[i * 4 + channel] = Math.min(255, lit[channel] * .68 + BLUE[channel] * (.32 + edge));
         data[i * 4 + 3] = shown ? 255 : 0;
       }
       context.putImageData(image, 0, 0);
+      // Tells the scene where this ramp started, so it carries on from the same point. Set once, on
+      // the first draw that shows a cell: the scene removes it when it takes over, and it must not
+      // reappear after that.
+      if (painted && !flagged) { flagged = true; document.documentElement.dataset.deskForming = String(rampStart); }
     };
     layout();
-    const timer = window.setInterval(draw, 50);
+    let timer: number | undefined;
+    // First draw exactly when the ramp starts, then every 50 ms.
+    const first = window.setTimeout(() => { draw(); timer = window.setInterval(draw, 50); }, Math.max(0, rampStart - performance.now()));
     window.addEventListener("resize", layout);
-    return () => { window.clearInterval(timer); window.removeEventListener("resize", layout); };
+    return () => { window.clearTimeout(first); window.clearInterval(timer); window.removeEventListener("resize", layout); };
   }, []);
   return <canvas ref={ref} aria-hidden="true" style={{ position: "fixed", inset: 0, width: "100%", height: "100%", imageRendering: "pixelated", pointerEvents: "none" }} />;
 }

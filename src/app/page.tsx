@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { Component, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import DesktopOS from "./DesktopOS";
 import FormingDesk from "./FormingDesk";
@@ -38,7 +37,7 @@ function ModelLoading() {
 
 // Three.js is only fetched once the visitor is actually in model mode.
 const loadHardware = () => import("./OldMac3D");
-const OldMac3D = dynamic(loadHardware, { ssr: false, loading: ModelLoading });
+type HardwareView = Awaited<ReturnType<typeof loadHardware>>["default"];
 // Desktop visitors land in 3D: fetch its code with the page rather than after hydration.
 if (typeof window !== "undefined") {
   try { if (!window.matchMedia(MOBILE_MEDIA_QUERY).matches && window.localStorage.getItem("nx-fullscreen") !== "1") void loadHardware().catch(() => {}); } catch {}
@@ -86,6 +85,13 @@ function HomeContent() {
   const [sceneLive, setSceneLive] = useState(false);
   const sceneStarted = useCallback(() => setSceneLive(true), []);
   useEffect(() => { if (viewMode === "model") setModelVisited(true); }, [viewMode]);
+  /*
+   * The 3D view is held in state rather than rendered through next/dynamic. A Suspense
+   * fallback committed at hydration makes React hold the revealed content back for 300 ms,
+   * which left the main thread idle while the code was already here. A plain state update
+   * (not a transition) commits as soon as the chunk has been evaluated.
+   */
+  const [Hardware, setHardware] = useState<HardwareView | null>(null);
   useEffect(() => {
     if (!settingsLoaded || isMobile) return;
     let cancelled = false;
@@ -108,6 +114,13 @@ function HomeContent() {
   );
   const enterDesktop = useCallback(() => changeViewMode("desktop"), [changeViewMode]);
   const modelUnavailable = useCallback(() => {setModelFailed(true);enterDesktop();}, [enterDesktop]);
+  useEffect(() => {
+    if ((viewMode !== "model" && !modelVisited) || Hardware) return;
+    let cancelled = false;
+    // A chunk that fails to load lands on the flat desktop, as a render failure does.
+    loadHardware().then(module => { if (!cancelled) setHardware(() => module.default); }, () => { if (!cancelled) modelUnavailable(); });
+    return () => { cancelled = true; };
+  }, [viewMode, modelVisited, Hardware, modelUnavailable]);
 
   /*
    * One DesktopOS instance lives for the whole session so open windows and app
@@ -177,7 +190,9 @@ function HomeContent() {
           {viewMode === "model" && !sceneLive && <FormingDesk />}
           <ModelErrorBoundary onError={modelUnavailable}>
             <div aria-hidden={viewMode !== "model"} inert={viewMode !== "model"} style={{ position: "fixed", inset: 0, visibility: viewMode === "model" ? "visible" : "hidden", pointerEvents: viewMode === "model" ? "auto" : "none" }}>
-              <OldMac3D active={viewMode === "model"} onScreenSlot={attachToScreenSlot} onScreenTap={isMobile ? enterDesktop : undefined} onFirstFrame={sceneStarted} />
+              {Hardware
+                ? <Hardware active={viewMode === "model"} onScreenSlot={attachToScreenSlot} onScreenTap={isMobile ? enterDesktop : undefined} onFirstFrame={sceneStarted} />
+                : <ModelLoading />}
             </div>
           </ModelErrorBoundary>
           {/* Plain DOM so it works while the model loads, and if WebGL never starts. */}

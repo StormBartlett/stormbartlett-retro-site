@@ -9,7 +9,7 @@ import { reportInteraction, RetroKeyboard, RetroMouse } from "./RetroHardware";
 import type { DeskWorld } from "./deskPhysics";
 import { readStoredSetting, useIsMobileViewport, useMediaQuery, writeStoredSetting } from "./FullscreenContext";
 import { CAMERA_FOV, DESK_SLAB, frontCamera } from "./deskView";
-import { HARDWARE_PROFILES, HARDWARE_STORAGE_KEY, hardwareProfile, keyboardStart, type HardwareProfile } from "./hardwareProfiles";
+import { HARDWARE_PROFILES, HARDWARE_STORAGE_KEY, hardwareProfile, keyboardStart, ROUNDED_MAC_ASSET, type HardwareProfile } from "./hardwareProfiles";
 import { addPixelDissolve, alignedDeskObstacles, disposeMergedGeometry, mergeStaticMeshes, seamlessCrtBezel, seatSideVents, addMouldedPlastic, DESK_COLORS, DESK_Y, HARDWARE_FX, prepareFanRotors, quadMatrix3d, rigAlignment, roundedRect, screenFor, switchObstacle, transitionAmount, TRANSITION_MS, WARP_MS, type TransitionMode } from "./hardwareScene";
 import { SwordPedestal, TimeWarpFX, type SwitchTransition, type SwordCue } from "./SwordPedestal";
 import styles from "./HardwareGallery.module.css";
@@ -29,7 +29,7 @@ export function preloadHardware() {
   const soft=readStoredSetting("storm-mac-soft-case-v1")==="1";
   // Only the computer the visitor will see first; the others queue once it is ready,
   // so they never compete with it for bandwidth or parse time.
-  useGLTF.preload(chosen.id==="classic"&&soft?"/models/studio-mac-rounded.glb":chosen.asset);
+  useGLTF.preload(chosen.id==="classic"&&soft?ROUNDED_MAC_ASSET:chosen.asset);
 }
 
 // Start parsing the first model as soon as this code arrives, in parallel with Canvas setup.
@@ -50,9 +50,9 @@ function useSceneMotion(active:boolean) {
 }
 
 /** Local Blender assets, including clickable laptop keycaps. No network textures or fonts. */
-function HardwareModel({ profile, onReady, onInteractionChange, enabled, reveal, spin }: { profile: HardwareProfile; onReady: (url:string) => void; onInteractionChange: (active:boolean) => void; enabled:boolean; reveal:{value:number;outgoing?:{value:number}}; spin:boolean }) {
+function HardwareModel({ profile, onInteractionChange, enabled, reveal, spin }: { profile: HardwareProfile; onInteractionChange: (active:boolean) => void; enabled:boolean; reveal:{value:number;outgoing?:{value:number}}; spin:boolean }) {
   const {scene:cached} = useGLTF(profile.asset);
-  const {gl,camera,scene:world,invalidate} = useThree();
+  const {gl,invalidate} = useThree();
   const prepared=React.useMemo(()=>{
     const scene=cached.clone(true),materials=new Map<THREE.Material,THREE.Material>();
     scene.traverse(object=>{if(object instanceof THREE.Mesh){
@@ -87,15 +87,12 @@ function HardwareModel({ profile, onReady, onInteractionChange, enabled, reveal,
     });
     gl.shadowMap.needsUpdate=true;invalidate();
   },[scene,gl,invalidate]);
+  // Runs before ComputerRig's compile (child effects first), so textures are uploaded by then.
   React.useEffect(()=>{
-    let cancelled=false;
     for(const material of prepared.materials.values())for(const value of Object.values(material)){
       if(value instanceof THREE.Texture)gl.initTexture(value);
     }
-    // Prepare the actual cached materials against the studio's existing lights/environment.
-    void gl.compileAsync(scene,camera,world).then(()=>{if(!cancelled)onReady(profile.asset);}).catch(()=>{if(!cancelled)onReady(profile.asset);});
-    return()=>{cancelled=true;};
-  },[gl,scene,camera,world,profile.asset,onReady]);
+  },[gl,prepared]);
   React.useEffect(() => {
     const end = (event?: PointerEvent) => {
       const active=press.current;
@@ -310,6 +307,37 @@ function SceneFraming({controlsRef,active}: {controlsRef:ControlsRef;active:bool
   return null;
 }
 
+/** compileAsync, settling on success or failure alike; a synchronous throw settles too. */
+function compileScene(gl:THREE.WebGLRenderer,scene:THREE.Object3D,camera:THREE.Camera,target?:THREE.Scene){
+  try{return gl.compileAsync(scene,camera,target).then(()=>{},()=>{});}catch{return Promise.resolve();}
+}
+
+/**
+ * Holds the very first WebGL frame until every program the forming desk needs (desk, stone,
+ * sword, warp effect, screen hole, and the rig if its model is already parsed) has been linked
+ * through parallel compile. Drawing first would link each of them synchronously on first use,
+ * which froze the main thread for seconds on a cold shader cache. Until then the 2D FormingDesk
+ * keeps shimmering. There is no timer: with a warm cache this settles on its first check.
+ */
+function FirstFrameGate({onWarm}:{onWarm:()=>void}) {
+  const {gl,scene,camera}=useThree();
+  const latest=React.useRef(onWarm);
+  React.useLayoutEffect(()=>{latest.current=onWarm;},[onWarm]);
+  React.useEffect(()=>{
+    // A passive effect: StudioEnvironment's layout effect has already set scene.environment,
+    // which is part of every standard material's program key.
+    let cancelled=false;
+    const hidden:THREE.Object3D[]=[];
+    scene.traverse(object=>{if(!object.visible&&object.name==="time-warp-fx"){hidden.push(object);object.visible=true;}});
+    // compile() gathers the programs synchronously, so visibility can be restored straight away.
+    const linked=compileScene(gl,scene,camera);
+    hidden.forEach(object=>{object.visible=false;});
+    void linked.then(()=>{if(!cancelled){mark("first-frame-compiled");latest.current();}});
+    return()=>{cancelled=true;};
+  },[gl,scene,camera]);
+  return null;
+}
+
 /**
  * Before the first reveal, compile every program the scene will need (desk, pedestal, peripherals,
  * shadow and warp-effect shaders), not just the GLB's. compileAsync uses parallel shader compile
@@ -325,7 +353,7 @@ function SceneCompileGate({ready,onCompiled}:{ready:boolean;onCompiled:()=>void}
     const hidden:THREE.Object3D[]=[];
     scene.traverse(object=>{if(!object.visible&&object.name==="time-warp-fx"){hidden.push(object);object.visible=true;}});
     const finish=()=>{hidden.forEach(object=>{object.visible=false;});mark("scene-compiled");latest.current();};
-    void gl.compileAsync(scene,camera).then(finish,finish);
+    void compileScene(gl,scene,camera).then(finish);
   },[ready,gl,scene,camera]);
   return null;
 }
@@ -342,14 +370,17 @@ function FxDriver({transition,reduced,intro,introDone,onFirstFrame}:{transition:
   const {gl,invalidate}=useThree();
   const began=React.useRef(0),announce=React.useRef(onFirstFrame);
   React.useLayoutEffect(()=>{announce.current=onFirstFrame;},[onFirstFrame]);
+  // Set in the frame itself, before React has unmounted the 2D desk, so it stops drawing at once.
+  const live=()=>{document.documentElement.dataset.sceneLive="1";queueMicrotask(()=>announce.current?.());};
   useFrame(()=>{
     const now=performance.now();
     gl.getDrawingBufferSize(HARDWARE_FX.viewport.value);HARDWARE_FX.time.value=now/1000;
-    if(introDone||reduced){if(!began.current){began.current=now;queueMicrotask(()=>announce.current?.());}intro.value=introDone||!transition.current?1:transitionAmount(now,transition.current.start,reduced,transition.current.duration);return;}
+    if(introDone||reduced){if(!began.current){began.current=now;live();}intro.value=introDone||!transition.current?1:transitionAmount(now,transition.current.start,reduced,transition.current.duration);return;}
     if(!began.current){
-      // The 2D placeholder has been showing this same shimmer: carry on from it, fully formed.
-      began.current=document.documentElement.dataset.deskForming?now-900:now;
-      delete document.documentElement.dataset.deskForming;queueMicrotask(()=>announce.current?.());
+      // The 2D placeholder has been showing this same shimmer: carry on from where its ramp is now.
+      const handed=Number(document.documentElement.dataset.deskForming);
+      began.current=Number.isFinite(handed)&&handed>0&&handed<=now?handed:now;
+      delete document.documentElement.dataset.deskForming;live();
     }
     HARDWARE_FX.mode.value=1;
     const change=transition.current,t=change&&change.from===""?transitionAmount(now,change.start,reduced,change.duration):0;
@@ -426,7 +457,7 @@ function SharedDesk({current,previous,transition,reduced,reveal}:{current:Hardwa
 /** Retains loaded cases, but only active/transition peripherals need scene resources. */
 function ComputerRig({profile,current,previous,transition,onReady,interaction,moving,reduced}: {profile:HardwareProfile;current:string;previous:string|null;transition:React.RefObject<Transition|null>;onReady:(asset:string)=>void;interaction:(active:boolean)=>void;moving:boolean;reduced:boolean}) {
   const root=React.useRef<THREE.Group>(null!);
-  const {gl,invalidate}=useThree();
+  const {gl,camera,scene:world,invalidate}=useThree();
   const reveal=React.useMemo(()=>({value:0,outgoing:{value:0}}),[]);
   const warmPhase=React.useRef<"compile"|"upload"|"ready">("compile");
   const warmTimer=React.useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
@@ -442,6 +473,14 @@ function ComputerRig({profile,current,previous,transition,onReady,interaction,mo
     return new Map([...fixed,switchObstacle(profile)].map((body,i)=>[`fixed-${i}`,body]));
   },[profile]);
   const shown=profile.asset===current||profile.asset===previous;
+  // Compile the whole rig (case, keyboard, mouse, contact shadow) against the studio's lights and
+  // environment, not just the GLB: compile walks hidden objects, so the root can stay invisible.
+  // It runs after the layout effects that attach each material's dissolve, so the keys match.
+  React.useEffect(()=>{
+    let cancelled=false;
+    void compileScene(gl,root.current,camera,world).then(()=>{if(!cancelled)compiled();});
+    return()=>{cancelled=true;};
+  },[gl,camera,world,compiled,shown]);
   React.useLayoutEffect(()=>{
     if(!shown)return;
     // Peripherals and the desk dissolve with the case, using their owned materials.
@@ -482,7 +521,7 @@ function ComputerRig({profile,current,previous,transition,onReady,interaction,mo
     {shown&&<ContactShadow profile={profile} deskY={alignment.deskY} reveal={reveal}/>}
     <group position={screen} quaternion={alignment.rotation}>
       <group position={[-screen[0],-screen[1],-screen[2]]}>
-        <HardwareModel profile={profile} onReady={compiled} onInteractionChange={interaction} reveal={reveal} enabled={warmPhase.current==="ready"&&profile.asset===current&&!transition.current} spin={moving&&profile.id==="rgb"&&shown}/>
+        <HardwareModel profile={profile} onInteractionChange={interaction} reveal={reveal} enabled={warmPhase.current==="ready"&&profile.asset===current&&!transition.current} spin={moving&&profile.id==="rgb"&&shown}/>
       </group>
     </group>
     {shown&&<>
@@ -524,7 +563,7 @@ export default function OldMac3D({onScreenSlot,onScreenTap,onFirstFrame,active=t
   /** The scene has drawn its first frame, so the page's 2D placeholder can go. */
   onFirstFrame?:()=>void;active?:boolean}) {
   const isMobile=useIsMobileViewport();
-  const [profiles]=React.useState(()=>HARDWARE_PROFILES.map(profile=>profile.id==="classic"&&readStoredSetting("storm-mac-soft-case-v1")==="1"?{...profile,asset:"/models/studio-mac-rounded.glb"}:profile));
+  const [profiles]=React.useState(()=>HARDWARE_PROFILES.map(profile=>profile.id==="classic"&&readStoredSetting("storm-mac-soft-case-v1")==="1"?{...profile,asset:ROUNDED_MAC_ASSET}:profile));
   const [selected,setSelected]=React.useState(()=>hardwareProfile(readStoredSetting(HARDWARE_STORAGE_KEY)).id);
   const [current,setCurrent]=React.useState(()=>profiles.find(profile=>profile.id===selected)!);
   const [previous,setPrevious]=React.useState<HardwareProfile|null>(null);
@@ -532,6 +571,9 @@ export default function OldMac3D({onScreenSlot,onScreenTap,onFirstFrame,active=t
   const [prepared,setPrepared]=React.useState<string[]>([]);
   const [failed,setFailed]=React.useState<string[]>([]);
   const [canvasVersion,setCanvasVersion]=React.useState(0);
+  /** No WebGL frame is drawn until FirstFrameGate has the first frames' programs linked. */
+  const [shadersWarm,setShadersWarm]=React.useState(false);
+  const warmed=React.useCallback(()=>setShadersWarm(true),[]);
   const [lightingVersion,setLightingVersion]=React.useState(0);
   const [contextFailed,setContextFailed]=React.useState(false);
   const recoveryAttempts=React.useRef(0);
@@ -612,7 +654,7 @@ export default function OldMac3D({onScreenSlot,onScreenTap,onFirstFrame,active=t
   const restoreLighting=React.useCallback(()=>setLightingVersion(value=>value+1),[]);
   const recoverContext=React.useCallback(()=>{
     transition.current=null;swordCue.current=null;setPulling(false);setPrevious(null);setPrepared([]);setScreenFx(null);setIntro("loading");
-    if(recoveryAttempts.current++===0)setCanvasVersion(value=>value+1);else setContextFailed(true);
+    if(recoveryAttempts.current++===0){setShadersWarm(false);setCanvasVersion(value=>value+1);}else setContextFailed(true);
   },[]);
   const screen=React.useMemo(()=>screenFor(current),[current]);
   const fromScreen=React.useMemo(()=>previous?screenFor(previous):screen,[previous,screen]);
@@ -625,12 +667,13 @@ export default function OldMac3D({onScreenSlot,onScreenTap,onFirstFrame,active=t
       </div>
     </div>
     <div className={styles.canvas}>
-      <Canvas key={canvasVersion} frameloop={active?"demand":"never"} shadows dpr={isMobile?[1,1.5]:[1,2]} eventSource={eventSourceRef} camera={{position:INITIAL_CAMERA,fov:CAMERA_FOV}} onCreated={state=>{mark("canvas-created");if(location.search.includes("perf"))Object.assign(window,{__stormThree:state});state.gl.shadowMap.autoUpdate=false;state.gl.shadowMap.needsUpdate=true;}}>
+      <Canvas key={canvasVersion} frameloop={active&&shadersWarm?"demand":"never"} shadows dpr={isMobile?[1,1.5]:[1,2]} eventSource={eventSourceRef} camera={{position:INITIAL_CAMERA,fov:CAMERA_FOV}} onCreated={state=>{mark("canvas-created");if(location.search.includes("perf"))Object.assign(window,{__stormThree:state});state.gl.shadowMap.autoUpdate=false;state.gl.shadowMap.needsUpdate=true;}}>
         <StudioLighting key={lightingVersion}/>
         <ContextRecovery onRestore={restoreLighting} onRecover={recoverContext} active={active}/>
         {profiles.filter(profile=>library.includes(profile.id)).map(profile=><RigBoundary key={profile.asset} asset={profile.asset} onFailure={rigFailure}><React.Suspense fallback={null}>
           <ComputerRig profile={profile} current={current.asset} previous={previous?.asset??null} transition={transition} onReady={ready} interaction={interaction} moving={moving} reduced={reduced}/>
         </React.Suspense></RigBoundary>)}
+        <FirstFrameGate onWarm={warmed}/>
         <SceneCompileGate ready={prepared.includes(current.asset)} onCompiled={()=>setSceneCompiled(true)}/>
         <FxDriver transition={transition} reduced={reduced} intro={introReveal} introDone={intro==="done"} onFirstFrame={onFirstFrame}/>
         <SwordPedestal portalRef={screenOverlayRef} index={index} label={PLAQUE_LABELS[profiles[index].id]} isLast={isLast} busy={busy} onForward={forward} onPull={pull} onWarm={warm}

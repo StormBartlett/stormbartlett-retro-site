@@ -1,5 +1,6 @@
 import manifest from "../../public/models/hardware-manifest.json";
 import type { DeskBody } from "./deskPhysics";
+import { modelUrl } from "./modelUrl";
 
 export type Vec3 = [number, number, number];
 export type HardwareId = "classic" | "laptop" | "rgb";
@@ -15,8 +16,11 @@ export type HardwareProfile = {
   bounds: [number, number, number, number];
 };
 
-// Generated alongside the glTF files by assets/blender/build_hardware.py.
-export const HARDWARE_PROFILES = manifest as HardwareProfile[];
+// Generated alongside the glTF files by assets/blender/build_hardware.py. Asset URLs carry
+// the model's content hash, so they match the HTML preload and can be cached as immutable.
+export const HARDWARE_PROFILES = (manifest as HardwareProfile[]).map(profile => ({ ...profile, asset: modelUrl(profile.asset) }));
+/** The optional soft-case Mac (not in the manifest; the build script cannot rebuild it). */
+export const ROUNDED_MAC_ASSET = modelUrl("/models/studio-mac-rounded.glb");
 export const HARDWARE_STORAGE_KEY = "storm-hardware-profile-v1";
 export function hardwareProfile(value: unknown): HardwareProfile {
   return HARDWARE_PROFILES.find(profile => profile.id === value) ?? HARDWARE_PROFILES[0];

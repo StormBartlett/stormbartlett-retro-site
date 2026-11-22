@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Legacy models kept locally, not shipped (moved out of public/)
+/local-assets/

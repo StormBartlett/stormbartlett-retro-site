@@ -10,26 +10,28 @@ vi.mock("./DesktopOS", () => ({ default: function Desktop({ onViewModeChange, vi
   useEffect(() => { lifecycle.mounts++;return () => {lifecycle.unmounts++;}; }, []);
   return <div data-testid="persistent-desktop"><button onClick={() => setCount(n => n+1)}>Work {count}</button><button onClick={() => onViewModeChange(viewMode === "desktop" ? "model" : "desktop")}>Switch view</button><button onClick={()=>setFullscreen(false)}>Direct model request</button></div>;
 } }));
-vi.mock("next/dynamic", () => ({ default: () => function Model({ onScreenSlot, active }: { onScreenSlot: (element: HTMLElement, mounted?: boolean) => void; active: boolean }) {
+vi.mock("./OldMac3D", () => ({ preloadHardware: () => {}, default: function Model({ onScreenSlot, active }: { onScreenSlot: (element: HTMLElement, mounted?: boolean) => void; active: boolean }) {
   useEffect(() => {lifecycle.models++;},[]);
   const slot=useRef<HTMLDivElement>(null);
   useEffect(() => { const element=slot.current;if(element)onScreenSlot(element);return()=>{if(element)onScreenSlot(element,false);}; },[onScreenSlot]);
   if(lifecycle.failModel)throw new Error("WebGL unavailable");
   return <div data-testid="model-slot" data-active={active} ref={slot}/>;
 } }));
+/** The 3D view's code arrives by dynamic import; let that promise settle inside act. */
+const settle=(action:()=>void=()=>{})=>act(async()=>{action();await new Promise(resolve=>setTimeout(resolve,0));});
 import Home from "./page";
 import { readStoredSetting, writeStoredSetting, MOBILE_MEDIA_QUERY, useFullscreen } from "./FullscreenContext";
 
 beforeEach(() => { lifecycle.mounts=0;lifecycle.unmounts=0;lifecycle.models=0;lifecycle.failModel=false;localStorage.clear();localStorage.setItem("nx-fullscreen","1");vi.stubGlobal("matchMedia",vi.fn((query:string)=>({matches:false,media:query,addEventListener:vi.fn(),removeEventListener:vi.fn()}))); });
 afterEach(() => {vi.restoreAllMocks();vi.unstubAllGlobals();});
 
-it("keeps one desktop and its in-memory app state across repeated model switches",()=>{
+it("keeps one desktop and its in-memory app state across repeated model switches",async()=>{
   const host=document.createElement("div");document.body.appendChild(host);const root=createRoot(host);
   act(()=>root.render(<Home/>));
   const desktop=host.querySelector('[data-testid="persistent-desktop"]');
   act(()=>host.querySelector("button")!.click());
   for(let i=0;i<3;i++){
-    act(()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="Switch view")!.click());
+    await settle(()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="Switch view")!.click());
     expect(host.querySelector('[data-testid="model-slot"]')?.contains(desktop)).toBe(true);
     expect(host.textContent).toContain("Work 1");
     act(()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="Enter Desktop")!.click());
@@ -50,25 +52,25 @@ it("keeps settings usable when browser storage is blocked",()=>{
   expect(MOBILE_MEDIA_QUERY).toBe("(max-width: 900px), (pointer: coarse)");
 });
 
-it("does not allocate a model until the visitor opens it",()=>{
+it("does not allocate a model until the visitor opens it",async()=>{
  const host=document.createElement("div");document.body.appendChild(host);const root=createRoot(host);
- act(()=>root.render(<Home/>));expect(lifecycle.models).toBe(0);
+ act(()=>root.render(<Home/>));await settle();expect(lifecycle.models).toBe(0);
  expect(host.querySelector('[data-testid="model-slot"]')).toBeNull();
  act(()=>root.unmount());host.remove();
 });
 
-it("keeps a usable desktop after a graphics failure and permits an explicit retry",()=>{
+it("keeps a usable desktop after a graphics failure and permits an explicit retry",async()=>{
  vi.spyOn(console,"error").mockImplementation(()=>{});
  const host=document.createElement("div");document.body.appendChild(host);const root=createRoot(host);
  act(()=>root.render(<Home/>));lifecycle.failModel=true;
- act(()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="Switch view")!.click());
+ await settle(()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="Switch view")!.click());
  const home=host.querySelector('[data-testid="persistent-desktop"]')!.parentElement!.parentElement!;
  expect(home.style.display).toBe("block");
- act(()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="Direct model request")!.click());
+ await settle(()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="Direct model request")!.click());
  expect(home.style.display).toBe("block");
  expect(host.querySelector('[data-testid="model-slot"]')).toBeNull();
  lifecycle.failModel=false;
- act(()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="Switch view")!.click());
+ await settle(()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="Switch view")!.click());
  expect(host.querySelector('[data-testid="model-slot"]')?.getAttribute("data-active")).toBe("true");
  act(()=>root.unmount());host.remove();
 });
